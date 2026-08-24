@@ -49,27 +49,46 @@ export default function AnalyticsDashboardPage() {
   const [selectedPage, setSelectedPage] = useState<string>("ALL");
   const [chartMode, setChartMode] = useState<"AREA" | "BARS">("AREA");
   const [hoveredPoint, setHoveredPoint] = useState<DataPoint | null>(weeklyData[5]);
+  const [pages, setPages] = useState<any[]>([]);
 
   const [metrics, setMetrics] = useState({
-    totalConversations: 18420,
-    totalContacts: 2850,
-    aiResolutionRate: 97.4,
-    totalRevenue: 142800,
-    confirmedOrdersCount: 542,
+    totalConversations: 0,
+    totalContacts: 0,
+    aiResolutionRate: 100,
+    totalRevenue: 0,
+    confirmedOrdersCount: 0,
+    pagesConnected: 0,
+    isNewWorkspace: true,
   });
 
   useEffect(() => {
     fetchAnalytics().then((data) => {
       if (data) {
         setMetrics({
-          totalConversations: data.totalConversations,
-          totalContacts: data.totalContacts,
-          aiResolutionRate: data.aiResolutionRate,
-          totalRevenue: data.totalRevenue,
-          confirmedOrdersCount: data.confirmedOrdersCount,
+          totalConversations: data.totalConversations ?? 0,
+          totalContacts: data.totalContacts ?? 0,
+          aiResolutionRate: data.aiResolutionRate ?? 100,
+          totalRevenue: data.totalRevenue ?? 0,
+          confirmedOrdersCount: data.confirmedOrdersCount ?? 0,
+          pagesConnected: data.pagesConnected ?? 0,
+          isNewWorkspace: data.isNewWorkspace ?? (data.totalConversations === 0 && data.pagesConnected === 0),
         });
       }
     });
+
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/pages`, {
+      headers: {
+        Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
+        "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") || "" : "",
+      },
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setPages(json.data);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -115,13 +134,42 @@ export default function AnalyticsDashboardPage() {
             onChange={(e) => setSelectedPage(e.target.value)}
             className="px-3 py-2 rounded-lg bg-[#111] border border-[#222] text-xs text-[#EDEDED] font-medium focus:outline-none"
           >
-            <option value="ALL">All Facebook Pages (3)</option>
-            <option value="p1">TechGadgets BD</option>
-            <option value="p2">Fashion House BD</option>
-            <option value="p3">Organic Mart</option>
+            <option value="ALL">
+              {pages.length > 0 ? `All Facebook Pages (${pages.length})` : "No Pages Connected (0)"}
+            </option>
+            {pages.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.pageName}
+              </option>
+            ))}
           </select>
         </div>
       </div>
+
+      {/* Onboarding Banner if 0 Pages Connected */}
+      {metrics.pagesConnected === 0 && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-amber-500/10 via-[#111] to-[#0A0A0A] border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <h3 className="font-bold text-sm text-[#EDEDED]">
+                Welcome to your Mogent AI Workspace!
+              </h3>
+            </div>
+            <p className="text-xs text-[#888] max-w-xl leading-relaxed">
+              You haven't connected any Facebook Pages yet. Connect your Facebook Page now to activate Gemini 2.0 AI auto-replies, product recommendations, and automated order booking.
+            </p>
+          </div>
+
+          <Link
+            href="/dashboard/pages"
+            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors shrink-0 w-fit cursor-pointer shadow-lg shadow-amber-500/10"
+          >
+            <Bot className="w-4 h-4" />
+            <span>Connect Facebook Page</span>
+          </Link>
+        </div>
+      )}
 
       {/* 4 Main KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

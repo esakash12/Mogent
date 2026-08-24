@@ -62,12 +62,12 @@ app.get("/health", async (c) => {
   });
 });
 
-// -----------------------------------------------------------------------------
-// 2. MOUNT ROUTES
-// -----------------------------------------------------------------------------
+import { billingRouter } from "./routes/billing";
+
 app.route("/api/auth", authRouter);
 app.route("/api/pages", pagesRouter);
 app.route("/api/admin", adminRouter);
+app.route("/api/billing", billingRouter);
 app.route("/webhook", webhookRouter);
 app.route("/api/dashboard", dashboardRouter);
 app.route("/api/conversations", conversationsRouter);

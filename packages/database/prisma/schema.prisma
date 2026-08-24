@@ -158,6 +158,11 @@ model Workspace {
   officeAddress        String?  @db.Text
   whatsAppPrefillText  String?  @db.Text
 
+  // Billing & Subscriptions
+  plan                 String   @default("STARTER") // STARTER, PRO, ENTERPRISE
+  planExpiresAt        DateTime?
+  paymentTransactions  PaymentTransaction[]
+
   @@map("workspaces")
 }
 
@@ -484,5 +489,44 @@ model Product {
 
   @@index([workspaceId, inStock])
   @@map("products")
+}
+
+// ----------------------------------------------------
+// BILLING & PAYMENT TRANSACTIONS (BKASH, NAGAD, ROCKET)
+// ----------------------------------------------------
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentMethod {
+  BKASH
+  NAGAD
+  ROCKET
+  BANK_TRANSFER
+}
+
+model PaymentTransaction {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  plan          String         // STARTER, PRO, ENTERPRISE
+  amount        Float
+  currency      String         @default("BDT")
+  method        PaymentMethod  @default(BKASH)
+  senderNumber  String
+  trxId         String         @unique
+  status        PaymentStatus  @default(PENDING)
+  notes         String?        @db.Text
+  adminNote     String?        @db.Text
+  approvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@map("payment_transactions")
 }
 

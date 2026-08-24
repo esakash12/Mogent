@@ -11,7 +11,8 @@ import {
   Share2,
   Settings,
   Sparkles,
-  LogOut
+  LogOut,
+  CreditCard
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +52,11 @@ const mainNavigation = [
     href: "/dashboard/integrations",
     icon: Share2,
     matchPrefixes: ["/dashboard/integrations", "/dashboard/pages", "/dashboard/telegram"],
+  },
+  {
+    name: "Billing & Plans",
+    href: "/dashboard/billing",
+    icon: CreditCard,
   },
   {
     name: "Settings",

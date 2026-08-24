@@ -303,3 +303,40 @@ export async function saveWhatsAppProtocol(data: {
     return false;
   }
 }
+
+// --- BILLING & PAYMENTS ---
+export async function fetchBillingStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/billing`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch billing");
+    const json = await res.json();
+    return json.data;
+  } catch (err) {
+    console.warn("Using fallback billing data:", err);
+    return null;
+  }
+}
+
+export async function submitPayment(data: {
+  plan: string;
+  method: string;
+  senderNumber: string;
+  trxId: string;
+  notes?: string;
+}) {
+  try {
+    const res = await fetch(`${API_BASE}/api/billing/submit-payment`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    return json;
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to submit payment" };
+  }
+}
+
