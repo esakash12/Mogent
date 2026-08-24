@@ -21,6 +21,21 @@ import { fetchBillingStatus, submitPayment } from "@/lib/api";
 
 const PLANS = [
   {
+    id: "FREE",
+    name: "Free Forever",
+    price: "৳০",
+    period: "/month",
+    description: "Start exploring AI automation without any upfront cost.",
+    features: [
+      "1 Facebook Page Connection",
+      "100 AI Automated Messages / mo",
+      "Gemini 3.1 Flash Lite (backup) Model",
+      "Basic FAQ Knowledge Base",
+      "Standard Community Support",
+    ],
+    highlight: false,
+  },
+  {
     id: "STARTER",
     name: "Starter Plan",
     price: "৳৯৯৯",
@@ -29,10 +44,10 @@ const PLANS = [
     features: [
       "1 Facebook Page Connection",
       "5,000 AI Automated Messages / mo",
-      "Google Gemini 2.0 Flash Intelligence",
-      "FAQ & Product Catalog Knowledge Base",
+      "Gemini 3.5 Flash Lite (main) Model",
+      "Advanced FAQ & Product Catalog",
       "Lead Capture (Name, Phone, Address)",
-      "Standard Community Support",
+      "Standard Priority Support",
     ],
     highlight: false,
   },
@@ -45,7 +60,7 @@ const PLANS = [
     features: [
       "Up to 5 Facebook Pages",
       "25,000 AI Automated Messages / mo",
-      "Gemini 2.0 Key Rotator (<0.2ms latency)",
+      "Both Main & Backup Models",
       "WhatsApp & Hotline On-Demand Sharing",
       "Live Human Agent Handoff & Takeover",
       "Instant Telegram Escalation Alerts",

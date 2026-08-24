@@ -44,7 +44,7 @@ export default function LandingPage() {
         </h1>
         
         <p className="text-[#888] text-base md:text-xl max-w-2xl mb-8 md:mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
-          Connect your Facebook pages and let Gemini 2.0 handle 95% of your customer inquiries instantly. Zero wait times. Perfect responses.
+          Connect your Facebook pages and let Gemini 3.5 Flash Lite handle 95% of your customer inquiries instantly. Zero wait times. Perfect responses.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300 w-full sm:w-auto">
@@ -128,22 +128,25 @@ export default function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 px-6 md:px-10 border-t border-[#222] bg-[#0A0A0A]">
-        <div className="max-w-6xl mx-auto">
+      <section id="features" className="py-24 px-6 md:px-10 border-t border-[#222] bg-[#0A0A0A] relative overflow-hidden">
+        {/* Glow behind features */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-amber-500/10 blur-[120px] rounded-full pointer-events-none" />
+
+        <div className="max-w-6xl mx-auto relative z-10">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">Everything you need to scale</h2>
+            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4 text-[#EDEDED]">Everything you need to scale</h2>
             <p className="text-[#888] text-lg max-w-2xl mx-auto">
               Built for businesses that want to provide instant, accurate, and human-like customer support 24/7.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="p-8 rounded-2xl bg-[#111] border border-[#222]">
-              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-6">
-                <MessageSquare className="w-6 h-6 text-white" />
+            <div className="p-8 rounded-2xl bg-gradient-to-br from-[#111] to-[#0A0A0A] border border-[#222] hover:border-[#444] transition-colors shadow-lg">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 flex items-center justify-center mb-6 border border-amber-500/20">
+                <MessageSquare className="w-6 h-6 text-amber-500" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Multi-turn Conversations</h3>
+              <h3 className="text-xl font-semibold mb-3 text-[#EDEDED]">Contextual AI Chat</h3>
               <p className="text-[#888] leading-relaxed">
-                Gemini 2.0 understands context across multiple messages, providing accurate and natural responses in Bengali or English.
+                Gemini 3.5 Flash Lite understands context across multiple messages, providing accurate and natural responses in Bengali or English.
               </p>
             </div>
             <div className="p-8 rounded-2xl bg-[#111] border border-[#222]">

@@ -30,12 +30,13 @@ interface KeyStatus {
   lastUsed: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<KeyStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [newKeyInput, setNewKeyInput] = useState("");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.5-flash-lite");
   const [isAdding, setIsAdding] = useState(false);
 
   const fetchKeys = async () => {
@@ -73,7 +74,7 @@ export default function ApiKeysPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_admin_token") : ""}`,
         },
-        body: JSON.stringify({ key: newKeyInput.trim() }),
+        body: JSON.stringify({ key: newKeyInput.trim(), model: selectedModel }),
       });
       const json = await res.json();
       if (json.success && json.data) {
@@ -170,10 +171,12 @@ export default function ApiKeysPage() {
           />
         </div>
         <select
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
           className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-[13px] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
         >
-          <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 3.1 Flash-Lite</option>
-          <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8b</option>
+          <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (main)</option>
+          <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (backup)</option>
         </select>
         <button
           type="button"

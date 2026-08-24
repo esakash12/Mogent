@@ -97,7 +97,7 @@ adminRouter.get("/keys", async (c) => {
 adminRouter.post("/keys", async (c) => {
   try {
     const body = await c.req.json();
-    const { key } = body;
+    const { key, model } = body;
 
     if (!key || !key.trim()) {
       return c.json({ success: false, error: "API Key is required" }, 400);
@@ -111,7 +111,7 @@ adminRouter.post("/keys", async (c) => {
       data: {
         id: `k-${Date.now()}`,
         maskedKey: `${cleanKey.substring(0, 6)}...${cleanKey.substring(cleanKey.length - 4)}`,
-        model: config.aiProxy.defaultModel || "gemini-2.0-flash",
+        model: model || config.aiProxy.defaultModel || "gemini-3.5-flash-lite",
         rpmUsed: 0,
         rpmLimit: 15,
         totalCallsToday: 0,

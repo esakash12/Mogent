@@ -66,6 +66,7 @@ authRouter.post("/register", async (c) => {
           name: finalWorkspaceName,
           slug,
           whatsAppMode: "ON_DEMAND",
+          plan: "FREE",
         },
       });
 

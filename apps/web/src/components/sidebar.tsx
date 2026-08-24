@@ -232,7 +232,7 @@ export function Sidebar() {
         <div className="px-3 py-2 rounded-lg bg-[#111] border border-[#222] flex items-center justify-between">
           <div className="flex items-center gap-2 text-[11px] text-[#888]">
             <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-            <span>Gemini 2.0 AI Gateway</span>
+            <span>Gemini 3.5 AI Gateway</span>
           </div>
           <span className="text-[10px] font-mono text-[#10B981] font-semibold">Active</span>
         </div>

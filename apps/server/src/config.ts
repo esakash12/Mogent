@@ -19,7 +19,7 @@ export const config = {
   aiProxy: {
     url: process.env.AI_PROXY_URL || "http://localhost:5000",
     masterKey: process.env.MOGENT_AI_MASTER_KEY || "shohag_ai_master_secret_2026",
-    defaultModel: process.env.DEFAULT_GEMINI_MODEL || "Gemini 3.1 Flash-Lite",
+    defaultModel: process.env.DEFAULT_GEMINI_MODEL || "Gemini 3.5 Flash Lite",
   },
 
   // Facebook Graph API

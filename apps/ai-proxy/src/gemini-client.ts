@@ -96,8 +96,10 @@ export class GeminiService {
     
     // Map custom display names to actual Google API identifiers
     let model = rawModel;
-    if (model.includes("Gemini 3.1 Flash-Lite") || model.includes("Gemini 3.5 Flash Lite")) {
-      model = "gemini-2.0-flash-lite-preview-02-05";
+    if (model.includes("3.1 Flash Lite")) {
+      model = "gemini-3.1-flash-lite";
+    } else if (model.includes("3.5 Flash Lite") || model.includes("Gemini 3.5")) {
+      model = "gemini-3.5-flash-lite";
     }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

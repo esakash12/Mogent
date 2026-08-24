@@ -160,7 +160,7 @@ model Workspace {
   whatsAppPrefillText  String?  @db.Text
 
   // Billing & Subscriptions
-  plan                 String   @default("STARTER") // STARTER, PRO, ENTERPRISE
+  plan                 String   @default("FREE") // FREE, STARTER, PRO, ENTERPRISE
   planExpiresAt        DateTime?
   paymentTransactions  PaymentTransaction[]
 
