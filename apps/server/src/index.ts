@@ -20,7 +20,15 @@ import { prisma } from "@mogent/database";
 const app = new Hono();
 
 app.use("*", logger());
-app.use("*", cors());
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization", "x-workspace-id", "Accept"],
+    maxAge: 86400,
+  })
+);
 
 const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey);
 
