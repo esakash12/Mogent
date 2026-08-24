@@ -12,6 +12,7 @@ import { conversationsRouter } from "./routes/conversations";
 import { productsRouter } from "./routes/products";
 import { contactsRouter } from "./routes/contacts";
 import { knowledgeRouter } from "./routes/knowledge";
+import { billingRouter } from "./routes/billing";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
 import { AiProxyClient } from "./ai-client";
@@ -62,18 +63,22 @@ app.get("/health", async (c) => {
   });
 });
 
-import { billingRouter } from "./routes/billing";
-
+// -----------------------------------------------------------------------------
+// 2. ROUTE REGISTRATIONS
+// -----------------------------------------------------------------------------
 app.route("/api/auth", authRouter);
 app.route("/api/pages", pagesRouter);
 app.route("/api/admin", adminRouter);
 app.route("/api/billing", billingRouter);
-app.route("/webhook", webhookRouter);
 app.route("/api/dashboard", dashboardRouter);
 app.route("/api/conversations", conversationsRouter);
 app.route("/api/products", productsRouter);
 app.route("/api/contacts", contactsRouter);
 app.route("/api/knowledge", knowledgeRouter);
+
+// Mount webhooks on both /webhook and /api/webhook for universal support
+app.route("/webhook", webhookRouter);
+app.route("/api/webhook", webhookRouter);
 
 // -----------------------------------------------------------------------------
 // 3. START BACKGROUND BULLMQ WORKERS

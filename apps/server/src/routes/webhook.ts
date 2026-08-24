@@ -3,34 +3,61 @@ import { config } from "../config";
 import { redisConnection } from "../redis";
 import { incomingMessagesQueue } from "../queue/message-queue";
 import { FacebookWebhookBody, ProcessMessageJobPayload } from "@mogent/shared";
+import { prisma } from "@mogent/database";
 
 export const webhookRouter = new Hono();
 
-// -----------------------------------------------------------------------------
-// 1. FACEBOOK WEBHOOK HANDSHAKE (GET)
-// -----------------------------------------------------------------------------
-webhookRouter.get("/facebook", (c) => {
+// Helper to verify Facebook webhook token
+const handleVerify = async (c: any) => {
   const mode = c.req.query("hub.mode");
   const token = c.req.query("hub.verify_token");
   const challenge = c.req.query("hub.challenge");
 
-  if (mode === "subscribe" && token === config.facebook.verifyToken) {
-    console.log("✅ Facebook Webhook Handshake verified successfully!");
+  if (mode !== "subscribe") {
+    return c.text("Forbidden: Invalid Hub Mode", 403);
+  }
+
+  // Check against config, default token, or Redis custom token
+  let redisConfigToken = null;
+  try {
+    const raw = await redisConnection.get("mogent:meta_developer_config");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      redisConfigToken = parsed.verifyToken;
+    }
+  } catch {}
+
+  const validTokens = [
+    config.facebook.verifyToken,
+    "mogent_fb_verify_token_secure",
+    redisConfigToken,
+  ].filter(Boolean);
+
+  if (token && validTokens.includes(token)) {
+    console.log("✅ Facebook Webhook Handshake verified successfully with challenge:", challenge);
     return c.text(challenge || "", 200);
   }
 
-  console.warn("❌ Facebook Webhook verification token mismatch.");
-  return c.text("Forbidden: Verification Token Mismatch", 403);
-});
+  // Also check if token matches any page's verifyToken in DB
+  if (token) {
+    const page = await prisma.facebookPage.findFirst({
+      where: { verifyToken: token },
+    });
+    if (page) {
+      console.log(`✅ Webhook verified via Page [${page.name}] verify token.`);
+      return c.text(challenge || "", 200);
+    }
+  }
 
-// -----------------------------------------------------------------------------
-// 2. FACEBOOK WEBHOOK INGESTION (POST)
-// -----------------------------------------------------------------------------
-webhookRouter.post("/facebook", async (c) => {
+  console.warn(`❌ Facebook Webhook verification token mismatch. Received: "${token}"`);
+  return c.text("Forbidden: Verification Token Mismatch", 403);
+};
+
+// Helper to handle incoming Facebook Webhook events
+const handleIngest = async (c: any) => {
   try {
     let body: FacebookWebhookBody;
 
-    // Retrieve raw or parsed body
     let rawBody: any = null;
     try {
       rawBody = (c as any).get?.("rawBody");
@@ -61,18 +88,15 @@ webhookRouter.post("/facebook", async (c) => {
 
         const mid = message.mid;
 
-        // ---------------------------------------------------------------------
-        // IDEMPOTENCY / DEDUPLICATION CHECK (Redis)
-        // Prevents Facebook retry storms from triggering duplicate AI generations
-        // ---------------------------------------------------------------------
+        // Deduplication check via Redis
         if (mid) {
           const deduplicationKey = `fb:mid:${mid}`;
           const isDuplicate = await redisConnection.set(
             deduplicationKey,
             "1",
             "EX",
-            600, // 10 minutes TTL
-            "NX" // Only set if it does NOT already exist
+            600,
+            "NX"
           );
 
           if (!isDuplicate) {
@@ -98,26 +122,33 @@ webhookRouter.post("/facebook", async (c) => {
           pageId,
           senderPsid,
           mid: mid || `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          text: message.text,
+          text: message.text || "",
+          timestamp: event.timestamp || Date.now(),
           mediaType,
           mediaUrl,
-          timestamp: event.timestamp || Date.now(),
         };
 
-        // Push to BullMQ for background worker execution
-        await incomingMessagesQueue.add("process-fb-message", jobPayload, {
-          jobId: mid, // Unique Job ID to guarantee queue-level idempotency
+        // Dispatch job to BullMQ queue
+        await incomingMessagesQueue.add("process-message", jobPayload, {
+          removeOnComplete: true,
+          removeOnFail: 100,
         });
 
-        console.log(`📥 Ingested & Queued message from customer [${senderPsid}] on Page [${pageId}]`);
+        console.log(`📥 [Webhook] Dispatched message from ${senderPsid} (Page: ${pageId}) to BullMQ.`);
       }
     }
 
-    // Always respond 200 OK immediately to satisfy Facebook's timeout requirements
     return c.text("EVENT_RECEIVED", 200);
-  } catch (err: any) {
-    console.error("Error processing Facebook Webhook:", err);
-    // Return 200 even on error to prevent Facebook webhook storming
-    return c.text("EVENT_RECEIVED", 200);
+  } catch (error: any) {
+    console.error("❌ Webhook Ingestion Error:", error);
+    return c.text("Internal Server Error", 500);
   }
-});
+};
+
+// -----------------------------------------------------------------------------
+// MOUNT ON BOTH "/" AND "/facebook" FOR MAXIMUM COMPATIBILITY
+// -----------------------------------------------------------------------------
+webhookRouter.get("/", handleVerify);
+webhookRouter.get("/facebook", handleVerify);
+webhookRouter.post("/", handleIngest);
+webhookRouter.post("/facebook", handleIngest);

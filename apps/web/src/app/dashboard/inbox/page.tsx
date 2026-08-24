@@ -62,6 +62,8 @@ export default function LiveInboxPage() {
   const [showThinkingId, setShowThinkingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [connectedPages, setConnectedPages] = useState<any[]>([]);
+
   // Fetch live conversations from DB
   const loadConversations = async () => {
     setLoading(true);
@@ -73,6 +75,21 @@ export default function LiveInboxPage() {
       setConversations([]);
       setSelectedId(null);
     }
+
+    // Fetch pages count
+    try {
+      const pRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/pages`, {
+        headers: {
+          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
+          "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") || "" : "",
+        },
+      });
+      const pJson = await pRes.json();
+      if (pJson.success && Array.isArray(pJson.data)) {
+        setConnectedPages(pJson.data);
+      }
+    } catch {}
+
     setLoading(false);
   };
 
@@ -162,24 +179,41 @@ export default function LiveInboxPage() {
   }
 
   if (conversations.length === 0) {
+    const hasPage = connectedPages.length > 0;
+    const pageName = connectedPages[0]?.name || "Your Facebook Page";
+
     return (
       <div className="h-[calc(100vh-120px)] rounded-2xl border border-[#222] bg-[#0A0A0A] flex flex-col items-center justify-center p-6 text-center space-y-4 shadow-2xl animate-in fade-in duration-300">
         <div className="w-16 h-16 rounded-2xl bg-[#111] border border-[#222] flex items-center justify-center text-amber-500 shadow-xl">
           <MessageSquare className="w-8 h-8" />
         </div>
-        <div className="space-y-1.5 max-w-md">
-          <h2 className="font-bold text-lg text-[#EDEDED]">No Active Customer Conversations</h2>
-          <p className="text-xs text-[#888] leading-relaxed">
-            When a customer sends a message to your connected Facebook Page, it will appear here in real-time. You can watch Gemini 2.0 AI reply autonomously, inspect its chain-of-thought, or take over with 1 click.
-          </p>
-        </div>
-        <Link
-          href="/dashboard/pages"
-          className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-amber-500/10"
-        >
-          <Facebook className="w-4 h-4" />
-          <span>Connect Facebook Page</span>
-        </Link>
+        
+        {hasPage ? (
+          <div className="space-y-2 max-w-md">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span>Gateway Listening on: {pageName}</span>
+            </div>
+            <h2 className="font-bold text-lg text-[#EDEDED]">Waiting for Incoming Messages</h2>
+            <p className="text-xs text-[#888] leading-relaxed">
+              Your Facebook Page <strong className="text-[#EDEDED]">"{pageName}"</strong> is connected and ready. Send a test message to your page on Messenger, and it will appear here in real-time with autonomous Gemini 2.0 AI replies!
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-w-md">
+            <h2 className="font-bold text-lg text-[#EDEDED]">No Facebook Pages Connected Yet</h2>
+            <p className="text-xs text-[#888] leading-relaxed">
+              Connect your Facebook business page to activate Gemini 2.0 AI auto-replies, product recommendations, and real-time live inbox.
+            </p>
+            <Link
+              href="/dashboard/pages"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold transition-colors cursor-pointer shadow-lg shadow-amber-500/10 mt-2"
+            >
+              <Facebook className="w-4 h-4" />
+              <span>Connect Facebook Page</span>
+            </Link>
+          </div>
+        )}
       </div>
     );
   }

@@ -7,20 +7,15 @@ import {
   Plus,
   Zap,
   ShieldCheck,
-  Settings2,
   Trash2,
   CheckCircle2,
   Bot,
-  Sliders,
   Loader2,
   AlertCircle,
   Copy,
   Check,
-  ExternalLink,
   Shield,
-  Layers,
-  Sparkles,
-  Info
+  Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -29,7 +24,6 @@ import {
   updatePageSettings,
   deletePage,
   inspectFacebookToken,
-  connectFacebookPagesOAuth,
   fetchFacebookConfig
 } from "@/lib/api";
 
@@ -48,22 +42,8 @@ export default function PagesManagementPage() {
   const [pages, setPages] = useState<FacebookPageItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [modalTab, setModalTab] = useState<"OAUTH" | "MANUAL">("OAUTH");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Meta App Config from backend
-  const [fbConfig, setFbConfig] = useState<{
-    appId: string;
-    webhookUrl: string;
-    verifyToken: string;
-  } | null>(null);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  // OAuth Flow States
-  const [isSdkLoading, setIsSdkLoading] = useState(false);
-  const [fetchedUserPages, setFetchedUserPages] = useState<any[]>([]);
-  const [selectedOAuthPages, setSelectedOAuthPages] = useState<{ [id: string]: boolean }>({});
 
   // Manual Auto-Detect States
   const [manualToken, setManualToken] = useState("");
@@ -74,6 +54,8 @@ export default function PagesManagementPage() {
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectedSuccess, setDetectedSuccess] = useState(false);
 
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
   const loadPages = async () => {
     setLoading(true);
     const data = await fetchPages();
@@ -83,29 +65,6 @@ export default function PagesManagementPage() {
 
   useEffect(() => {
     loadPages();
-    fetchFacebookConfig().then((cfg) => {
-      if (cfg) setFbConfig(cfg);
-    });
-
-    // Initialize Facebook JavaScript SDK
-    if (typeof window !== "undefined") {
-      (window as any).fbAsyncInit = function () {
-        (window as any).FB.init({
-          appId: "10928491823901", // Default fallback if not yet set
-          cookie: true,
-          xfbml: true,
-          version: "v20.0",
-        });
-      };
-
-      // Load SDK if not loaded
-      if (!document.getElementById("facebook-jssdk")) {
-        const js = document.createElement("script");
-        js.id = "facebook-jssdk";
-        js.src = "https://connect.facebook.net/en_US/sdk.js";
-        document.body.appendChild(js);
-      }
-    }
   }, []);
 
   const handleCopy = (text: string, field: string) => {
@@ -114,90 +73,7 @@ export default function PagesManagementPage() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // 1-Click "Continue with Facebook" OAuth Action
-  const handleContinueWithFacebook = () => {
-    setIsSdkLoading(true);
-    setError(null);
-
-    const FB = (window as any).FB;
-    if (!FB) {
-      setError("Facebook SDK is loading or blocked by your browser extension. You can use the Smart Manual Token tab.");
-      setIsSdkLoading(false);
-      return;
-    }
-
-    // Re-init with latest app ID if available
-    if (fbConfig?.appId) {
-      FB.init({
-        appId: fbConfig.appId,
-        cookie: true,
-        xfbml: true,
-        version: "v20.0",
-      });
-    }
-
-    FB.login(
-      (response: any) => {
-        if (response.authResponse) {
-          // Fetch user's pages with access tokens
-          FB.api(
-            "/me/accounts?fields=id,name,category,access_token,picture{url}",
-            (res: any) => {
-              setIsSdkLoading(false);
-              if (res.data && res.data.length > 0) {
-                setFetchedUserPages(res.data);
-                const initialSelected: { [id: string]: boolean } = {};
-                res.data.forEach((p: any) => {
-                  initialSelected[p.id] = true;
-                });
-                setSelectedOAuthPages(initialSelected);
-              } else {
-                setError("No Facebook Pages found on this account. Please make sure you are an Admin of a Facebook Page.");
-              }
-            }
-          );
-        } else {
-          setIsSdkLoading(false);
-          setError("Facebook authorization was cancelled or closed.");
-        }
-      },
-      {
-        scope: "pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,public_profile",
-        return_scopes: true,
-      }
-    );
-  };
-
-  // Submit selected OAuth pages
-  const handleSaveOAuthPages = async () => {
-    const pagesToSave = fetchedUserPages
-      .filter((p) => selectedOAuthPages[p.id])
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        accessToken: p.access_token,
-        category: p.category || "E-Commerce",
-      }));
-
-    if (pagesToSave.length === 0) {
-      setError("Please select at least one Facebook Page to connect.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    const res = await connectFacebookPagesOAuth(pagesToSave);
-
-    if (res.success) {
-      setShowModal(false);
-      setFetchedUserPages([]);
-      loadPages();
-    } else {
-      setError(res.error || "Failed to connect Facebook Pages.");
-    }
-    setIsSubmitting(false);
-  };
-
-  // Auto-Detect Manual Token on Change/Paste
+  // Auto-Detect Token on Paste / Change
   const handleTokenChange = async (tokenVal: string) => {
     setManualToken(tokenVal);
     setDetectedSuccess(false);
@@ -215,12 +91,12 @@ export default function PagesManagementPage() {
         setManualCategory(inspection.data.category || "E-Commerce");
         setDetectedSuccess(true);
       } else {
-        setError(inspection.error || "Invalid Page Access Token.");
+        setError(inspection.error || "Invalid Page Access Token. Please verify token permissions.");
       }
     }
   };
 
-  const handleManualAddPage = async (e: React.FormEvent) => {
+  const handleAddPage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualToken.trim()) {
       setError("Please paste your Page Access Token.");
@@ -247,7 +123,7 @@ export default function PagesManagementPage() {
       setManualSystemPrompt("");
       setDetectedSuccess(false);
     } else {
-      setError("Failed to connect Facebook page. Please verify your token.");
+      setError("Failed to connect Facebook page. Please check the token validity.");
     }
     setIsSubmitting(false);
   };
@@ -272,14 +148,13 @@ export default function PagesManagementPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">Connected Facebook Pages</h1>
           <p className="text-xs text-[#888]">
-            Connect your business Facebook Pages with 1-click or Graph API token for Gemini 2.0 AI automation.
+            Connect your Facebook Pages with Page Access Token for autonomous Gemini 2.0 AI Messenger sales & support.
           </p>
         </div>
 
         <button
           onClick={() => {
             setError(null);
-            setFetchedUserPages([]);
             setShowModal(true);
           }}
           className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-amber-500/10"
@@ -289,15 +164,19 @@ export default function PagesManagementPage() {
         </button>
       </div>
 
-      {/* Developer Webhook & Meta Compliance Resource Bar */}
+      {/* Webhook Resource Bar */}
       <div className="p-4 rounded-2xl border border-[#222] bg-[#0A0A0A] flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
             <Facebook className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-semibold text-[#EDEDED] block">Meta Webhook Gateway Status: <strong className="text-[#10B981]">Active & Ready</strong></span>
-            <span className="text-[11px] text-[#777]">Callback: <code className="text-[#AAA] font-mono select-all">https://api.mogent.tech/webhook/facebook</code></span>
+            <span className="font-semibold text-[#EDEDED] block">
+              Meta Webhook Status: <strong className="text-[#10B981]">Active & Listening</strong>
+            </span>
+            <span className="text-[11px] text-[#777]">
+              Callback URL: <code className="text-[#AAA] font-mono select-all">https://api.mogent.tech/webhook/facebook</code>
+            </span>
           </div>
         </div>
 
@@ -336,7 +215,6 @@ export default function PagesManagementPage() {
           <button
             onClick={() => {
               setError(null);
-              setFetchedUserPages([]);
               setShowModal(true);
             }}
             className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
@@ -366,7 +244,7 @@ export default function PagesManagementPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
+                    <span className="flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
                       <CheckCircle2 className="w-3 h-3" />
                       {page.webhookStatus || "SUBSCRIBED"}
                     </span>
@@ -426,11 +304,10 @@ export default function PagesManagementPage() {
         </div>
       )}
 
-      {/* Connect Facebook Page Modal (Dual-Mode: 1-Click OAuth + Smart Auto-Detect) */}
+      {/* Connect Facebook Page Modal (Smart Token Connection) */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-[#0A0A0A]/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-2xl bg-[#111] border border-[#333] p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-[#222] pb-4">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
@@ -438,7 +315,7 @@ export default function PagesManagementPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-[#EDEDED]">Connect Facebook Page</h3>
-                  <p className="text-[10px] text-[#888]">Choose 1-Click OAuth or Manual Graph API token</p>
+                  <p className="text-[10px] text-[#888]">Paste your Page Access Token to auto-detect Page Name & ID</p>
                 </div>
               </div>
               <button
@@ -449,41 +326,6 @@ export default function PagesManagementPage() {
               </button>
             </div>
 
-            {/* Selector Tabs: 1-Click vs Manual */}
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#0A0A0A] border border-[#222] text-xs">
-              <button
-                onClick={() => {
-                  setModalTab("OAUTH");
-                  setError(null);
-                }}
-                className={cn(
-                  "py-2 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                  modalTab === "OAUTH"
-                    ? "bg-white text-black shadow-sm"
-                    : "text-[#888] hover:text-[#EDEDED]"
-                )}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                <span>1-Click OAuth Login</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setModalTab("MANUAL");
-                  setError(null);
-                }}
-                className={cn(
-                  "py-2 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-                  modalTab === "MANUAL"
-                    ? "bg-white text-black shadow-sm"
-                    : "text-[#888] hover:text-[#EDEDED]"
-                )}
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>Smart Token Paste</span>
-              </button>
-            </div>
-
             {error && (
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -491,226 +333,127 @@ export default function PagesManagementPage() {
               </div>
             )}
 
-            {/* TAB 1: 1-CLICK OAUTH FACEBOOK LOGIN */}
-            {modalTab === "OAUTH" && (
-              <div className="space-y-4">
-                {fetchedUserPages.length === 0 ? (
-                  <div className="p-6 rounded-xl border border-[#222] bg-[#0A0A0A] text-center space-y-4">
-                    <div className="space-y-1.5">
-                      <h4 className="font-bold text-sm text-[#EDEDED]">Zero Configuration Required</h4>
-                      <p className="text-xs text-[#888] leading-relaxed max-w-xs mx-auto">
-                        No developer accounts or manual tokens needed. Click below to grant permissions and select your business Facebook Pages.
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={handleContinueWithFacebook}
-                      disabled={isSdkLoading}
-                      className="w-full py-3 rounded-xl bg-[#1877F2] hover:bg-[#166FE5] text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-blue-500/20 disabled:opacity-50"
-                    >
-                      {isSdkLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Connecting with Facebook...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Facebook className="w-4 h-4 fill-current" />
-                          <span>Continue with Facebook</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                ) : (
-                  /* Fetched Pages List Selector */
-                  <div className="space-y-3">
-                    <span className="text-xs font-semibold text-[#EDEDED] block">
-                      Select Facebook Pages to Connect ({fetchedUserPages.length} found):
+            <form onSubmit={handleAddPage} className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-[#888]">Page Access Token (EAAB...)</label>
+                  {isDetecting && (
+                    <span className="text-[11px] text-amber-500 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Auto-detecting Page via Graph API...</span>
                     </span>
-
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {fetchedUserPages.map((p) => {
-                        const isChecked = Boolean(selectedOAuthPages[p.id]);
-                        return (
-                          <div
-                            key={p.id}
-                            onClick={() =>
-                              setSelectedOAuthPages((prev) => ({
-                                ...prev,
-                                [p.id]: !prev[p.id],
-                              }))
-                            }
-                            className={cn(
-                              "p-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer",
-                              isChecked
-                                ? "bg-blue-500/10 border-blue-500/40 text-[#EDEDED]"
-                                : "bg-[#0A0A0A] border-[#222] text-[#888] hover:border-[#333]"
-                            )}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {}}
-                                className="w-4 h-4 rounded accent-blue-500"
-                              />
-                              <div className="min-w-0">
-                                <p className="font-semibold text-xs truncate">{p.name}</p>
-                                <p className="text-[10px] text-[#666] font-mono">ID: {p.id}</p>
-                              </div>
-                            </div>
-
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#111] border border-[#222] text-[#888]">
-                              {p.category || "Page"}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <button
-                      onClick={handleSaveOAuthPages}
-                      disabled={isSubmitting}
-                      className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Subscribing Webhooks & Saving...</span>
-                        </>
-                      ) : (
-                        <span>Connect Selected Facebook Pages</span>
-                      )}
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
+                <input
+                  type="password"
+                  required
+                  placeholder="Paste Page Access Token (EAAB...)"
+                  value={manualToken}
+                  onChange={(e) => handleTokenChange(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs rounded-xl bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                />
+                <p className="text-[10px] text-[#666]">
+                  Paste your token from Graph API Explorer or your Meta App.
+                </p>
               </div>
-            )}
 
-            {/* TAB 2: SMART MANUAL GRAPH API TOKEN PASTE (WITH AUTO-DETECT) */}
-            {modalTab === "MANUAL" && (
-              <form onSubmit={handleManualAddPage} className="space-y-4">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-[#888]">Page Access Token (EAA...)</label>
-                    {isDetecting && (
-                      <span className="text-[11px] text-amber-500 flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Auto-detecting Page...</span>
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Paste Page Access Token (EAAB...)"
-                    value={manualToken}
-                    onChange={(e) => handleTokenChange(e.target.value)}
-                    className="w-full px-3 py-2.5 text-xs rounded-xl bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
-                  />
-                  <p className="text-[10px] text-[#666]">
-                    Paste your token to automatically fetch Page Name, ID, and category from Meta Graph API.
-                  </p>
-                </div>
-
-                {detectedSuccess && (
-                  <div className="p-3 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-xs flex items-center gap-2 animate-in fade-in">
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    <div>
-                      <p className="font-bold">Verified: {manualName}</p>
-                      <p className="text-[10px] text-[#888] font-mono">Page ID: {manualPageId} • {manualCategory}</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-[#888]">Page Name (Auto)</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. My Shop"
-                      value={manualName}
-                      onChange={(e) => setManualName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-[#888]">Page ID (Auto)</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. 109284918239"
-                      value={manualPageId}
-                      onChange={(e) => setManualPageId(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
-                    />
+              {detectedSuccess && (
+                <div className="p-3 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-xs flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <div>
+                    <p className="font-bold">Verified: {manualName}</p>
+                    <p className="text-[10px] text-[#888] font-mono">Page ID: {manualPageId} • {manualCategory}</p>
                   </div>
                 </div>
+              )}
 
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-[#888]">AI System Persona (Optional)</label>
-                  <textarea
-                    rows={2}
-                    placeholder="You are a friendly customer service assistant..."
-                    value={manualSystemPrompt}
-                    onChange={(e) => setManualSystemPrompt(e.target.value)}
+                  <label className="text-[11px] font-medium text-[#888]">Page Name (Auto)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. My Shop"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
-                {/* Developer Setup Info Box */}
-                <div className="p-3.5 rounded-xl bg-[#0A0A0A] border border-[#222] space-y-2 text-[11px]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#888]">Webhook Callback URL:</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy("https://api.mogent.tech/webhook/facebook", "webhook")}
-                      className="text-amber-500 hover:text-amber-400 flex items-center gap-1 font-mono"
-                    >
-                      {copiedField === "webhook" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedField === "webhook" ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
-                  <div className="p-1.5 rounded bg-[#111] font-mono text-[10px] text-[#EDEDED] select-all">
-                    https://api.mogent.tech/webhook/facebook
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[#888]">Verify Token:</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy("mogent_fb_verify_token_secure", "verify")}
-                      className="text-amber-500 hover:text-amber-400 flex items-center gap-1 font-mono"
-                    >
-                      {copiedField === "verify" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedField === "verify" ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
-                  <div className="p-1.5 rounded bg-[#111] font-mono text-[10px] text-amber-500 select-all">
-                    mogent_fb_verify_token_secure
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-[#888]">Page ID (Auto)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 109284918239"
+                    value={manualPageId}
+                    onChange={(e) => setManualPageId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                  />
                 </div>
+              </div>
 
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#222]">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-[#888]">AI System Persona (Optional)</label>
+                <textarea
+                  rows={2}
+                  placeholder="You are a friendly customer service assistant..."
+                  value={manualSystemPrompt}
+                  onChange={(e) => setManualSystemPrompt(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Developer Webhook Setup Box */}
+              <div className="p-3.5 rounded-xl bg-[#0A0A0A] border border-[#222] space-y-2 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#888]">Webhook Callback URL:</span>
                   <button
                     type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED]"
+                    onClick={() => handleCopy("https://api.mogent.tech/webhook/facebook", "webhook")}
+                    className="text-amber-500 hover:text-amber-400 flex items-center gap-1 font-mono"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Connect Facebook Page</span>}
+                    {copiedField === "webhook" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedField === "webhook" ? "Copied" : "Copy"}</span>
                   </button>
                 </div>
-              </form>
-            )}
+                <div className="p-1.5 rounded bg-[#111] font-mono text-[10px] text-[#EDEDED] select-all">
+                  https://api.mogent.tech/webhook/facebook
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[#888]">Verify Token:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy("mogent_fb_verify_token_secure", "verify")}
+                    className="text-amber-500 hover:text-amber-400 flex items-center gap-1 font-mono"
+                  >
+                    {copiedField === "verify" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedField === "verify" ? "Copied" : "Copy"}</span>
+                  </button>
+                </div>
+                <div className="p-1.5 rounded bg-[#111] font-mono text-[10px] text-amber-500 select-all">
+                  mogent_fb_verify_token_secure
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#222]">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Connect Facebook Page</span>}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
