@@ -15,7 +15,8 @@ import {
   Filter,
   CheckCircle2,
   AlertTriangle,
-  UserPlus
+  UserPlus,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchContacts } from "@/lib/api";
@@ -33,79 +34,20 @@ interface Contact {
   psid: string;
 }
 
-const mockContacts: Contact[] = [
-  {
-    id: "cnt-1",
-    name: "Tanvir Khan",
-    phone: "01819234567",
-    address: "House 12, Road 4, Dhanmondi, Dhaka",
-    ordersCount: 2,
-    totalSpent: 4900,
-    score: "+0.85",
-    sentiment: "PURCHASED",
-    lastActive: "10 mins ago",
-    psid: "849204918239102",
-  },
-  {
-    id: "cnt-2",
-    name: "Sadia Afrin",
-    phone: "01755112233",
-    address: "Flat 4B, Sector 11, Uttara, Dhaka",
-    ordersCount: 1,
-    totalSpent: 3800,
-    score: "+0.90",
-    sentiment: "PURCHASED",
-    lastActive: "1 hour ago",
-    psid: "910284918239019",
-  },
-  {
-    id: "cnt-3",
-    name: "Rifat Ahmed",
-    phone: "01711223344",
-    address: "Mirpur 10, Dhaka",
-    ordersCount: 0,
-    totalSpent: 0,
-    score: "+0.60",
-    sentiment: "HIGH_INTENT",
-    lastActive: "3 hours ago",
-    psid: "593019284719283",
-  },
-  {
-    id: "cnt-4",
-    name: "Mahmud Hasan",
-    phone: "01912998877",
-    address: "Chawkbazar, Chattogram",
-    ordersCount: 1,
-    totalSpent: 1250,
-    score: "+0.70",
-    sentiment: "PURCHASED",
-    lastActive: "Yesterday",
-    psid: "482019482019381",
-  },
-  {
-    id: "cnt-5",
-    name: "Sabbir Mahmud",
-    phone: "01711998877",
-    address: "Agrabad, Chattogram",
-    ordersCount: 1,
-    totalSpent: 2450,
-    score: "-0.85",
-    sentiment: "COMPLAINT",
-    lastActive: "2 days ago",
-    psid: "392019482019281",
-  },
-];
-
 export default function ContactsPage() {
-  const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"ALL" | "PHONE" | "PURCHASED" | "COMPLAINT">("ALL");
 
   useEffect(() => {
     fetchContacts().then((data) => {
-      if (data && data.length > 0) {
+      if (Array.isArray(data)) {
         setContacts(data);
+      } else {
+        setContacts([]);
       }
+      setLoading(false);
     });
   }, []);
 
@@ -127,6 +69,15 @@ export default function ContactsPage() {
     return matchesSearch && matchesFilter;
   });
 
+  const verifiedPhonesCount = contacts.filter((c) => Boolean(c.phone)).length;
+  const confirmedBuyersCount = contacts.filter((c) => c.ordersCount > 0).length;
+  const avgSpend =
+    confirmedBuyersCount > 0
+      ? Math.round(
+          contacts.reduce((acc, c) => acc + (c.totalSpent || 0), 0) / confirmedBuyersCount
+        )
+      : 0;
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
@@ -140,7 +91,10 @@ export default function ContactsPage() {
           </p>
         </div>
 
-        <button className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] flex items-center gap-2 transition-colors w-fit">
+        <button
+          disabled={contacts.length === 0}
+          className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] flex items-center gap-2 transition-colors w-fit disabled:opacity-50"
+        >
           <Download className="w-3.5 h-3.5" />
           <span>Export All Contacts (CSV)</span>
         </button>
@@ -150,19 +104,19 @@ export default function ContactsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
           <span className="text-xs text-[#888]">Total Contacts</span>
-          <p className="text-2xl font-bold text-[#EDEDED] mt-1">2,850</p>
+          <p className="text-2xl font-bold text-[#EDEDED] mt-1">{contacts.length}</p>
         </div>
         <div className="p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
           <span className="text-xs text-[#888]">Verified Phone Numbers</span>
-          <p className="text-2xl font-bold text-[#10B981] mt-1">1,920</p>
+          <p className="text-2xl font-bold text-[#10B981] mt-1">{verifiedPhonesCount}</p>
         </div>
         <div className="p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
           <span className="text-xs text-[#888]">Confirmed Buyers</span>
-          <p className="text-2xl font-bold text-indigo-400 mt-1">542</p>
+          <p className="text-2xl font-bold text-indigo-400 mt-1">{confirmedBuyersCount}</p>
         </div>
         <div className="p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
-          <span className="text-xs text-[#888]">Customer Lifetime Value</span>
-          <p className="text-2xl font-bold text-[#EDEDED] mt-1">৳ 2,450</p>
+          <span className="text-xs text-[#888]">Avg. Customer Spend</span>
+          <p className="text-2xl font-bold text-[#EDEDED] mt-1">৳ {avgSpend.toLocaleString()}</p>
         </div>
       </div>
 
@@ -179,7 +133,7 @@ export default function ContactsPage() {
           />
         </div>
 
-        {/* Filter Pills (No Scrollbar, clean fit) */}
+        {/* Filter Pills */}
         <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[#111] border border-[#222] text-xs">
           {[
             { id: "ALL", label: "All Contacts" },
@@ -205,102 +159,129 @@ export default function ContactsPage() {
 
       {/* Contacts Data Table */}
       <div className="rounded-xl border border-[#222] bg-[#0A0A0A] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#111] border-b border-[#222] text-[#888] font-semibold">
-              <tr>
-                <th className="p-4">Customer</th>
-                <th className="p-4">Phone Number</th>
-                <th className="p-4">Delivery Location</th>
-                <th className="p-4">Orders & Spend</th>
-                <th className="p-4">AI Sentiment</th>
-                <th className="p-4 text-right">Instant Outreach</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#222]">
-              {filteredContacts.map((c) => (
-                <tr key={c.id} className="hover:bg-[#111]/40 transition-colors">
-                  <td className="p-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[#222] flex items-center justify-center font-bold text-xs text-[#EDEDED] shrink-0 border border-[#333]">
-                        {c.name.substring(0, 2).toUpperCase()}
+        {loading ? (
+          <div className="py-16 flex flex-col items-center justify-center gap-2">
+            <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+            <span className="text-xs text-[#888]">Loading contacts directory...</span>
+          </div>
+        ) : filteredContacts.length === 0 ? (
+          <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-[#111] border border-[#222] flex items-center justify-center text-[#555]">
+              <Users className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-sm text-[#EDEDED]">No customer contacts captured yet</h3>
+              <p className="text-xs text-[#777] max-w-sm leading-relaxed">
+                When customers message your Facebook Page, Gemini 2.0 AI will automatically extract their name, verified mobile phone, and delivery address here.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/pages"
+              className="mt-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            >
+              <Facebook className="w-3.5 h-3.5" />
+              <span>Connect Facebook Page</span>
+            </Link>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#111] border-b border-[#222] text-[#888] font-semibold">
+                <tr>
+                  <th className="p-4">Customer</th>
+                  <th className="p-4">Phone Number</th>
+                  <th className="p-4">Delivery Location</th>
+                  <th className="p-4">Orders & Spend</th>
+                  <th className="p-4">AI Sentiment</th>
+                  <th className="p-4 text-right">Instant Outreach</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#222]">
+                {filteredContacts.map((c) => (
+                  <tr key={c.id} className="hover:bg-[#111]/40 transition-colors">
+                    <td className="p-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-[#222] flex items-center justify-center font-bold text-xs text-[#EDEDED] shrink-0 border border-[#333]">
+                          {c.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[#EDEDED]">{c.name}</p>
+                          <p className="text-[10px] text-[#666] font-mono">PSID: {c.psid ? c.psid.substring(0, 8) + "..." : "--"}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-[#EDEDED]">{c.name}</p>
-                        <p className="text-[10px] text-[#666] font-mono">PSID: {c.psid.substring(0, 8)}...</p>
-                      </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="p-4 font-mono font-semibold text-[#EDEDED]">
-                    {c.phone ? (
-                      <span className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-[#666]" />
-                        {c.phone}
-                      </span>
-                    ) : (
-                      <span className="text-[#666]">--</span>
-                    )}
-                  </td>
-
-                  <td className="p-4 text-[#888] max-w-xs truncate">
-                    {c.address ? (
-                      <span className="flex items-center gap-1.5 truncate">
-                        <MapPin className="w-3.5 h-3.5 text-[#666] shrink-0" />
-                        <span className="truncate">{c.address}</span>
-                      </span>
-                    ) : (
-                      <span className="text-[#666]">--</span>
-                    )}
-                  </td>
-
-                  <td className="p-4">
-                    <p className="font-bold text-[#EDEDED] font-mono">{c.ordersCount} Orders</p>
-                    <p className="text-[10px] text-[#888] font-mono">৳ {c.totalSpent.toLocaleString()}</p>
-                  </td>
-
-                  <td className="p-4">
-                    <span
-                      className={cn(
-                        "px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
-                        c.sentiment === "PURCHASED"
-                          ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20"
-                          : c.sentiment === "HIGH_INTENT"
-                          ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-                          : "bg-red-500/10 text-red-400 border-red-500/20"
+                    <td className="p-4 font-mono font-semibold text-[#EDEDED]">
+                      {c.phone ? (
+                        <span className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-[#666]" />
+                          {c.phone}
+                        </span>
+                      ) : (
+                        <span className="text-[#666]">--</span>
                       )}
-                    >
-                      {c.score} • {c.sentiment}
-                    </span>
-                  </td>
+                    </td>
 
-                  <td className="p-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {c.phone && (
+                    <td className="p-4 text-[#888] max-w-xs truncate">
+                      {c.address ? (
+                        <span className="flex items-center gap-1.5 truncate">
+                          <MapPin className="w-3.5 h-3.5 text-[#666] shrink-0" />
+                          <span className="truncate">{c.address}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[#666]">--</span>
+                      )}
+                    </td>
+
+                    <td className="p-4">
+                      <p className="font-semibold text-[#EDEDED]">{c.ordersCount} Orders</p>
+                      <p className="text-[11px] text-[#888] font-mono">৳ {c.totalSpent.toLocaleString()}</p>
+                    </td>
+
+                    <td className="p-4">
+                      {c.sentiment === "PURCHASED" && (
+                        <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
+                          {c.score} PURCHASED
+                        </span>
+                      )}
+                      {c.sentiment === "HIGH_INTENT" && (
+                        <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                          {c.score} HIGH_INTENT
+                        </span>
+                      )}
+                      {c.sentiment === "INQUIRY" && (
+                        <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          {c.score} INQUIRY
+                        </span>
+                      )}
+                      {c.sentiment === "COMPLAINT" && (
+                        <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-red-500/10 text-red-400 border border-red-500/20">
+                          {c.score} COMPLAINT
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="p-4 text-right">
+                      {c.phone ? (
                         <a
-                          href={`https://wa.me/88${c.phone.replace(/[^0-9]/g, "")}?text=Hello%20${encodeURIComponent(c.name)},%20thank%20you%20for%20contacting%20us!`}
+                          href={`https://wa.me/88${c.phone.replace(/[^0-9]/g, "")}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="px-3 py-1.5 rounded-lg bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] font-bold text-[11px] border border-[#25D366]/30 flex items-center gap-1.5 transition-colors"
+                          className="px-2.5 py-1 rounded-md bg-[#10B981]/10 text-[#10B981] hover:bg-[#10B981]/20 border border-[#10B981]/30 text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors"
                         >
-                          <MessageCircle className="w-3.5 h-3.5" />
+                          <MessageCircle className="w-3 h-3" />
                           <span>WhatsApp</span>
                         </a>
+                      ) : (
+                        <span className="text-[11px] text-[#555]">No Phone</span>
                       )}
-                      <Link
-                        href="/dashboard/inbox"
-                        className="p-1.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-[#888] hover:text-[#EDEDED] transition-colors"
-                        title="Open in Live Inbox"
-                      >
-                        <Facebook className="w-3.5 h-3.5 text-blue-400" />
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

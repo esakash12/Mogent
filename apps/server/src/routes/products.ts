@@ -3,10 +3,18 @@ import { prisma } from "@mogent/database";
 
 export const productsRouter = new Hono();
 
-// GET /api/products - List all products
+// GET /api/products - List products for active workspace
 productsRouter.get("/", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
   try {
+    let where: any = {};
+    if (workspaceId) {
+      where = { workspaceId };
+    }
+
     const products = await prisma.product.findMany({
+      where,
       orderBy: { createdAt: "desc" },
     });
 
@@ -31,6 +39,8 @@ productsRouter.get("/", async (c) => {
 
 // POST /api/products - Add product to catalog
 productsRouter.post("/", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
   try {
     const body = await c.req.json();
     const { name, price, regularPrice, image, category, description } = body;
@@ -39,15 +49,19 @@ productsRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Product name and price are required" }, 400);
     }
 
-    // Default workspace
-    const workspace = await prisma.workspace.findFirst();
-    if (!workspace) {
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst();
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    if (!targetWorkspaceId) {
       return c.json({ success: false, error: "No workspace found" }, 404);
     }
 
     const created = await prisma.product.create({
       data: {
-        workspaceId: workspace.id,
+        workspaceId: targetWorkspaceId,
         name: name.trim(),
         price: Number(price),
         regularPrice: regularPrice ? Number(regularPrice) : null,
@@ -64,12 +78,12 @@ productsRouter.post("/", async (c) => {
         id: created.id,
         name: created.name,
         price: created.price,
-        regularPrice: created.regularPrice ?? Math.round(created.price * 1.2),
-        image: created.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60",
+        regularPrice: created.regularPrice,
+        image: created.imageUrl,
         category: created.category,
         inStock: created.inStock,
-        salesCount: 0,
-        description: created.description || "",
+        salesCount: created.salesCount,
+        description: created.description,
       },
     });
   } catch (error: any) {
@@ -77,18 +91,16 @@ productsRouter.post("/", async (c) => {
   }
 });
 
-// PATCH /api/products/:id/stock - Toggle inStock status
+// PATCH /api/products/:id/stock - Toggle in-stock status
 productsRouter.patch("/:id/stock", async (c) => {
   const { id } = c.req.param();
   try {
-    const current = await prisma.product.findUnique({ where: { id } });
-    if (!current) {
-      return c.json({ success: false, error: "Product not found" }, 404);
-    }
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) return c.json({ success: false, error: "Product not found" }, 404);
 
     const updated = await prisma.product.update({
       where: { id },
-      data: { inStock: !current.inStock },
+      data: { inStock: !product.inStock },
     });
 
     return c.json({ success: true, inStock: updated.inStock });
@@ -102,7 +114,7 @@ productsRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
   try {
     await prisma.product.delete({ where: { id } });
-    return c.json({ success: true });
+    return c.json({ success: true, message: "Product removed" });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }

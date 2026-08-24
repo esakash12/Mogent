@@ -3,10 +3,28 @@ import { prisma, MessageSender, MessageStatus } from "@mogent/database";
 
 export const conversationsRouter = new Hono();
 
-// GET /api/conversations - List conversations
+// GET /api/conversations - List conversations for active workspace
 conversationsRouter.get("/", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
   try {
+    let pagesWhere: any = {};
+    if (workspaceId) {
+      pagesWhere = { workspaceId };
+    }
+
+    const pages = await prisma.facebookPage.findMany({
+      where: pagesWhere,
+      select: { id: true },
+    });
+    const pageIds = pages.map((p) => p.id);
+
+    if (pageIds.length === 0) {
+      return c.json({ success: true, data: [] });
+    }
+
     const list = await prisma.conversation.findMany({
+      where: { facebookPageId: { in: pageIds } },
       include: {
         customer: true,
         messages: {
@@ -63,43 +81,33 @@ conversationsRouter.get("/:id/messages", async (c) => {
   }
 });
 
-// POST /api/conversations/:id/messages - Human Agent sends message
+// POST /api/conversations/:id/messages - Send message
 conversationsRouter.post("/:id/messages", async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
   const { text } = body;
 
-  if (!text || !text.trim()) {
-    return c.json({ success: false, error: "Message text is required" }, 400);
+  if (!text) {
+    return c.json({ success: false, error: "Text required" }, 400);
   }
 
   try {
-    const msg = await prisma.message.create({
+    const message = await prisma.message.create({
       data: {
         conversationId: id,
         sender: MessageSender.HUMAN_AGENT,
-        content: text.trim(),
-        status: MessageStatus.SENT,
-      },
-    });
-
-    // Auto-switch conversation to Human Control
-    await prisma.conversation.update({
-      where: { id },
-      data: {
-        isHumanControl: true,
-        humanTakeoverAt: new Date(),
-        updatedAt: new Date(),
+        content: text,
+        status: MessageStatus.DELIVERED,
       },
     });
 
     return c.json({
       success: true,
       data: {
-        id: msg.id,
-        sender: "HUMAN",
-        text: msg.content,
-        time: "Just now",
+        id: message.id,
+        sender: message.sender,
+        text: message.content,
+        time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
     });
   } catch (error: any) {
@@ -107,8 +115,8 @@ conversationsRouter.post("/:id/messages", async (c) => {
   }
 });
 
-// PATCH /api/conversations/:id/mode - Toggle AI vs Human Control
-conversationsRouter.patch("/:id/mode", async (c) => {
+// POST /api/conversations/:id/toggle-mode - Switch between AI & Human control
+conversationsRouter.post("/:id/toggle-mode", async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
   const { isHumanControl } = body;
@@ -116,11 +124,7 @@ conversationsRouter.patch("/:id/mode", async (c) => {
   try {
     const updated = await prisma.conversation.update({
       where: { id },
-      data: {
-        isHumanControl: Boolean(isHumanControl),
-        status: isHumanControl ? "HANDOFF_REQUIRED" : "OPEN",
-        updatedAt: new Date(),
-      },
+      data: { isHumanControl: Boolean(isHumanControl) },
     });
 
     return c.json({ success: true, data: updated });

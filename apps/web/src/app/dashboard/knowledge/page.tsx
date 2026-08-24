@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   BookOpen,
@@ -14,8 +14,10 @@ import {
   HelpCircle,
   Package,
   FileText,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem } from "@/lib/api";
 
 interface KnowledgeItem {
   id: string;
@@ -26,48 +28,35 @@ interface KnowledgeItem {
   isActive: boolean;
 }
 
-const mockKnowledge: KnowledgeItem[] = [
-  {
-    id: "k1",
-    title: "Smartwatch Ultra Pro Specs & Pricing",
-    category: "PRODUCT_CATALOG",
-    content:
-      "Product: Smartwatch Ultra Pro 2026. Price: 2,450 BDT (Regular 3,200 BDT). Features: AMOLED 1.9-inch display, 7-day battery backup, Heart rate & SpO2 sensor, Bluetooth Calling. In stock: Yes.",
-    priority: 10,
-    isActive: true,
-  },
-  {
-    id: "k2",
-    title: "Delivery Charges & Return Policy",
-    category: "POLICY",
-    content:
-      "Delivery charge inside Dhaka: 60 BDT (1-2 days). Outside Dhaka: 120 BDT (2-3 days). Cash on Delivery available nationwide. 7 days replacement guarantee for manufacturing defects.",
-    priority: 9,
-    isActive: true,
-  },
-  {
-    id: "k3",
-    title: "How to Place an Order (FAQ)",
-    category: "FAQ",
-    content:
-      "To place an order, customers need to provide their Name, Mobile Number, Product Quantity/Color, and Full Delivery Address. We confirm via call or SMS.",
-    priority: 8,
-    isActive: true,
-  },
-];
-
 export default function KnowledgeBasePage() {
-  const [items, setItems] = useState<KnowledgeItem[]>(mockKnowledge);
+  const [items, setItems] = useState<KnowledgeItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("ALL");
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const [newItem, setNewItem] = useState({
     title: "",
-    category: "PRODUCT_CATALOG" as const,
+    category: "FAQ" as const,
     content: "",
     priority: 5,
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadKnowledge = async () => {
+    setLoading(true);
+    const data = await fetchKnowledgeAndWhatsApp();
+    if (data && Array.isArray(data.items)) {
+      setItems(data.items);
+    } else {
+      setItems([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadKnowledge();
+  }, []);
 
   const filteredItems = items.filter((item) => {
     const matchesTab = activeTab === "ALL" || item.category === activeTab;
@@ -77,26 +66,24 @@ export default function KnowledgeBasePage() {
     return matchesTab && matchesSearch;
   });
 
-  const handleAddItem = (e: React.FormEvent) => {
+  const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItem.title || !newItem.content) return;
 
-    const created: KnowledgeItem = {
-      id: `k-${Date.now()}`,
-      title: newItem.title,
-      category: newItem.category,
-      content: newItem.content,
-      priority: newItem.priority,
-      isActive: true,
-    };
-
-    setItems((prev) => [created, ...prev]);
-    setShowModal(false);
-    setNewItem({ title: "", category: "PRODUCT_CATALOG", content: "", priority: 5 });
+    setIsSubmitting(true);
+    const res = await createKnowledgeItem(newItem);
+    if (res.success) {
+      setShowModal(false);
+      setNewItem({ title: "", category: "FAQ", content: "", priority: 5 });
+      loadKnowledge();
+    }
+    setIsSubmitting(false);
   };
 
-  const handleDelete = (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this knowledge document?")) return;
+    await deleteKnowledgeItem(id);
+    loadKnowledge();
   };
 
   return (
@@ -111,129 +98,140 @@ export default function KnowledgeBasePage() {
           <span>Knowledge Base</span>
         </Link>
         <Link
-          href="/dashboard/automation"
+          href="/dashboard/ai"
           className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Rules & Triggers</span>
-        </Link>
-        <Link
-          href="/dashboard/playground"
-          className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>AI Playground</span>
+          <span>AI Personality & Prompt</span>
         </Link>
       </div>
 
-      {/* Header */}
+      {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[#EDEDED]">Business Knowledge Base</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
+            Knowledge Base & RAG Context
+          </h1>
           <p className="text-[14px] text-[#888] mt-1">
-            Feed product catalogs, FAQs, and business policies for Gemini AI context injection.
+            Teach your Gemini 2.0 AI agent your company policies, FAQs, delivery rules, and product specs.
           </p>
         </div>
 
         <button
           onClick={() => setShowModal(true)}
-          className="px-4 py-2.5 rounded-md bg-white text-black text-[13px] font-medium hover:bg-[#EDEDED] transition-colors flex items-center gap-2"
+          className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-amber-500/10 w-fit"
         >
           <Plus className="w-4 h-4" />
-          <span>Add Knowledge Entry</span>
+          <span>Add Knowledge Document</span>
         </button>
       </div>
 
-      {/* Controls & Category Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Category Tabs */}
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-[#111] border border-[#222] text-[13px]">
-          {[
-            { id: "ALL", label: "All Items" },
-            { id: "PRODUCT_CATALOG", label: "Products" },
-            { id: "FAQ", label: "FAQs" },
-            { id: "POLICY", label: "Policies" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-md font-medium transition-colors",
-                activeTab === tab.id
-                  ? "bg-[#333] text-[#EDEDED] shadow-sm"
-                  : "text-[#888] hover:text-[#EDEDED]"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative w-72">
+      {/* Search & Category Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
           <input
             type="text"
-            placeholder="Search knowledge items..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-[13px] rounded-md bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-[#555] transition-colors placeholder:text-[#555]"
+            placeholder="Search FAQs, policies..."
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg bg-[#111] border border-[#222] text-[#EDEDED] focus:outline-none focus:border-amber-500"
           />
+        </div>
+
+        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[#111] border border-[#222] text-xs">
+          {[
+            { id: "ALL", label: "All Items" },
+            { id: "PRODUCT_CATALOG", label: "Catalog Specs" },
+            { id: "FAQ", label: "FAQs" },
+            { id: "POLICY", label: "Store Policies" },
+          ].map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveTab(c.id)}
+              className={cn(
+                "px-3 py-1 rounded-md font-medium transition-colors cursor-pointer",
+                activeTab === c.id
+                  ? "bg-white text-black font-semibold shadow-sm"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Knowledge Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filteredItems.map((item) => (
-          <div
-            key={item.id}
-            className="p-5 rounded-xl bg-[#0A0A0A] border border-[#222] hover:border-[#444] transition-colors space-y-4 flex flex-col justify-between"
+      {/* Content List */}
+      {loading ? (
+        <div className="py-20 flex flex-col items-center justify-center gap-2 border border-[#222] bg-[#0A0A0A] rounded-2xl">
+          <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+          <span className="text-xs text-[#888]">Loading knowledge context...</span>
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="py-20 px-4 flex flex-col items-center justify-center text-center space-y-3 border border-[#222] bg-[#0A0A0A] rounded-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-[#111] border border-[#222] flex items-center justify-center text-amber-500">
+            <BookOpen className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-bold text-sm text-[#EDEDED]">No Knowledge Documents Found</h3>
+            <p className="text-xs text-[#777] max-w-sm leading-relaxed">
+              Add your store's return policy, delivery charges, payment options, and FAQs so Gemini 2.0 AI can accurately answer customer questions.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="mt-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-medium px-2 py-1 rounded-sm bg-[#333] text-[#EDEDED]">
-                    {item.category.replace("_", " ")}
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add First Knowledge Document</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredItems.map((item) => (
+            <div
+              key={item.id}
+              className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-3 hover:border-[#333] transition-all flex flex-col justify-between"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1C1C1C] text-[#888] border border-[#333]">
+                    {item.category}
                   </span>
-                  <span className="text-[11px] font-mono text-[#888]">
-                    Priority: {item.priority}
-                  </span>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="p-1.5 rounded-md hover:bg-red-500/10 text-[#555] hover:text-red-400 transition-colors cursor-pointer"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="text-[#555] hover:text-red-400 p-1 rounded-md transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <h4 className="font-bold text-sm text-[#EDEDED]">{item.title}</h4>
+                <p className="text-xs text-[#AAA] leading-relaxed whitespace-pre-wrap">{item.content}</p>
               </div>
 
-              <h3 className="font-semibold text-[14px] leading-snug text-[#EDEDED]">{item.title}</h3>
-              <p className="text-[13px] text-[#888] leading-relaxed bg-[#111] p-3.5 rounded-lg border border-[#222]">
-                {item.content}
-              </p>
+              <div className="pt-3 border-t border-[#1C1C1C] flex items-center justify-between text-[11px] text-[#666]">
+                <span>Priority: High</span>
+                <span className="text-[#10B981] flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Indexed for AI
+                </span>
+              </div>
             </div>
+          ))}
+        </div>
+      )}
 
-            <div className="pt-3 border-t border-[#222] flex items-center justify-between text-[11px] text-[#888]">
-              <span className="flex items-center gap-1.5 text-[#10B981] font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Active in Prompt Context
-              </span>
-              <span>ID: {item.id}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Add Modal */}
+      {/* Modal: Add Document */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-[#0A0A0A]/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-xl bg-[#111] border border-[#333] p-6 space-y-6 shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 bg-[#0A0A0A]/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-[#111] border border-[#333] p-6 space-y-6 shadow-2xl animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-[#222] pb-4">
-              <h3 className="font-semibold text-[15px] text-[#EDEDED]">Add Knowledge Base Item</h3>
+              <h3 className="font-bold text-base text-[#EDEDED]">Add Knowledge Document</h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-[#888] hover:text-[#EDEDED] transition-colors"
+                className="text-[#888] hover:text-[#EDEDED] p-1"
               >
                 ✕
               </button>
@@ -241,54 +239,40 @@ export default function KnowledgeBasePage() {
 
             <form onSubmit={handleAddItem} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[12px] font-medium text-[#888]">Title</label>
+                <label className="text-xs font-medium text-[#888]">Document Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Return & Exchange Policy"
+                  placeholder="e.g. Delivery Charges & Return Policy"
                   value={newItem.title}
                   onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-                  className="w-full px-3 py-2 text-[13px] rounded-md bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-[#555] transition-colors"
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[#888]">Category</label>
-                  <select
-                    value={newItem.category}
-                    onChange={(e) => setNewItem({ ...newItem, category: e.target.value as any })}
-                    className="w-full px-3 py-2 text-[13px] rounded-md bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-[#555] transition-colors"
-                  >
-                    <option value="PRODUCT_CATALOG">Product Catalog</option>
-                    <option value="FAQ">FAQ</option>
-                    <option value="POLICY">Policy</option>
-                    <option value="SYSTEM_INSTRUCTION">System Instruction</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium text-[#888]">Priority (1 - 10)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={newItem.priority}
-                    onChange={(e) => setNewItem({ ...newItem, priority: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-[13px] rounded-md bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-[#555] transition-colors"
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#888]">Category</label>
+                <select
+                  value={newItem.category}
+                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value as any })}
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                >
+                  <option value="FAQ">FAQ (Frequently Asked Questions)</option>
+                  <option value="POLICY">Store Policy / Delivery / Returns</option>
+                  <option value="PRODUCT_CATALOG">Product Specs / Sizing</option>
+                  <option value="SYSTEM_INSTRUCTION">Custom AI Instruction</option>
+                </select>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[12px] font-medium text-[#888]">Content / Knowledge Text</label>
+                <label className="text-xs font-medium text-[#888]">Content (Instruction / Policy / Details)</label>
                 <textarea
-                  rows={4}
+                  rows={5}
                   required
-                  placeholder="Write full product specs, pricing, or policy rules in clear text..."
+                  placeholder="Delivery charge inside Dhaka: 60 BDT. Outside Dhaka: 120 BDT. 7 days replacement guarantee..."
                   value={newItem.content}
                   onChange={(e) => setNewItem({ ...newItem, content: e.target.value })}
-                  className="w-full px-3 py-2 text-[13px] rounded-md bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-[#555] transition-colors leading-relaxed resize-none"
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -296,15 +280,16 @@ export default function KnowledgeBasePage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-md text-[13px] font-medium text-[#888] hover:text-[#EDEDED] hover:bg-[#222] transition-colors"
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-md bg-white text-black text-[13px] font-medium hover:bg-[#EDEDED] transition-colors"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  Save Knowledge
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Save Document</span>}
                 </button>
               </div>
             </form>

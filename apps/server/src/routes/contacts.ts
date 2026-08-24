@@ -3,12 +3,35 @@ import { prisma } from "@mogent/database";
 
 export const contactsRouter = new Hono();
 
-// GET /api/contacts - List customer contacts
+// GET /api/contacts - List customer contacts for active workspace
 contactsRouter.get("/", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+  const filter = c.req.query("filter"); // ALL, PHONE, PURCHASED, COMPLAINT
+
   try {
-    const filter = c.req.query("filter"); // ALL, PHONE, PURCHASED, COMPLAINT
+    let pagesWhere: any = {};
+    if (workspaceId) {
+      pagesWhere = { workspaceId };
+    }
+
+    const pages = await prisma.facebookPage.findMany({
+      where: pagesWhere,
+      select: { id: true },
+    });
+    const pageIds = pages.map((p) => p.id);
+
+    if (pageIds.length === 0) {
+      return c.json({
+        success: true,
+        data: [],
+        totalCount: 0,
+        verifiedPhonesCount: 0,
+        confirmedBuyersCount: 0,
+      });
+    }
 
     const customers = await prisma.customer.findMany({
+      where: { facebookPageId: { in: pageIds } },
       orderBy: { updatedAt: "desc" },
     });
 

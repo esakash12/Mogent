@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,9 +13,12 @@ import {
   ShoppingBag,
   Bot,
   Share2,
-  Settings
+  Settings,
+  CreditCard
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { fetchPages } from "@/lib/api";
 
 const navigation = [
   { name: "Analytics", href: "/dashboard", icon: BarChart3 },
@@ -24,15 +27,25 @@ const navigation = [
   { name: "Orders & Catalog", href: "/dashboard/commerce", icon: ShoppingBag, badge: "New" },
   { name: "AI Studio", href: "/dashboard/ai", icon: Bot },
   { name: "Integrations", href: "/dashboard/integrations", icon: Share2 },
+  { name: "Billing & Plans", href: "/dashboard/billing", icon: CreditCard },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
-import { useAuth } from "@/lib/auth-context";
-
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pagesCount, setPagesCount] = useState<number | null>(null);
   const pathname = usePathname();
   const { workspace, user } = useAuth();
+
+  useEffect(() => {
+    fetchPages().then((pages) => {
+      if (Array.isArray(pages)) {
+        setPagesCount(pages.length);
+      } else {
+        setPagesCount(0);
+      }
+    });
+  }, [pathname]);
 
   return (
     <>
@@ -56,23 +69,38 @@ export function Header() {
               </span>
             </div>
             <span className="ml-2 px-1.5 py-0.5 rounded bg-[#1C1C1C] text-[#888] text-[10px] font-mono border border-[#333]">
-              {workspace?.role || "Active"}
+              {workspace?.role || "OWNER"}
             </span>
           </div>
         </div>
 
         {/* Right Controls */}
         <div className="flex items-center gap-3 md:gap-4">
-          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#111] border border-[#222] text-[11px] text-[#888]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></span>
-            <span>All 3 Pages Connected</span>
-          </div>
+          <Link
+            href="/dashboard/pages"
+            className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#111] border border-[#222] text-[11px] text-[#888] hover:border-[#333] transition-colors"
+          >
+            <span className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              pagesCount && pagesCount > 0 ? "bg-[#10B981] animate-pulse" : "bg-amber-500"
+            )}></span>
+            <span>
+              {pagesCount === null
+                ? "Checking Status..."
+                : pagesCount > 0
+                ? `${pagesCount} Page${pagesCount > 1 ? "s" : ""} Connected`
+                : "0 Pages Connected"}
+            </span>
+          </Link>
 
           <div className="w-[1px] h-4 bg-[#222]"></div>
 
-          <button className="text-[#888] hover:text-[#EDEDED] transition-colors p-1.5 rounded-md hover:bg-[#111]">
+          <Link
+            href="/dashboard/settings"
+            className="text-[#888] hover:text-[#EDEDED] transition-colors p-1.5 rounded-md hover:bg-[#111]"
+          >
             <Bell className="w-4 h-4" />
-          </button>
+          </Link>
         </div>
       </header>
 
