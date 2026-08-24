@@ -2,24 +2,8 @@
 # CADDY PRODUCTION REVERSE PROXY WITH AUTO-SSL (Let's Encrypt / ZeroSSL)
 # ==============================================================================
 
-# Core API & Facebook Webhooks (or direct IP / domain)
-:80 {
-    reverse_proxy server:4000 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-    }
-
-    encode gzip zstd
-
-    log {
-        output stdout
-        format console
-    }
-}
-
-{$DOMAIN:api.yourdomain.com} {
+# Public API with Automatic SSL for api.mogent.tech
+api.mogent.tech, {$DOMAIN:api.mogent.tech} {
     reverse_proxy server:4000 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
@@ -34,7 +18,27 @@
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"
         X-XSS-Protection "1; mode=block"
+        Access-Control-Allow-Origin *
+        Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "*"
     }
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Fallback for Direct IP (Port 80)
+:80 {
+    reverse_proxy server:4000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip zstd
 
     log {
         output stdout

@@ -10,7 +10,10 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    const backendUrl = process.env.BACKEND_API_URL || "http://207.148.124.171";
+    const backendUrl =
+      process.env.BACKEND_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "https://api.mogent.tech";
     return [
       {
         source: "/api/:path*",
