@@ -33,6 +33,7 @@ export const config = {
   // Security Encryption & JWT
   tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY || "shohag_mogent_secret_encryption_32chars_key!",
   jwtSecret: process.env.JWT_SECRET || "mogent_super_secure_jwt_secret_2026_shohag",
+  adminEmail: process.env.ADMIN_EMAIL || "admin@mogent.tech",
   adminSecret: process.env.ADMIN_SECRET || "mogent_super_admin_pass_2026",
 
   // Telegram Alerts
