@@ -170,8 +170,15 @@ export default function ApiKeysPage() {
           />
         </div>
         <button
-          type="submit"
-          disabled={!newKeyInput.trim() || isAdding}
+          type="button"
+          onClick={() => {
+            if (!newKeyInput.trim()) {
+              alert("Please enter a valid Gemini API Key first.");
+              return;
+            }
+            handleAddKey({ preventDefault: () => {} } as any);
+          }}
+          disabled={isAdding}
           className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-semibold text-xs flex items-center justify-center gap-2 transition-colors shrink-0 cursor-pointer shadow-lg shadow-amber-500/10"
         >
           {isAdding ? (

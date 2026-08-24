@@ -29,32 +29,7 @@ export default function AIAutomationSectorPage() {
   const [activeTab, setActiveTab] = useState<"KNOWLEDGE" | "WHATSAPP_CONTACT" | "RULES" | "PLAYGROUND">("KNOWLEDGE");
 
   // --- 1. KNOWLEDGE STATE ---
-  const [knowledgeItems, setKnowledgeItems] = useState([
-    {
-      id: "k1",
-      title: "Smartwatch Ultra Pro Specs & Pricing",
-      category: "PRODUCT_CATALOG",
-      content:
-        "Product: Smartwatch Ultra Pro 2026. Price: 2,450 BDT (Regular 3,200 BDT). Features: AMOLED 1.9-inch display, 7-day battery backup, Heart rate & SpO2 sensor, Bluetooth Calling. In stock: Yes.",
-      priority: 10,
-    },
-    {
-      id: "k2",
-      title: "Delivery Charges & Return Policy",
-      category: "POLICY",
-      content:
-        "Delivery charge inside Dhaka: 60 BDT (1-2 days). Outside Dhaka: 120 BDT (2-3 days). Cash on Delivery available nationwide. 7 days replacement guarantee for manufacturing defects.",
-      priority: 9,
-    },
-    {
-      id: "k3",
-      title: "How to Place an Order (FAQ)",
-      category: "FAQ",
-      content:
-        "To place an order, customers need to provide their Name, Mobile Number, Product Quantity/Color, and Full Delivery Address. We confirm via call or SMS.",
-      priority: 8,
-    },
-  ]);
+  const [knowledgeItems, setKnowledgeItems] = useState<any[]>([]);
   const [knowledgeSearch, setKnowledgeSearch] = useState("");
   const [showAddKnowledge, setShowAddKnowledge] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -135,32 +110,7 @@ export default function AIAutomationSectorPage() {
   };
 
   // --- 3. RULES STATE ---
-  const [rules, setRules] = useState([
-    {
-      id: "r1",
-      name: "Price & Cost Query",
-      keywords: ["দাম কত", "price", "koto", "cost", "টাকা"],
-      reply: "আমাদের সকল প্রোডাক্টের বর্তমান প্রাইস ও ডিসকাউন্ট অফার জানতে আমাদের ক্যাটালগ দেখতে পারেন। আপনি নির্দিষ্ট কোন মডেলটি খুঁজছেন?",
-      isActive: true,
-      hits: 1420,
-    },
-    {
-      id: "r2",
-      name: "Delivery Charge & COD",
-      keywords: ["ডেলিভারি চার্জ", "delivery charge", "cod", "ক্যাশ অন ডেলিভারি"],
-      reply: "সারা বাংলাদেশে আমাদের ক্যাশ অন ডেলিভারি সুবিধা আছে। ঢাকার ভেতরে ডেলিভারি চার্জ ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।",
-      isActive: true,
-      hits: 980,
-    },
-    {
-      id: "r3",
-      name: "Night Shift / After-Hours Auto Greeting",
-      keywords: ["11:00 PM - 08:00 AM"],
-      reply: "আমাদের অফিস এখন বন্ধ রয়েছে। তবে আমাদের AI সহকারী আপনাকে সাহায্য করতে প্রস্তুত। আপনার প্রশ্ন এখানে লিখে রাখুন।",
-      isActive: true,
-      hits: 450,
-    },
-  ]);
+  const [rules, setRules] = useState<any[]>([]);
 
   // --- 4. PLAYGROUND STATE ---
   const [simMessages, setSimMessages] = useState<
@@ -604,7 +554,7 @@ export default function AIAutomationSectorPage() {
             </div>
             <div className="p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
               <span className="text-xs text-[#888]">Instant Hits</span>
-              <p className="text-2xl font-bold text-[#10B981] mt-1">2,850</p>
+              <p className="text-2xl font-bold text-[#10B981] mt-1">0</p>
             </div>
             <div className="p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
               <span className="text-xs text-[#888]">Response Speed</span>

@@ -88,14 +88,18 @@ export class GeminiService {
     throw new Error(`Failed to generate response after ${attempts} attempts across keys:\n${errors.join("\n")}`);
   }
 
-  /**
-   * Internal REST execution against Google Gemini API with JSON schema enforcement.
-   */
   private async callGeminiApi(
     apiKey: string,
-    model: string,
+    rawModel: string,
     options: GenerateAiReplyOptions
   ): Promise<GeminiAiResponse> {
+    
+    // Map custom display names to actual Google API identifiers
+    let model = rawModel;
+    if (model.includes("Gemini 3.1 Flash-Lite") || model.includes("Gemini 3.5 Flash Lite")) {
+      model = "gemini-2.0-flash-lite-preview-02-05";
+    }
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     // Build Context & System Instructions

@@ -22,7 +22,7 @@ import {
   Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchAnalytics } from "@/lib/api";
+import { fetchAnalytics, fetchPages, fetchProducts, fetchContacts } from "@/lib/api";
 
 export default function AnalyticsDashboardPage() {
   const [timeRange, setTimeRange] = useState<"TODAY" | "WEEK" | "MONTH" | "ALL">("WEEK");
@@ -40,25 +40,16 @@ export default function AnalyticsDashboardPage() {
     pagesConnected: 0,
   });
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
-    const ws = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") || "" : "";
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      "x-workspace-id": ws,
-    };
-
     Promise.all([
       fetchAnalytics(),
-      fetch(`${API_BASE}/api/pages`, { headers }).then((r) => r.json()).catch(() => ({ data: [] })),
-      fetch(`${API_BASE}/api/products`, { headers }).then((r) => r.json()).catch(() => ({ data: [] })),
-      fetch(`${API_BASE}/api/contacts`, { headers }).then((r) => r.json()).catch(() => ({ data: [] })),
-    ]).then(([analyticsData, pagesRes, prodRes, contRes]) => {
-      const pageList = Array.isArray(pagesRes.data) ? pagesRes.data : [];
-      const prodList = Array.isArray(prodRes.data) ? prodRes.data : [];
-      const contList = Array.isArray(contRes.data) ? contRes.data : [];
+      fetchPages(),
+      fetchProducts(),
+      fetchContacts(),
+    ]).then(([analyticsData, pageList, prodList, contList]) => {
+      pageList = Array.isArray(pageList) ? pageList : [];
+      prodList = Array.isArray(prodList) ? prodList : [];
+      contList = Array.isArray(contList) ? contList : [];
 
       setPages(pageList);
       setProducts(prodList);
