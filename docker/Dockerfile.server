@@ -1,9 +1,8 @@
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
+WORKDIR /app
 
 # Install OpenSSL for Prisma
-RUN apk add --no-cache openssl libc6-compat
-
-WORKDIR /app
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Stage 1: Install dependencies
 FROM base AS dependencies
