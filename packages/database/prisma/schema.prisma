@@ -1,0 +1,488 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum Role {
+  OWNER
+  ADMIN
+  AGENT
+  VIEWER
+}
+
+enum AiMode {
+  AUTO         // AI replies to everything automatically
+  HYBRID       // AI replies unless human takes over or escalation occurs
+  MANUAL       // Only draft suggestions, humans must approve/send
+  OFF          // Bot disabled for this page
+}
+
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+  SNOOZED
+  HANDOFF_REQUIRED // Escalated to human
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  HUMAN_AGENT
+  SYSTEM
+}
+
+enum MediaType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  FILE
+  LOCATION
+  FALLBACK
+}
+
+enum MessageStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum EscalationReason {
+  NEGATIVE_SENTIMENT
+  HUMAN_REQUESTED
+  COMPLAINT_DETECTED
+  UNSUPPORTED_QUERY
+  HIGH_VALUE_LEAD
+  CUSTOM_KEYWORD
+}
+
+enum EscalationStatus {
+  PENDING
+  NOTIFIED
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum KnowledgeType {
+  FAQ
+  PRODUCT_CATALOG
+  POLICY
+  SYSTEM_INSTRUCTION
+  DOCUMENT
+}
+
+// ----------------------------------------------------
+// USER & MULTI-TENANCY (WORKSPACES)
+// ----------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  avatarUrl     String?
+  passwordHash  String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships   WorkspaceMember[]
+  sessions      Session[]
+  accounts      Account[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Multi-tenant Relations
+  members         WorkspaceMember[]
+  facebookPages   FacebookPage[]
+  products        Product[]
+  knowledgeBases  KnowledgeBase[]
+  escalationRules EscalationRule[]
+  telegramConfigs TelegramConfig[]
+
+  // WhatsApp & Contact Sharing Protocol
+  whatsAppMode         String   @default("ON_DEMAND") // ON_DEMAND, ALWAYS, DISABLED
+  whatsAppNumber       String?  @default("+8801819234567")
+  hotlineNumber        String?  @default("09612345678")
+  officeAddress        String?  @db.Text
+  whatsAppPrefillText  String?  @db.Text
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  role        Role     @default(AGENT)
+  workspaceId String
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ----------------------------------------------------
+// FACEBOOK PAGE & SETTINGS
+// ----------------------------------------------------
+
+model FacebookPage {
+  id                   String   @id @default(cuid())
+  workspaceId          String
+  pageId               String   @unique // Facebook Page ID
+  name                 String
+  category             String?
+  pictureUrl           String?
+  
+  // Encrypted Security Tokens
+  encryptedAccessToken String   @db.Text // Encrypted Page Access Token (AES-256)
+  tokenIv              String   // Initialization Vector for AES-256
+  tokenTag             String   // Auth Tag for AES-256-GCM
+  
+  // Webhook & AI Configuration
+  verifyToken          String   // Random verification token for FB webhook handshake
+  webhookSubscribed    Boolean  @default(false)
+  aiMode               AiMode   @default(HYBRID)
+  isActive             Boolean  @default(true)
+  
+  // System Prompt & Personality Settings
+  systemPrompt         String?  @db.Text
+  businessName         String?
+  businessDescription  String?  @db.Text
+  defaultLanguage      String   @default("bn") // bn, en, etc.
+  aiTemperature        Float    @default(0.4)  // Low for factual business answers
+  
+  // Human Handover Timeout (Minutes before AI resumes after human interaction)
+  humanHandoffTimeoutMins Int   @default(60)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customers     Customer[]
+  conversations Conversation[]
+  knowledgeBase KnowledgeBase[]
+
+  @@index([workspaceId])
+  @@map("facebook_pages")
+}
+
+// ----------------------------------------------------
+// CUSTOMERS & CONTACTS (LEAD MANAGEMENT)
+// ----------------------------------------------------
+
+model Customer {
+  id             String    @id @default(cuid())
+  facebookPageId String
+  psid           String    // Page-Scoped User ID (from Messenger)
+  firstName      String?
+  lastName       String?
+  profilePic     String?
+  locale         String?
+  timezone       Int?
+  gender         String?
+  
+  // CRM / Contact Enrichment
+  phoneNumber    String?
+  email          String?
+  deliveryAddress String?  @db.Text
+  tags           String[]  @default([])
+  notes          String?   @db.Text
+  totalOrders    Int       @default(0)
+  totalSpent     Float     @default(0.0)
+  
+  // AI Sentiment Profile
+  sentimentScore Float?    // -1.0 (Angry) to +1.0 (Delighted)
+  isVip          Boolean   @default(false)
+  isBlocked      Boolean   @default(false)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  facebookPage  FacebookPage   @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  orders        Order[]
+
+  @@unique([facebookPageId, psid])
+  @@index([phoneNumber])
+  @@map("customers")
+}
+
+// ----------------------------------------------------
+// CONVERSATIONS & CHAT HISTORY
+// ----------------------------------------------------
+
+model Conversation {
+  id             String             @id @default(cuid())
+  facebookPageId String
+  customerId     String
+  status         ConversationStatus @default(OPEN)
+  
+  // Handover state
+  isHumanControl Boolean            @default(false)
+  humanTakeoverAt DateTime?
+  lastCustomerMessageAt DateTime    @default(now())
+  lastAiMessageAt DateTime?
+  unreadCount    Int                @default(0)
+  
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  facebookPage FacebookPage     @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  escalations  EscalationEvent[]
+
+  @@index([facebookPageId, status])
+  @@index([lastCustomerMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  conversationId String
+  mid            String?       @unique // Facebook Message ID (for Idempotency & deduplication)
+  
+  sender         MessageSender
+  senderId       String?       // Customer PSID or Agent User ID
+  
+  // Content & Media
+  content        String?       @db.Text
+  mediaType      MediaType     @default(TEXT)
+  mediaUrl       String?       @db.Text
+  
+  // AI & Thinking Metadata
+  thinkingProcess String?      @db.Text // CoT / <thinking> tags from Gemini
+  tokenCount     Int?
+  modelUsed      String?       // e.g. "gemini-1.5-flash"
+  confidenceScore Float?
+  
+  // Status & Delivery
+  status         MessageStatus @default(SENT)
+  errorMessage   String?       @db.Text
+  
+  // Raw payload for audit
+  rawPayload     Json?
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ----------------------------------------------------
+// KNOWLEDGE BASE (RAG & CONTEXT)
+// ----------------------------------------------------
+
+model KnowledgeBase {
+  id             String        @id @default(cuid())
+  workspaceId    String
+  facebookPageId String?       // Specific page or workspace-wide if null
+  type           KnowledgeType @default(FAQ)
+  
+  title          String
+  content        String        @db.Text
+  category       String?
+  tags           String[]      @default([])
+  priority       Int           @default(1) // Higher priority injected first
+  isActive       Boolean       @default(true)
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage FacebookPage? @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, isActive])
+  @@map("knowledge_bases")
+}
+
+// ----------------------------------------------------
+// CRUCIAL MOMENTS & ESCALATION (TELEGRAM NOTIFICATIONS)
+// ----------------------------------------------------
+
+model TelegramConfig {
+  id          String   @id @default(cuid())
+  workspaceId String
+  botToken    String   // Encrypted Telegram Bot Token
+  chatId      String   // Group/Channel/Owner Chat ID
+  isActive    Boolean  @default(true)
+  
+  notifyOnEscalation Boolean @default(true)
+  notifyOnNewOrder   Boolean @default(true)
+  notifyOnNegativeReview Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("telegram_configs")
+}
+
+model EscalationRule {
+  id          String           @id @default(cuid())
+  workspaceId String
+  name        String
+  reason      EscalationReason
+  keywords    String[]         @default([]) // e.g. ["owner", "scam", "police", "refund", "খারাপ", "ম্যানেজার"]
+  isActive    Boolean          @default(true)
+  
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("escalation_rules")
+}
+
+model EscalationEvent {
+  id             String           @id @default(cuid())
+  conversationId String
+  reason         EscalationReason
+  status         EscalationStatus @default(PENDING)
+  
+  triggerMessage String?          @db.Text
+  summary        String?          @db.Text
+  telegramSent   Boolean          @default(false)
+  telegramMsgId  String?
+  
+  resolvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+  @@map("escalation_events")
+}
+
+// ----------------------------------------------------
+// E-COMMERCE / ORDERS & LEADS
+// ----------------------------------------------------
+
+model Order {
+  id          String      @id @default(cuid())
+  customerId  String
+  orderNumber String      @unique
+  items       Json        // Array of { product, quantity, unitPrice }
+  totalAmount Float
+  currency    String      @default("BDT")
+  
+  status      String      @default("PENDING") // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+  customerPhone String?
+  shippingAddress String? @db.Text
+  notes       String?     @db.Text
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("orders")
+}
+
+// ----------------------------------------------------
+// WEBHOOK AUDIT & IDEMPOTENCY LOGS
+// ----------------------------------------------------
+
+model WebhookLog {
+  id          String   @id @default(cuid())
+  pageId      String?
+  eventType   String
+  payload     Json
+  processed   Boolean  @default(false)
+  error       String?  @db.Text
+  durationMs  Int?
+  
+  createdAt   DateTime @default(now())
+
+  @@index([pageId, createdAt])
+  @@map("webhook_logs")
+}
+
+// ----------------------------------------------------
+// PRODUCT CATALOG & INVENTORY
+// ----------------------------------------------------
+
+model Product {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  name         String
+  description  String?   @db.Text
+  price        Float
+  regularPrice Float?
+  imageUrl     String?   @db.Text
+  category     String?   @default("General")
+  inStock      Boolean   @default(true)
+  salesCount   Int       @default(0)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, inStock])
+  @@map("products")
+}
+

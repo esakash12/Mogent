@@ -1,0 +1,26 @@
+{
+  "name": "mogent-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@11.6.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npx turbo dev",
+    "dev:admin": "npm run dev --workspace=@mogent/admin",
+    "dev:server": "npm run dev --workspace=@mogent/server",
+    "dev:ai": "npm run dev --workspace=@mogent/ai-proxy",
+    "dev:web": "npm run dev --workspace=@mogent/web",
+    "build": "npx turbo build",
+    "lint": "npx turbo lint",
+    "db:generate": "npm run generate --workspace=@mogent/database",
+    "db:push": "npm run push --workspace=@mogent/database",
+    "db:studio": "npm run studio --workspace=@mogent/database"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.7.3"
+  }
+}

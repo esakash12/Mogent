@@ -1,0 +1,182 @@
+version: "3.8"
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. POSTGRESQL (Self-Hosted on Vultr - Ultra Fast with Persistent NVMe Volume)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: mogent-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mogent_db_secret_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-mogent_prod}
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mogent-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 2. REDIS (Internal In-Memory Cache & BullMQ Queue - <0.2ms latency)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: mogent-redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-mogent_redis_secret}"]
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mogent-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-mogent_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # 3. STANDALONE AI PROXY (8x Gemini Key Rotator)
+  # ----------------------------------------------------------------------------
+  ai-proxy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ai-proxy
+    container_name: mogent-ai-proxy
+    restart: always
+    environment:
+      NODE_ENV: production
+      AI_PROXY_PORT: 5000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-mogent_redis_secret}
+      MOGENT_AI_MASTER_KEY: ${MOGENT_AI_MASTER_KEY:-shohag_ai_master_secret_2026}
+      DEFAULT_GEMINI_MODEL: ${DEFAULT_GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS}
+    expose:
+      - "5000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mogent-network
+
+  # ----------------------------------------------------------------------------
+  # 4. BACKEND SERVER (Hono Express Core + Webhooks)
+  # ----------------------------------------------------------------------------
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    container_name: mogent-server
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:mogent_db_secret_2026@postgres:5432/mogent_prod}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:mogent_db_secret_2026@postgres:5432/mogent_prod}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-mogent_redis_secret}
+      AI_PROXY_URL: http://ai-proxy:5000
+      MOGENT_AI_MASTER_KEY: ${MOGENT_AI_MASTER_KEY:-shohag_ai_master_secret_2026}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      FACEBOOK_WEBHOOK_VERIFY_TOKEN: ${FACEBOOK_WEBHOOK_VERIFY_TOKEN}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    expose:
+      - "4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-proxy:
+        condition: service_started
+    networks:
+      - mogent-network
+
+  # ----------------------------------------------------------------------------
+  # 5. CLIENT DASHBOARD (Next.js 15 App)
+  # ----------------------------------------------------------------------------
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    container_name: mogent-web
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+    expose:
+      - "3000"
+    depends_on:
+      - server
+    networks:
+      - mogent-network
+
+  # ----------------------------------------------------------------------------
+  # 6. SUPER ADMIN PANEL (Next.js 15 Admin)
+  # ----------------------------------------------------------------------------
+  admin:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.admin
+    container_name: mogent-admin
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+    expose:
+      - "3001"
+    depends_on:
+      - server
+    networks:
+      - mogent-network
+
+  # ----------------------------------------------------------------------------
+  # 7. CADDY REVERSE PROXY (Public Ports 80 & 443 with Automatic SSL)
+  # ----------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: mogent-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - admin
+      - server
+    networks:
+      - mogent-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  mogent-network:
+    driver: bridge

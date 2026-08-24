@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: mogent-redis-dev
+    restart: always
+    # No password required for local dev to keep things simple
+    command: ["redis-server"]
+    ports:
+      - "127.0.0.1:6379:6379"

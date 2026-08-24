@@ -1,0 +1,61 @@
+# ==============================================================================
+# CADDY PRODUCTION REVERSE PROXY WITH AUTO-SSL (Let's Encrypt / ZeroSSL)
+# ==============================================================================
+
+# 1. Main Client Dashboard & Landing Page
+{$DOMAIN:yourdomain.com} {
+    reverse_proxy web:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip zstd
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# 2. Super Admin Panel
+admin.{$DOMAIN:yourdomain.com} {
+    reverse_proxy admin:3001 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip zstd
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# 3. Core API & Facebook Webhooks
+api.{$DOMAIN:yourdomain.com} {
+    reverse_proxy server:4000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip zstd
+
+    log {
+        output stdout
+        format console
+    }
+}
