@@ -28,12 +28,7 @@ adminRouter.get("/overview", async (c) => {
     ]);
 
     const customKeys = await redisConnection.smembers(REDIS_KEYS_SET);
-    const envKeys = (config.aiProxy ? process.env.GEMINI_API_KEYS || "" : "")
-      .split(",")
-      .map((k) => k.trim())
-      .filter((k) => k.length > 0);
-
-    const allKeys = Array.from(new Set([...envKeys, ...customKeys]));
+    const allKeys = Array.from(new Set([...customKeys]));
 
     return c.json({
       success: true,
@@ -67,13 +62,7 @@ adminRouter.get("/overview", async (c) => {
 adminRouter.get("/keys", async (c) => {
   try {
     const customKeys = await redisConnection.smembers(REDIS_KEYS_SET);
-
-    const envKeys = (config.aiProxy ? process.env.GEMINI_API_KEYS || "" : "")
-      .split(",")
-      .map((k) => k.trim())
-      .filter((k) => k.length > 0);
-
-    const allRawKeys = Array.from(new Set([...envKeys, ...customKeys]));
+    const allRawKeys = Array.from(new Set([...customKeys]));
 
     const keysList = allRawKeys.map((key, idx) => {
       const masked = `${key.substring(0, 6)}...${key.substring(key.length - 4)}`;

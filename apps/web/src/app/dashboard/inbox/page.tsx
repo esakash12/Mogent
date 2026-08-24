@@ -26,7 +26,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchConversations, fetchMessages, sendMessage, toggleConversationMode } from "@/lib/api";
+import { fetchConversations, fetchMessages, sendMessage, toggleConversationMode, fetchPages } from "@/lib/api";
 
 interface Message {
   id: string;
@@ -67,28 +67,28 @@ export default function LiveInboxPage() {
   // Fetch live conversations from DB
   const loadConversations = async () => {
     setLoading(true);
-    const data = await fetchConversations();
-    if (Array.isArray(data) && data.length > 0) {
-      setConversations(data);
-      if (!selectedId) setSelectedId(data[0].id);
-    } else {
-      setConversations([]);
-      setSelectedId(null);
-    }
-
-    // Fetch pages count
+    
     try {
-      const pRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/pages`, {
-        headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-          "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") || "" : "",
-        },
-      });
-      const pJson = await pRes.json();
-      if (pJson.success && Array.isArray(pJson.data)) {
-        setConnectedPages(pJson.data);
+      // Fetch both conversations and connected pages in parallel
+      const [convsData, pagesData] = await Promise.all([
+        fetchConversations(),
+        fetchPages()
+      ]);
+      
+      if (Array.isArray(convsData) && convsData.length > 0) {
+        setConversations(convsData);
+        if (!selectedId) setSelectedId(convsData[0].id);
+      } else {
+        setConversations([]);
+        setSelectedId(null);
       }
-    } catch {}
+
+      if (Array.isArray(pagesData)) {
+        setConnectedPages(pagesData);
+      }
+    } catch (err) {
+      console.error("Failed to load inbox data", err);
+    }
 
     setLoading(false);
   };

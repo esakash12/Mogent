@@ -36,25 +36,15 @@ if (process.env.REDIS_HOST) {
   }
 }
 
-// 2. Parse Gemini API Keys
-const rawKeyString = process.env.GEMINI_API_KEYS || "";
-let keysList = rawKeyString
-  .split(",")
-  .map((k) => k.trim())
-  .filter((k) => k.length > 0);
-
-if (keysList.length === 0) {
-  for (let i = 1; i <= 10; i++) {
-    const individualKey = process.env[`GEMINI_KEY_${i}`];
-    if (individualKey && individualKey.trim().length > 0) {
-      keysList.push(individualKey.trim());
-    }
-  }
-}
+// 2. We don't read from .env anymore, we strictly use Redis.
+const keysList: string[] = [];
 
 // 3. Initialize Rotator & Gemini Service
 const rotator = new GeminiKeyRotator(keysList, redisClient);
 const geminiService = new GeminiService(rotator, defaultModel);
+
+// Trigger initial sync
+rotator.syncKeysFromRedis().catch(console.error);
 
 // 4. Initialize Hono App
 const app = new Hono();

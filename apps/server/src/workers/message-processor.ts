@@ -290,7 +290,36 @@ If information is not found in knowledge base, kindly inform the user or suggest
           await telegramAlertsQueue.add("send-escalation-alert", telegramPayload);
         }
       } catch (aiErr: any) {
-        console.error("AI Generation / Processing failed in worker:", aiErr);
+        console.error("❌ AI Generation / Processing failed in worker:", aiErr);
+        
+        // Notify the customer that the bot is down
+        const fallbackText = "I'm currently experiencing technical difficulties. A human agent will assist you shortly.";
+        try {
+          if (page.aiMode !== "MANUAL") {
+            await facebookApi.sendTextMessage(pageAccessToken, senderPsid, fallbackText);
+            await prisma.message.create({
+              data: {
+                conversationId: conversation.id,
+                sender: "AI",
+                content: fallbackText,
+                mediaType: "TEXT",
+                status: "SENT",
+              },
+            });
+          }
+        } catch (e) {
+          console.error("Failed to send fallback message:", e);
+        }
+
+        // Flag for human handover
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            status: "HANDOFF_REQUIRED",
+            isHumanControl: true,
+            humanTakeoverAt: new Date(),
+          },
+        });
       } finally {
         await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "typing_off");
       }

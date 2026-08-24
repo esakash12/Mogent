@@ -57,11 +57,42 @@ export class GeminiKeyRotator {
     return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
   }
 
+  public async syncKeysFromRedis() {
+    if (!this.redis) return;
+    try {
+      const customKeys = await this.redis.smembers("mogent:gemini_pool_keys");
+      
+      const newKeys = customKeys.filter(k => !this.keys.find(existing => existing.key === k));
+      
+      for (const key of newKeys) {
+        const keyHash = crypto.createHash("md5").update(key).digest("hex").substring(0, 10);
+        this.keys.push({
+          index: this.keys.length,
+          key,
+          keyHash,
+          maskedKey: this.maskKey(key),
+          totalRequests: 0,
+          successfulRequests: 0,
+          failedRequests: 0,
+          cooldownUntil: null,
+          isExhausted: false,
+        });
+      }
+      
+      // Keep only keys that are in Redis
+      this.keys = this.keys.filter(existing => customKeys.includes(existing.key));
+      
+    } catch (e) {
+      console.warn("⚠️ Failed to sync keys from Redis:", e);
+    }
+  }
+
   /**
    * Retrieves the next available healthy API key using Round-Robin.
    * Checks Redis TTL to ensure rate-limited keys are skipped even after server restarts.
    */
   public async getNextActiveKey(): Promise<KeyStatus | null> {
+    await this.syncKeysFromRedis();
     if (this.keys.length === 0) return null;
 
     const totalKeys = this.keys.length;
