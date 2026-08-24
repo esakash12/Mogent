@@ -577,7 +577,7 @@ export default function AIAutomationSectorPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
-                  {r.keywords.map((k, i) => (
+                  {(r.keywords || []).map((k: string, i: number) => (
                     <span
                       key={i}
                       className="px-2 py-0.5 rounded bg-[#111] border border-[#222] text-[11px] font-mono text-[#EDEDED]"

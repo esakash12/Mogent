@@ -169,6 +169,12 @@ export default function ApiKeysPage() {
             className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-[13px] text-[#EDEDED] focus:outline-none focus:border-amber-500 transition-colors placeholder:text-[#555] font-mono"
           />
         </div>
+        <select
+          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-[13px] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+        >
+          <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 3.1 Flash-Lite</option>
+          <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8b</option>
+        </select>
         <button
           type="button"
           onClick={() => {
