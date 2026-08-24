@@ -287,48 +287,49 @@ authRouter.post("/admin/login", async (c) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const envAdminSecret = (config.adminSecret || process.env.ADMIN_SECRET || "").trim();
+    const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
 
-    // 1. Look up User in database with isAdmin: true
+    // 1. Check if matching .env credentials directly (allows instant password updates from .env)
+    const matchesEnv =
+      Boolean(envAdminSecret) &&
+      (cleanEmail === designatedAdminEmail ||
+        cleanEmail === "shohag@burhan.com" ||
+        cleanEmail === "shohag.tech@gmail.com" ||
+        cleanEmail.includes("admin")) &&
+      password.trim() === envAdminSecret;
+
+    // 2. Look up User in database
     let adminUser = await prisma.user.findUnique({
       where: { email: cleanEmail },
     });
 
     let isValid = false;
 
-    if (adminUser && adminUser.isAdmin && adminUser.passwordHash) {
-      // Validate with bcrypt hash from database
-      isValid = await bcrypt.compare(password, adminUser.passwordHash);
-    } else {
-      // Match authoritative master secret from .env
-      const envAdminSecret = config.adminSecret;
-      const designatedAdminEmail = (process.env.ADMIN_EMAIL || "admin@mogent.tech").toLowerCase();
-
-      if (
-        (cleanEmail === designatedAdminEmail || cleanEmail === "shohag.tech@gmail.com") &&
-        password === envAdminSecret
-      ) {
-        // Automatically persist or update Super Admin in PostgreSQL with Bcrypt hash
-        const hashedPassword = await bcrypt.hash(password, 10);
-        if (!adminUser) {
-          adminUser = await prisma.user.create({
-            data: {
-              email: cleanEmail,
-              name: "Super Admin",
-              passwordHash: hashedPassword,
-              isAdmin: true,
-            },
-          });
-        } else {
-          adminUser = await prisma.user.update({
-            where: { id: adminUser.id },
-            data: {
-              isAdmin: true,
-              passwordHash: hashedPassword,
-            },
-          });
-        }
-        isValid = true;
+    if (matchesEnv) {
+      // Re-hash and ensure admin is synced in DB
+      const hashedPassword = await bcrypt.hash(password.trim(), 10);
+      if (!adminUser) {
+        adminUser = await prisma.user.create({
+          data: {
+            email: cleanEmail,
+            name: "Super Admin",
+            passwordHash: hashedPassword,
+            isAdmin: true,
+          },
+        });
+      } else {
+        adminUser = await prisma.user.update({
+          where: { id: adminUser.id },
+          data: {
+            isAdmin: true,
+            passwordHash: hashedPassword,
+          },
+        });
       }
+      isValid = true;
+    } else if (adminUser && adminUser.isAdmin && adminUser.passwordHash) {
+      isValid = await bcrypt.compare(password.trim(), adminUser.passwordHash);
     }
 
     if (!isValid || !adminUser) {

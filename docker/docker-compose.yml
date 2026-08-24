@@ -75,8 +75,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
-    container_name: mogent-server
-    restart: always
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -87,6 +87,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-mogent_redis_secret}
       AI_PROXY_URL: http://ai-proxy:5000
       MOGENT_AI_MASTER_KEY: ${MOGENT_AI_MASTER_KEY:-shohag_ai_master_secret_2026}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mogent.tech}
+      ADMIN_SECRET: ${ADMIN_SECRET:-mogent_super_admin_pass_2026}
       FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
       FACEBOOK_WEBHOOK_VERIFY_TOKEN: ${FACEBOOK_WEBHOOK_VERIFY_TOKEN}
