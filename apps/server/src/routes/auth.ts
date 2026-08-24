@@ -275,7 +275,7 @@ authRouter.get("/me", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
-// 4. SUPER ADMIN LOGIN
+// 4. SUPER ADMIN AUTHENTICATION (ENTERPRISE BCRYPT & RBAC)
 // -----------------------------------------------------------------------------
 authRouter.post("/admin/login", async (c) => {
   try {
@@ -286,24 +286,60 @@ authRouter.post("/admin/login", async (c) => {
       return c.json({ success: false, error: "Email and password are required" }, 400);
     }
 
-    // Check if matching Admin credentials or system master secret
-    const isAdminPassValid =
-      password === config.adminSecret ||
-      password === "admin123" ||
-      password === "mogent_super_admin_pass_2026";
+    const cleanEmail = email.trim().toLowerCase();
 
-    const isAdminEmailValid =
-      email.toLowerCase().includes("admin") ||
-      email.toLowerCase() === "shohag.tech@gmail.com";
+    // 1. Look up User in database with isAdmin: true
+    let adminUser = await prisma.user.findUnique({
+      where: { email: cleanEmail },
+    });
 
-    if (!isAdminPassValid || !isAdminEmailValid) {
-      return c.json({ success: false, error: "Invalid admin credentials" }, 401);
+    let isValid = false;
+
+    if (adminUser && adminUser.isAdmin && adminUser.passwordHash) {
+      // Validate with bcrypt hash from database
+      isValid = await bcrypt.compare(password, adminUser.passwordHash);
+    } else {
+      // Match authoritative master secret from .env
+      const envAdminSecret = config.adminSecret;
+      const designatedAdminEmail = (process.env.ADMIN_EMAIL || "admin@mogent.tech").toLowerCase();
+
+      if (
+        (cleanEmail === designatedAdminEmail || cleanEmail === "shohag.tech@gmail.com") &&
+        password === envAdminSecret
+      ) {
+        // Automatically persist or update Super Admin in PostgreSQL with Bcrypt hash
+        const hashedPassword = await bcrypt.hash(password, 10);
+        if (!adminUser) {
+          adminUser = await prisma.user.create({
+            data: {
+              email: cleanEmail,
+              name: "Super Admin",
+              passwordHash: hashedPassword,
+              isAdmin: true,
+            },
+          });
+        } else {
+          adminUser = await prisma.user.update({
+            where: { id: adminUser.id },
+            data: {
+              isAdmin: true,
+              passwordHash: hashedPassword,
+            },
+          });
+        }
+        isValid = true;
+      }
     }
 
+    if (!isValid || !adminUser) {
+      return c.json({ success: false, error: "Access Denied: Invalid Super Admin Credentials." }, 401);
+    }
+
+    // Issue Secure 7-Day Admin JWT
     const token = await sign(
       {
-        userId: "super-admin-root",
-        email: email.toLowerCase(),
+        userId: adminUser.id,
+        email: adminUser.email,
         isAdmin: true,
         role: "SUPER_ADMIN",
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
@@ -317,10 +353,10 @@ authRouter.post("/admin/login", async (c) => {
       data: {
         token,
         admin: {
-          id: "super-admin-root",
-          email,
+          id: adminUser.id,
+          email: adminUser.email,
+          name: adminUser.name || "Super Admin",
           role: "SUPER_ADMIN",
-          name: "Super Admin",
         },
       },
     });
