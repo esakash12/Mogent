@@ -163,7 +163,9 @@ export default function AIAutomationSectorPage() {
   ]);
 
   // --- 4. PLAYGROUND STATE ---
-  const [simMessages, setSimMessages] = useState([
+  const [simMessages, setSimMessages] = useState<
+    Array<{ role: string; content: string; thinking?: string }>
+  >([
     {
       role: "model",
       content: "আসসালামু আলাইকুম! আমি আপনার AI সহকারী। প্রোডাক্ট অর্ডার বা যেকোনো তথ্যের জন্য আমাকে মেসেজ দিন।",
