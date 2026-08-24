@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { prisma, MessageSender, MessageStatus } from "@mogent/database";
+import { facebookApi } from "../services/facebook-api";
+import { decryptToken } from "@mogent/shared";
+import { config } from "../config";
 
 export const conversationsRouter = new Hono();
 
@@ -92,13 +95,43 @@ conversationsRouter.post("/:id/messages", async (c) => {
   }
 
   try {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        facebookPage: true,
+      },
+    });
+
+    if (!conversation) {
+      return c.json({ success: false, error: "Conversation not found" }, 404);
+    }
+
+    const { customer, facebookPage } = conversation;
+
+    // Decrypt token
+    const pageAccessToken = decryptToken(
+      facebookPage.encryptedAccessToken,
+      facebookPage.tokenIv,
+      facebookPage.tokenTag,
+      config.tokenEncryptionKey
+    );
+
+    // Send to Facebook
+    await facebookApi.sendTextMessage(pageAccessToken, customer.psid, text);
+
     const message = await prisma.message.create({
       data: {
         conversationId: id,
         sender: MessageSender.HUMAN_AGENT,
         content: text,
-        status: MessageStatus.DELIVERED,
+        status: MessageStatus.SENT,
       },
+    });
+
+    await prisma.conversation.update({
+      where: { id },
+      data: { lastAiMessageAt: new Date() }, // update timestamp so it bubbles up
     });
 
     return c.json({
@@ -111,6 +144,7 @@ conversationsRouter.post("/:id/messages", async (c) => {
       },
     });
   } catch (error: any) {
+    console.error("Manual send error:", error);
     return c.json({ success: false, error: error.message }, 500);
   }
 });
@@ -122,9 +156,14 @@ conversationsRouter.post("/:id/toggle-mode", async (c) => {
   const { isHumanControl } = body;
 
   try {
+    const isHuman = Boolean(isHumanControl);
     const updated = await prisma.conversation.update({
       where: { id },
-      data: { isHumanControl: Boolean(isHumanControl) },
+      data: { 
+        isHumanControl: isHuman,
+        status: isHuman ? "HANDOFF_REQUIRED" : "OPEN",
+        humanTakeoverAt: isHuman ? new Date() : null
+      },
     });
 
     return c.json({ success: true, data: updated });

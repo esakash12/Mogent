@@ -65,19 +65,20 @@ export default function LiveInboxPage() {
   const [connectedPages, setConnectedPages] = useState<any[]>([]);
 
   // Fetch live conversations from DB
-  const loadConversations = async () => {
-    setLoading(true);
+  const loadConversations = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     
     try {
-      // Fetch both conversations and connected pages in parallel
       const [convsData, pagesData] = await Promise.all([
         fetchConversations(),
         fetchPages()
       ]);
       
-      if (Array.isArray(convsData) && convsData.length > 0) {
+      if (Array.isArray(convsData)) {
         setConversations(convsData);
-        if (!selectedId) setSelectedId(convsData[0].id);
+        if (convsData.length > 0 && !selectedId) {
+          setSelectedId(convsData[0].id);
+        }
       } else {
         setConversations([]);
         setSelectedId(null);
@@ -90,23 +91,35 @@ export default function LiveInboxPage() {
       console.error("Failed to load inbox data", err);
     }
 
-    setLoading(false);
+    if (!isBackground) setLoading(false);
+  };
+
+  const loadMessages = async (convId: string) => {
+    try {
+      const data = await fetchMessages(convId);
+      if (Array.isArray(data)) setMessages(data);
+    } catch (err) {
+      console.error("Failed to fetch messages", err);
+    }
   };
 
   useEffect(() => {
     loadConversations();
-  }, []);
+    
+    // Polling interval for live updates
+    const interval = setInterval(() => {
+      loadConversations(true);
+      if (selectedId) {
+        loadMessages(selectedId);
+      }
+    }, 5000); // 5 seconds polling
+    
+    return () => clearInterval(interval);
+  }, [selectedId]); // depend on selectedId so the interval closure has the latest selectedId
 
-  // Fetch messages when selected conversation changes
   useEffect(() => {
     if (selectedId) {
-      fetchMessages(selectedId).then((data) => {
-        if (Array.isArray(data)) {
-          setMessages(data);
-        } else {
-          setMessages([]);
-        }
-      });
+      loadMessages(selectedId);
     } else {
       setMessages([]);
     }

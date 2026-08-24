@@ -79,9 +79,12 @@ export default function ApiKeysPage() {
       if (json.success && json.data) {
         setKeys((prev) => [json.data, ...prev.filter((k) => k.maskedKey !== json.data.maskedKey)]);
         setNewKeyInput("");
+      } else {
+        alert("Error adding key: " + (json.error || "Unknown error"));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to add key:", err);
+      alert("Failed to connect to the backend server. Make sure it is running. Error: " + err.message);
     } finally {
       setIsAdding(false);
     }

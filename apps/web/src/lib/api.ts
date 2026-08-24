@@ -197,8 +197,8 @@ export async function sendMessage(conversationId: string, text: string) {
 
 export async function toggleConversationMode(conversationId: string, isHumanControl: boolean) {
   try {
-    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/mode`, {
-      method: "PATCH",
+    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/toggle-mode`, {
+      method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({ isHumanControl }),
     });
