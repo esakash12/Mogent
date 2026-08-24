@@ -92,7 +92,7 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>(mockClients);
 
   useEffect(() => {
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
     fetch(`${API_BASE}/api/admin/clients`, { cache: "no-store" })
       .then((res) => res.json())
       .then((json) => {

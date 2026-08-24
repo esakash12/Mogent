@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 function getHeaders(customHeaders: Record<string, string> = {}) {
   const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : null;
