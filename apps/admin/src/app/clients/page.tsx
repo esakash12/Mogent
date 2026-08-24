@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Users,
   Search,
@@ -90,6 +90,33 @@ export default function ClientsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<string>("ALL");
   const [clients, setClients] = useState<Client[]>(mockClients);
+
+  useEffect(() => {
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    fetch(`${API_BASE}/api/admin/clients`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped: Client[] = json.data.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            email: c.ownerEmail || "owner@workspace.com",
+            pagesCount: c.pagesCount || 1,
+            plan: "Pro",
+            messagesUsed: 2450,
+            messageLimit: 50000,
+            status: "ACTIVE",
+            joinedDate: new Date(c.createdAt).toLocaleDateString("en-US", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            }),
+          }));
+          setClients(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const filteredClients = clients.filter((c) => {
     const matchesSearch =

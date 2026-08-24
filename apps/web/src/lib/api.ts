@@ -1,9 +1,37 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
+function getHeaders(customHeaders: Record<string, string> = {}) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : null;
+  const workspaceStr = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") : null;
+  let workspaceId = "";
+  if (workspaceStr) {
+    try {
+      workspaceId = JSON.parse(workspaceStr)?.id || "";
+    } catch {}
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...customHeaders,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  if (workspaceId) {
+    headers["x-workspace-id"] = workspaceId;
+  }
+
+  return headers;
+}
+
 // --- ANALYTICS ---
 export async function fetchAnalytics() {
   try {
-    const res = await fetch(`${API_BASE}/api/dashboard/analytics`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/dashboard/analytics`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error("Failed to fetch analytics");
     const json = await res.json();
     return json.data;
@@ -13,13 +41,86 @@ export async function fetchAnalytics() {
   }
 }
 
+// --- FACEBOOK PAGES ---
+export async function fetchPages() {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch pages");
+    const json = await res.json();
+    return json.data || [];
+  } catch (err) {
+    console.warn("Error fetching pages:", err);
+    return [];
+  }
+}
+
+export async function createPage(data: {
+  name: string;
+  pageId: string;
+  accessToken: string;
+  systemPrompt?: string;
+  aiMode?: string;
+  category?: string;
+}) {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    return json.data;
+  } catch (err) {
+    console.error("Error creating page:", err);
+    return null;
+  }
+}
+
+export async function updatePageSettings(
+  pageId: string,
+  data: { aiMode?: string; systemPrompt?: string; temperature?: number }
+) {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages/${pageId}`, {
+      method: "PATCH",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    return json.success;
+  } catch (err) {
+    console.error("Error updating page:", err);
+    return false;
+  }
+}
+
+export async function deletePage(pageId: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages/${pageId}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    const json = await res.json();
+    return json.success;
+  } catch (err) {
+    console.error("Error deleting page:", err);
+    return false;
+  }
+}
+
 // --- CONVERSATIONS ---
 export async function fetchConversations() {
   try {
-    const res = await fetch(`${API_BASE}/api/conversations`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/conversations`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error("Failed to fetch conversations");
     const json = await res.json();
-    return json.data;
+    return json.data || [];
   } catch (err) {
     console.warn("Using fallback conversations data:", err);
     return null;
@@ -28,10 +129,13 @@ export async function fetchConversations() {
 
 export async function fetchMessages(conversationId: string) {
   try {
-    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error("Failed to fetch messages");
     const json = await res.json();
-    return json.data;
+    return json.data || [];
   } catch (err) {
     console.warn("Using fallback messages data:", err);
     return null;
@@ -42,7 +146,7 @@ export async function sendMessage(conversationId: string, text: string) {
   try {
     const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({ text }),
     });
     const json = await res.json();
@@ -57,7 +161,7 @@ export async function toggleConversationMode(conversationId: string, isHumanCont
   try {
     const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/mode`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify({ isHumanControl }),
     });
     return res.ok;
@@ -70,10 +174,13 @@ export async function toggleConversationMode(conversationId: string, isHumanCont
 // --- PRODUCTS ---
 export async function fetchProducts() {
   try {
-    const res = await fetch(`${API_BASE}/api/products`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/products`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error("Failed to fetch products");
     const json = await res.json();
-    return json.data;
+    return json.data || [];
   } catch (err) {
     console.warn("Using fallback products data:", err);
     return null;
@@ -91,7 +198,7 @@ export async function createProduct(data: {
   try {
     const res = await fetch(`${API_BASE}/api/products`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify(data),
     });
     const json = await res.json();
@@ -106,6 +213,7 @@ export async function toggleProductStock(productId: string) {
   try {
     const res = await fetch(`${API_BASE}/api/products/${productId}/stock`, {
       method: "PATCH",
+      headers: getHeaders(),
     });
     const json = await res.json();
     return json.inStock;
@@ -119,10 +227,13 @@ export async function toggleProductStock(productId: string) {
 export async function fetchContacts(filter?: string) {
   try {
     const url = filter ? `${API_BASE}/api/contacts?filter=${filter}` : `${API_BASE}/api/contacts`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error("Failed to fetch contacts");
     const json = await res.json();
-    return json.data;
+    return json.data || [];
   } catch (err) {
     console.warn("Using fallback contacts data:", err);
     return null;
@@ -132,7 +243,10 @@ export async function fetchContacts(filter?: string) {
 // --- KNOWLEDGE & WHATSAPP ---
 export async function fetchKnowledgeAndWhatsApp() {
   try {
-    const res = await fetch(`${API_BASE}/api/knowledge`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/api/knowledge`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error("Failed to fetch knowledge");
     const json = await res.json();
     return json.data;
@@ -146,7 +260,7 @@ export async function createKnowledgeItem(data: { title: string; category: strin
   try {
     const res = await fetch(`${API_BASE}/api/knowledge`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify(data),
     });
     const json = await res.json();
@@ -159,7 +273,10 @@ export async function createKnowledgeItem(data: { title: string; category: strin
 
 export async function deleteKnowledgeItem(id: string) {
   try {
-    await fetch(`${API_BASE}/api/knowledge/${id}`, { method: "DELETE" });
+    await fetch(`${API_BASE}/api/knowledge/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
     return true;
   } catch (err) {
     console.error("Error deleting knowledge item:", err);
@@ -177,7 +294,7 @@ export async function saveWhatsAppProtocol(data: {
   try {
     const res = await fetch(`${API_BASE}/api/knowledge/whatsapp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getHeaders(),
       body: JSON.stringify(data),
     });
     return res.ok;

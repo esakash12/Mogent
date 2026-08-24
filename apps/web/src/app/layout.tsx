@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: "Automate Facebook Messenger & Web Chat with Multi-turn Gemini AI & BullMQ Queue",
 };
 
+import { AuthProvider } from "@/lib/auth-context";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -17,7 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-[#0A0A0A] text-[#EDEDED] antialiased selection:bg-primary/30`}>
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

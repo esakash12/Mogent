@@ -20,10 +20,10 @@ export default function LandingPage() {
           <Link href="#docs" className="hover:text-white transition-colors">Documentation</Link>
         </nav>
         <div className="flex items-center gap-3 md:gap-4">
-          <Link href="/dashboard" className="hidden sm:block text-[13px] font-medium text-[#888] hover:text-white transition-colors">
+          <Link href="/login" className="hidden sm:block text-[13px] font-medium text-[#888] hover:text-white transition-colors">
             Log in
           </Link>
-          <Link href="/dashboard" className="px-3 md:px-4 py-2 rounded-md bg-white text-black text-[12px] md:text-[13px] font-medium hover:bg-[#EDEDED] transition-colors">
+          <Link href="/register" className="px-3 md:px-4 py-2 rounded-md bg-white text-black text-[12px] md:text-[13px] font-medium hover:bg-[#EDEDED] transition-colors">
             Get Started
           </Link>
         </div>
@@ -48,12 +48,12 @@ export default function LandingPage() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300 w-full sm:w-auto">
-          <Link href="/dashboard" className="w-full sm:w-auto justify-center px-8 py-3.5 rounded-lg bg-white text-black font-semibold text-[15px] hover:bg-[#EDEDED] transition-colors flex items-center gap-2">
+          <Link href="/register" className="w-full sm:w-auto justify-center px-8 py-3.5 rounded-lg bg-white text-black font-semibold text-[15px] hover:bg-[#EDEDED] transition-colors flex items-center gap-2">
             Start for free
             <ArrowRight className="w-4 h-4" />
           </Link>
-          <Link href="#demo" className="w-full sm:w-auto justify-center px-8 py-3.5 rounded-lg bg-[#111] text-[#EDEDED] border border-[#333] font-semibold text-[15px] hover:bg-[#222] transition-colors flex items-center">
-            Book a demo
+          <Link href="/login" className="w-full sm:w-auto justify-center px-8 py-3.5 rounded-lg bg-[#111] text-[#EDEDED] border border-[#333] font-semibold text-[15px] hover:bg-[#222] transition-colors flex items-center">
+            Sign In
           </Link>
         </div>
 

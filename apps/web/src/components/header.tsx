@@ -27,9 +27,12 @@ const navigation = [
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
+import { useAuth } from "@/lib/auth-context";
+
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const { workspace, user } = useAuth();
 
   return (
     <>
@@ -46,14 +49,14 @@ export function Header() {
           {/* Breadcrumbs */}
           <div className="flex items-center gap-2 text-[13px] font-medium text-[#EDEDED]">
             <div className="flex items-center gap-1.5 text-[#888]">
-              <span className="hidden sm:inline">Shohag</span>
+              <span className="hidden sm:inline">{workspace?.name || user?.name || "Workspace"}</span>
               <span className="hidden sm:inline text-[#333]">/</span>
               <span className="text-[#EDEDED] capitalize">
-                {pathname === "/dashboard" ? "Analytics" : pathname.split("/")[2] || "Workspace"}
+                {pathname === "/dashboard" ? "Analytics" : pathname.split("/")[2] || "Overview"}
               </span>
             </div>
             <span className="ml-2 px-1.5 py-0.5 rounded bg-[#1C1C1C] text-[#888] text-[10px] font-mono border border-[#333]">
-              Pro
+              {workspace?.role || "Active"}
             </span>
           </div>
         </div>

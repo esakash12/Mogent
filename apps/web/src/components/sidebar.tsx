@@ -59,8 +59,20 @@ const mainNavigation = [
   },
 ];
 
+import { useAuth } from "@/lib/auth-context";
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, workspace, logout } = useAuth();
+
+  const userInitials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .substring(0, 2)
+    : "US";
 
   return (
     <aside className="w-[240px] border-r border-[#222] bg-[#0A0A0A] flex flex-col justify-between shrink-0 h-screen sticky top-0 z-20 select-none">
@@ -149,17 +161,25 @@ export function Sidebar() {
         </div>
 
         {/* User Account */}
-        <div className="p-2.5 rounded-xl bg-[#111] border border-[#222] flex items-center justify-between hover:border-[#333] transition-colors cursor-pointer group">
+        <div 
+          onClick={logout}
+          title="Click to sign out"
+          className="p-2.5 rounded-xl bg-[#111] border border-[#222] flex items-center justify-between hover:border-red-500/30 hover:bg-red-500/5 transition-colors cursor-pointer group"
+        >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 border border-[#444] flex items-center justify-center font-bold text-xs text-white shrink-0">
-              SH
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-orange-600 border border-[#444] flex items-center justify-center font-bold text-xs text-black shrink-0">
+              {userInitials}
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-[#EDEDED] truncate">Shohag Workspace</span>
-              <span className="text-[10px] text-[#888] truncate font-mono">Pro Plan • 3 Pages</span>
+              <span className="text-xs font-semibold text-[#EDEDED] truncate">
+                {workspace?.name || user?.name || "My Workspace"}
+              </span>
+              <span className="text-[10px] text-[#888] truncate font-mono">
+                {user?.email || "Signed In"} • Click to Logout
+              </span>
             </div>
           </div>
-          <LogOut className="w-4 h-4 text-[#555] group-hover:text-[#EDEDED] transition-colors shrink-0" />
+          <LogOut className="w-4 h-4 text-[#555] group-hover:text-red-400 transition-colors shrink-0" />
         </div>
       </div>
     </aside>

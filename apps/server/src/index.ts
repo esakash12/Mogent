@@ -3,6 +3,9 @@ import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { config } from "./config";
+import { authRouter } from "./routes/auth";
+import { pagesRouter } from "./routes/pages";
+import { adminRouter } from "./routes/admin";
 import { webhookRouter } from "./routes/webhook";
 import { dashboardRouter } from "./routes/dashboard";
 import { conversationsRouter } from "./routes/conversations";
@@ -54,6 +57,9 @@ app.get("/health", async (c) => {
 // -----------------------------------------------------------------------------
 // 2. MOUNT ROUTES
 // -----------------------------------------------------------------------------
+app.route("/api/auth", authRouter);
+app.route("/api/pages", pagesRouter);
+app.route("/api/admin", adminRouter);
 app.route("/webhook", webhookRouter);
 app.route("/api/dashboard", dashboardRouter);
 app.route("/api/conversations", conversationsRouter);
