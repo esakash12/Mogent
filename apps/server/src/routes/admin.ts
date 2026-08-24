@@ -6,16 +6,15 @@ import { config } from "../config";
 export const adminRouter = new Hono();
 
 const REDIS_KEYS_SET = "mogent:gemini_keys_pool";
+const REDIS_META_CONFIG = "mogent:meta_developer_config";
 
 // -----------------------------------------------------------------------------
 // 1. GET ALL GEMINI KEYS IN ROTATION
 // -----------------------------------------------------------------------------
 adminRouter.get("/keys", async (c) => {
   try {
-    // Get custom keys stored in Redis
     const customKeys = await redisConnection.smembers(REDIS_KEYS_SET);
 
-    // Get keys from environment
     const envKeys = (config.aiProxy ? process.env.GEMINI_API_KEYS || "" : "")
       .split(",")
       .map((k) => k.trim())
@@ -23,7 +22,6 @@ adminRouter.get("/keys", async (c) => {
 
     const allRawKeys = Array.from(new Set([...envKeys, ...customKeys]));
 
-    // If no keys configured yet, return starter mock status for UI display
     const keysList = allRawKeys.map((key, idx) => {
       const masked = `${key.substring(0, 6)}...${key.substring(key.length - 5)}`;
       return {
@@ -134,6 +132,54 @@ adminRouter.get("/clients", async (c) => {
     return c.json({ success: true, data });
   } catch (error: any) {
     console.error("Error fetching clients:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 5. GET & UPDATE CENTRAL META DEVELOPER APP CONFIG (FOR ALL MERCHANTS)
+// -----------------------------------------------------------------------------
+adminRouter.get("/meta-config", async (c) => {
+  try {
+    const redisVal = await redisConnection.get(REDIS_META_CONFIG);
+    let parsed = redisVal ? JSON.parse(redisVal) : null;
+
+    const data = {
+      appId: parsed?.appId || config.facebook.appId || process.env.FACEBOOK_APP_ID || "",
+      appSecret: parsed?.appSecret || config.facebook.appSecret || process.env.FACEBOOK_APP_SECRET || "",
+      verifyToken: parsed?.verifyToken || config.facebook.verifyToken || "mogent_fb_verify_token_secure",
+      webhookUrl: "https://api.mogent.tech/webhook/facebook",
+      privacyUrl: "https://mogent.tech/privacy",
+      termsUrl: "https://mogent.tech/terms",
+      dataDeletionUrl: "https://mogent.tech/data-deletion",
+    };
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.post("/meta-config", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { appId, appSecret, verifyToken } = body;
+
+    const updated = {
+      appId: (appId || "").trim(),
+      appSecret: (appSecret || "").trim(),
+      verifyToken: (verifyToken || "mogent_fb_verify_token_secure").trim(),
+    };
+
+    await redisConnection.set(REDIS_META_CONFIG, JSON.stringify(updated));
+
+    // Update memory config
+    if (updated.appId) config.facebook.appId = updated.appId;
+    if (updated.appSecret) config.facebook.appSecret = updated.appSecret;
+    if (updated.verifyToken) config.facebook.verifyToken = updated.verifyToken;
+
+    return c.json({ success: true, message: "Meta App configuration updated successfully!", data: updated });
+  } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }
 });

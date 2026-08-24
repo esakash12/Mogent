@@ -57,6 +57,44 @@ export async function fetchPages() {
   }
 }
 
+export async function fetchFacebookConfig() {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages/facebook/config`, {
+      headers: getHeaders(),
+    });
+    const json = await res.json();
+    return json.data;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function inspectFacebookToken(token: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages/inspect-token`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ token }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function connectFacebookPagesOAuth(pages: Array<{ id: string; name: string; accessToken: string; category?: string }>) {
+  try {
+    const res = await fetch(`${API_BASE}/api/pages/facebook/oauth-connect`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ pages }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function createPage(data: {
   name: string;
   pageId: string;
