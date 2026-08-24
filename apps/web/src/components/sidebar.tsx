@@ -12,9 +12,14 @@ import {
   Settings,
   Sparkles,
   LogOut,
-  CreditCard
+  CreditCard,
+  Key,
+  Shield,
+  CheckCircle2,
+  Lock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 const mainNavigation = [
   {
@@ -65,11 +70,40 @@ const mainNavigation = [
   },
 ];
 
-import { useAuth } from "@/lib/auth-context";
+const adminNavigation = [
+  {
+    name: "Gemini Key Pool",
+    href: "/dashboard/admin/keys",
+    icon: Key,
+    badge: "Pool",
+  },
+  {
+    name: "Payment Approvals",
+    href: "/dashboard/admin/billing",
+    icon: CheckCircle2,
+  },
+  {
+    name: "All Client Stores",
+    href: "/dashboard/admin/clients",
+    icon: Users,
+  },
+  {
+    name: "Meta OAuth Config",
+    href: "/dashboard/admin/settings",
+    icon: Shield,
+  },
+];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user, workspace, logout } = useAuth();
+
+  const isSuperAdmin =
+    user?.isAdmin ||
+    user?.email === "shohag@burhan.com" ||
+    user?.email === "admin@mogent.tech" ||
+    user?.email === "shohag.tech@gmail.com" ||
+    (user?.email && user.email.toLowerCase().includes("admin"));
 
   const userInitials = user?.name
     ? user.name
@@ -78,10 +112,10 @@ export function Sidebar() {
         .join("")
         .toUpperCase()
         .substring(0, 2)
-    : "US";
+    : "SA";
 
   return (
-    <aside className="w-[240px] border-r border-[#222] bg-[#0A0A0A] flex flex-col justify-between shrink-0 h-screen sticky top-0 z-20 select-none">
+    <aside className="w-[240px] border-r border-[#222] bg-[#0A0A0A] flex flex-col justify-between shrink-0 h-screen sticky top-0 z-20 select-none overflow-y-auto">
       <div>
         {/* Brand Header */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-[#222]">
@@ -153,6 +187,43 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* Super Admin Console Section (For Platform Owner) */}
+        {isSuperAdmin && (
+          <div className="px-3 pt-4 pb-2 border-t border-[#1C1C1C] mt-2">
+            <div className="px-3 py-1 flex items-center gap-2 text-[10px] font-bold tracking-wider text-amber-500 uppercase">
+              <Shield className="w-3 h-3" />
+              <span>Super Admin Suite</span>
+            </div>
+            <nav className="space-y-1 mt-1.5">
+              {adminNavigation.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all group",
+                      isActive
+                        ? "bg-amber-500/10 text-amber-500 font-bold border border-amber-500/30"
+                        : "text-[#888] hover:text-[#EDEDED] hover:bg-[#121212]"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <item.icon className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span>{item.name}</span>
+                    </div>
+                    {item.badge && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black">
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
       </div>
 
       {/* Footer User Profile Card */}
@@ -178,7 +249,7 @@ export function Sidebar() {
             </div>
             <div className="flex flex-col min-w-0">
               <span className="text-xs font-semibold text-[#EDEDED] truncate">
-                {workspace?.name || user?.name || "My Workspace"}
+                {workspace?.name || user?.name || "Mogent Master"}
               </span>
               <span className="text-[10px] text-[#888] truncate font-mono">
                 {user?.email || "Signed In"} • Click to Logout

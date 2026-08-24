@@ -8,6 +8,7 @@ export interface User {
   name: string | null;
   email: string;
   avatarUrl?: string | null;
+  isAdmin?: boolean;
 }
 
 export interface Workspace {
