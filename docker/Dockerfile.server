@@ -22,7 +22,7 @@ COPY packages/ ./packages/
 COPY apps/server/ ./apps/server/
 
 # Generate Prisma Client & Build Packages
-RUN cd packages/database && npx prisma generate
+RUN cd packages/database && npx prisma generate && npm run build
 RUN cd packages/shared && npm run build
 RUN cd apps/server && npm run build
 
