@@ -188,6 +188,21 @@ export function startMessageWorker() {
         (k) => `[${k.type} - ${k.title}]: ${k.content}`
       );
 
+      // Inject WhatsApp & Business Contacts into Knowledge Context
+      if (page.workspace?.whatsAppNumber) {
+        const cleanDigits = page.workspace.whatsAppNumber.replace(/[^\d]/g, "");
+        const waLink = `https://wa.me/${cleanDigits}${
+          page.workspace.whatsAppPrefillText
+            ? `?text=${encodeURIComponent(page.workspace.whatsAppPrefillText)}`
+            : ""
+        }`;
+        knowledgeContext.push(
+          `[অফিসিয়াল যোগাযোগ ও হোয়াটসঅ্যাপ]: আমাদের অফিসিয়াল WhatsApp নাম্বার: ${page.workspace.whatsAppNumber} (সরাসরি চ্যাট লিংক: ${waLink}), হটলাইন: ${
+            page.workspace.hotlineNumber || page.workspace.whatsAppNumber
+          }, অফিস/শপ ঠিকানা: ${page.workspace.officeAddress || "ঢাকা, বাংলাদেশ"}`
+        );
+      }
+
       // Default system prompt (Real Human Bangladeshi Sales Moderator)
       const systemPrompt =
         page.systemPrompt ||
@@ -223,6 +238,26 @@ export function startMessageWorker() {
           } catch {}
         }
 
+        // Check if WhatsApp auto-append is enabled (ALWAYS mode)
+        if (
+          page.workspace?.whatsAppMode === "ALWAYS" &&
+          page.workspace.whatsAppNumber &&
+          finalReplyText
+        ) {
+          const cleanDigits = page.workspace.whatsAppNumber.replace(/[^\d]/g, "");
+          const waLink = `https://wa.me/${cleanDigits}${
+            page.workspace.whatsAppPrefillText
+              ? `?text=${encodeURIComponent(page.workspace.whatsAppPrefillText)}`
+              : ""
+          }`;
+
+          if (!finalReplyText.includes("wa.me") && !finalReplyText.includes(page.workspace.whatsAppNumber)) {
+            finalReplyText += `\n\n📲 সরাসরি WhatsApp চ্যাট: ${waLink}\n📞 হটলাইন: ${
+              page.workspace.hotlineNumber || page.workspace.whatsAppNumber
+            }`;
+          }
+        }
+
         // 10. Send Reply to Customer via Facebook Messenger Send API
         if (finalReplyText && page.aiMode !== "MANUAL") {
           await facebookApi.sendTextMessage(pageAccessToken, senderPsid, finalReplyText);
@@ -235,7 +270,7 @@ export function startMessageWorker() {
               content: finalReplyText,
               mediaType: "TEXT",
               thinkingProcess: thinking,
-              modelUsed: config.aiProxy.defaultModel,
+              modelUsed: "Mogent AI Engine",
               status: "SENT",
             },
           });

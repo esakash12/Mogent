@@ -29,7 +29,7 @@ const PLANS = [
     features: [
       "1 Facebook Page Connection",
       "100 AI Automated Messages / mo",
-      "Gemini 3.1 Flash Lite (backup) Model",
+      "Mogent Engine Turbo (v3.1)",
       "Basic FAQ Knowledge Base",
       "Standard Community Support",
     ],
@@ -44,7 +44,7 @@ const PLANS = [
     features: [
       "1 Facebook Page Connection",
       "5,000 AI Automated Messages / mo",
-      "Gemini 3.5 Flash Lite (main) Model",
+      "Mogent Engine Ultra (v3.5)",
       "Advanced FAQ & Product Catalog",
       "Lead Capture (Name, Phone, Address)",
       "Standard Priority Support",

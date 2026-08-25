@@ -370,7 +370,7 @@ export default function IntegrationsPage() {
               <div className="space-y-1">
                 <h3 className="font-bold text-sm text-[#EDEDED]">No Facebook Pages Connected</h3>
                 <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-                  Connect your business Facebook Page via 1-Click login or token to start automating Messenger replies and order booking with Gemini AI.
+                  Connect your business Facebook Page via 1-Click login or token to start automating Messenger replies and order booking with Mogent AI.
                 </p>
               </div>
               <button

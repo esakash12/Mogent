@@ -44,7 +44,7 @@ export default function LandingPage() {
         </h1>
         
         <p className="text-[#888] text-base md:text-xl max-w-2xl mb-8 md:mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
-          Connect your Facebook pages and let Gemini 3.5 Flash Lite handle 95% of your customer inquiries instantly. Zero wait times. Perfect responses.
+          Connect your Facebook pages and let Mogent AI Engine handle 95% of your customer inquiries instantly. Zero wait times. Perfect responses.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300 w-full sm:w-auto">
@@ -146,7 +146,7 @@ export default function LandingPage() {
               </div>
               <h3 className="text-xl font-semibold mb-3 text-[#EDEDED]">Contextual AI Chat</h3>
               <p className="text-[#888] leading-relaxed">
-                Gemini 3.5 Flash Lite understands context across multiple messages, providing accurate and natural responses in Bengali or English.
+                Mogent AI Engine understands context across multiple messages, providing accurate and natural responses in Bengali or English.
               </p>
             </div>
             <div className="p-8 rounded-2xl bg-[#111] border border-[#222]">

@@ -209,14 +209,14 @@ export default function LiveInboxPage() {
             </div>
             <h2 className="font-bold text-lg text-[#EDEDED]">Waiting for Incoming Messages</h2>
             <p className="text-xs text-[#888] leading-relaxed">
-              Your Facebook Page <strong className="text-[#EDEDED]">"{pageName}"</strong> is connected and ready. Send a test message to your page on Messenger, and it will appear here in real-time with autonomous Gemini 2.0 AI replies!
+              Your Facebook Page <strong className="text-[#EDEDED]">"{pageName}"</strong> is connected and ready. Send a test message to your page on Messenger, and it will appear here in real-time with autonomous Mogent AI replies!
             </p>
           </div>
         ) : (
           <div className="space-y-2 max-w-md">
             <h2 className="font-bold text-lg text-[#EDEDED]">No Facebook Pages Connected Yet</h2>
             <p className="text-xs text-[#888] leading-relaxed">
-              Connect your Facebook business page to activate Gemini 2.0 AI auto-replies, product recommendations, and real-time live inbox.
+              Connect your Facebook business page to activate Mogent AI auto-replies, product recommendations, and real-time live inbox.
             </p>
             <Link
               href="/dashboard/pages"
@@ -383,7 +383,7 @@ export default function LiveInboxPage() {
                     {isCustomer && <span>{selectedConv.customerName}</span>}
                     {isAI && (
                       <span className="text-indigo-400 font-medium flex items-center gap-1">
-                        <Bot className="w-3 h-3" /> Gemini 3.5
+                        <Bot className="w-3 h-3" /> Mogent AI
                       </span>
                     )}
                     {isHuman && (

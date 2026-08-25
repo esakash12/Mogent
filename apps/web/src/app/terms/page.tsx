@@ -38,7 +38,7 @@ export default function TermsOfServicePage() {
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-[#EDEDED]">2. Service Description & AI Operation</h2>
             <p>
-              Mogent provides autonomous AI conversational agents for Facebook Messenger and e-commerce stores. While our AI models (Gemini 2.0) are highly accurate and fine-tuned on your knowledge base, merchants remain responsible for monitoring AI interactions, verifying pricing, and fulfilling accepted customer orders.
+              Mogent provides autonomous AI conversational agents for Facebook Messenger and e-commerce stores. While our Mogent AI models are highly accurate and fine-tuned on your knowledge base, merchants remain responsible for monitoring AI interactions, verifying pricing, and fulfilling accepted customer orders.
             </p>
           </section>
 

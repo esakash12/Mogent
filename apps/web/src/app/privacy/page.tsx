@@ -53,9 +53,9 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-sm font-bold text-[#EDEDED]">4. Gemini AI Model Usage</h2>
+            <h2 className="text-sm font-bold text-[#EDEDED]">4. Mogent AI Engine Usage</h2>
             <p>
-              Customer queries are processed in real-time through Google DeepMind Gemini 2.0 AI models exclusively to generate context-aware replies and catalog recommendations for your business. Chat data is processed in stateless memory and is not used to train global public AI models without merchant consent.
+              Customer queries are processed in real-time through Mogent's secure AI architecture exclusively to generate context-aware replies and catalog recommendations for your business. Chat data is processed in stateless memory and is not used to train public AI models without merchant consent.
             </p>
           </section>
 

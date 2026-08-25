@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Mogent - Enterprise AI Customer Support",
-  description: "Automate Facebook Messenger & Web Chat with Multi-turn Gemini AI & BullMQ Queue",
+  title: "Mogent - Enterprise AI Customer Support & Sales Automation",
+  description: "Automate Facebook Messenger & Web Chat with Mogent AI Engine & High-Speed Queue Architecture",
 };
 
 import { AuthProvider } from "@/lib/auth-context";

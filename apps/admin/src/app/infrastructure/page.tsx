@@ -70,7 +70,7 @@ export default function InfrastructurePage() {
             System Infrastructure & Services
           </h1>
           <p className="text-[#888] text-sm mt-1">
-            Live status of Core API, Gemini AI Proxy, PostgreSQL, and Redis memory pool.
+            Live status of Core API, Mogent AI Gateway, PostgreSQL, and Redis memory pool.
           </p>
         </div>
 

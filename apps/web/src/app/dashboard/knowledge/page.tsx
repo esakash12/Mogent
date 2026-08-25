@@ -113,7 +113,7 @@ export default function KnowledgeBasePage() {
             Knowledge Base & RAG Context
           </h1>
           <p className="text-[14px] text-[#888] mt-1">
-            Teach your Gemini 2.0 AI agent your company policies, FAQs, delivery rules, and product specs.
+            Teach your Mogent AI agent your company policies, FAQs, delivery rules, and product specs.
           </p>
         </div>
 
@@ -176,7 +176,7 @@ export default function KnowledgeBasePage() {
           <div className="space-y-1">
             <h3 className="font-bold text-sm text-[#EDEDED]">No Knowledge Documents Found</h3>
             <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-              Add your store's return policy, delivery charges, payment options, and FAQs so Gemini 2.0 AI can accurately answer customer questions.
+              Add your store's return policy, delivery charges, payment options, and FAQs so Mogent AI can accurately answer customer questions.
             </p>
           </div>
           <button

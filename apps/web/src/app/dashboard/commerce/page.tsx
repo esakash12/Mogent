@@ -117,7 +117,7 @@ export default function CommerceSectorPage() {
             Orders & Product Catalog
           </h1>
           <p className="text-xs text-[#888] mt-0.5">
-            Manage your store items for Gemini 2.0 AI sales recommendation, order capture, and inventory.
+            Manage your store items for Mogent AI sales recommendation, order capture, and inventory.
           </p>
         </div>
 
@@ -169,7 +169,7 @@ export default function CommerceSectorPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs text-[#888]">
-              Products your Gemini AI assistant recommends with real pricing, stock status, and specs.
+              Products your Mogent AI assistant recommends with real pricing, stock status, and specs.
             </span>
 
             <button
@@ -194,7 +194,7 @@ export default function CommerceSectorPage() {
               <div className="space-y-1">
                 <h3 className="font-bold text-sm text-[#EDEDED]">Your Product Catalog is Empty</h3>
                 <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-                  Add products to your store so Gemini 2.0 AI can instantly answer price inquiries, suggest items, and capture delivery details.
+                  Add products to your store so Mogent AI can instantly answer price inquiries, suggest items, and capture delivery details.
                 </p>
               </div>
               <button
@@ -259,7 +259,7 @@ export default function CommerceSectorPage() {
           <div className="space-y-1">
             <h3 className="font-bold text-sm text-[#EDEDED]">No Orders Captured Yet</h3>
             <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-              When a customer confirms a purchase in Facebook Messenger, Gemini 2.0 AI will automatically extract their address, mobile number, items, and log the order here.
+              When a customer confirms a purchase in Facebook Messenger, Mogent AI will automatically extract their address, mobile number, items, and log the order here.
             </p>
           </div>
         </div>

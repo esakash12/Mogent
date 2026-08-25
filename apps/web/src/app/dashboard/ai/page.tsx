@@ -20,7 +20,8 @@ import {
   Phone,
   MapPin,
   Shield,
-  HelpCircle
+  HelpCircle,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol, testPlaygroundChat, saveSystemPrompt } from "@/lib/api";
@@ -41,6 +42,7 @@ export default function AIAutomationSectorPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [newCategory, setNewCategory] = useState("PRODUCT_CATALOG");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- 2. WHATSAPP & CONTACT SHARING STATE ---
   const [whatsAppMode, setWhatsAppMode] = useState<"ON_DEMAND" | "ALWAYS" | "DISABLED">("ON_DEMAND");
@@ -49,6 +51,7 @@ export default function AIAutomationSectorPage() {
   const [officeAddress, setOfficeAddress] = useState("Level 4, House 12, Road 4, Dhanmondi, Dhaka");
   const [whatsAppPrefillText, setWhatsAppPrefillText] = useState("Hello! I saw your products on Facebook and want to place an order.");
   const [contactSaved, setContactSaved] = useState(false);
+  const [isSavingContact, setIsSavingContact] = useState(false);
 
   // Load from DB
   useEffect(() => {
@@ -74,24 +77,17 @@ export default function AIAutomationSectorPage() {
     e.preventDefault();
     if (!newTitle.trim() || !newContent.trim()) return;
 
-    const payload = {
+    setIsSubmitting(true);
+    const created = await createKnowledgeItem({
       title: newTitle.trim(),
       category: newCategory,
       content: newContent.trim(),
-    };
+    });
+    setIsSubmitting(false);
 
-    const localItem = {
-      id: `k-${Date.now()}`,
-      ...payload,
-      priority: 5,
-    };
-    setKnowledgeItems([localItem, ...knowledgeItems]);
-    setShowAddKnowledge(false);
-
-    // Call API
-    const saved = await createKnowledgeItem(payload);
-    if (saved) {
-      setKnowledgeItems((prev) => prev.map((k) => (k.id === localItem.id ? saved : k)));
+    if (created) {
+      setKnowledgeItems((prev) => [created, ...prev]);
+      setShowAddKnowledge(false);
     }
 
     setNewTitle("");
@@ -105,16 +101,21 @@ export default function AIAutomationSectorPage() {
 
   const handleSaveContactProtocol = async (e: React.FormEvent) => {
     e.preventDefault();
-    setContactSaved(true);
-    setTimeout(() => setContactSaved(false), 2500);
-
-    await saveWhatsAppProtocol({
+    setIsSavingContact(true);
+    const res = await saveWhatsAppProtocol({
       mode: whatsAppMode,
       number: whatsAppNumber,
       hotline: hotlineNumber,
       address: officeAddress,
       prefillText: whatsAppPrefillText,
     });
+    setIsSavingContact(false);
+    if (res) {
+      setContactSaved(true);
+      setTimeout(() => setContactSaved(false), 3000);
+    } else {
+      alert("Failed to save WhatsApp & Contact settings. Please try again.");
+    }
   };
 
   const handleSaveSystemPrompt = async (e: React.FormEvent) => {
@@ -168,7 +169,7 @@ export default function AIAutomationSectorPage() {
           {
             role: "model",
             content: res.data.replyText || "কোনো উত্তর পাওয়া যায়নি।",
-            thinking: res.data.thinking || "Generated via Google Gemini 3.5 Flash Lite with Knowledge Base.",
+            thinking: res.data.thinking || "Generated via Mogent AI Engine with Knowledge Base.",
           },
         ]);
       } else {
@@ -333,7 +334,7 @@ export default function AIAutomationSectorPage() {
                   </div>
                   <div className="pt-2 border-t border-[#222] flex items-center justify-between text-[11px] text-[#10B981]">
                     <span className="flex items-center gap-1.5 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Active in Gemini Context
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Active in Mogent AI Context
                     </span>
                   </div>
                 </div>
@@ -416,7 +417,7 @@ export default function AIAutomationSectorPage() {
                 <div>
                   <h3 className="font-bold text-base text-[#EDEDED]">Custom AI System Prompt & Persona</h3>
                   <p className="text-xs text-[#888]">
-                    Provide detailed, multi-paragraph instructions to train Gemini on your exact tone, sales technique, and rules.
+                    Provide detailed, multi-paragraph instructions to train Mogent AI on your exact tone, sales technique, and rules.
                   </p>
                 </div>
               </div>
@@ -451,7 +452,7 @@ export default function AIAutomationSectorPage() {
                   type="button"
                   onClick={() =>
                     setSystemPrompt(
-                      `আপনি "${businessName || "আমাদের শপ"}" এর একজন অভিজ্ঞ, ভদ্র এবং অত্যন্ত আন্তরিক AI সেলস এক্সিকিউটিভ।\n\nকাজের নিয়মাবলী:\n১. সবসময় বাংলায় মিষ্টি ভাষায় কথা বলবেন এবং কাস্টমারকে সম্মান দিয়ে "আপনি" সম্বোধন করবেন।\n২. কাস্টমার কোনো প্রোডাক্ট পছন্দ করলে তাকে সাইজ ও কালার সিলেক্ট করতে সহায়তা করবেন।\n৩. অর্ডার কনফার্ম করতে কাস্টমারের কাছে তার নাম, মোবাইল নাম্বার এবং সম্পূর্ণ ডেলিভারি ঠিকানা চাইবেন।\n৪. আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।\n৫. কোনো তথ্য অজানা থাকলে কাস্টমারকে বলবেন যে আমাদের ম্যানেজার শীঘ্রই তার সাথে যোগাযোগ করবেন।`
+                      `আপনি "${businessName || "আমাদের শপ"}" এর একজন অভিজ্ঞ, ভদ্র এবং অত্যন্ত আন্তরিক বাস্তব মানব সেলস মডারেটর।\n\nকাজের নিয়মাবলী:\n১. সবসময় বাংলায় মিষ্টি ভাষায় কথা বলবেন এবং কাস্টমারকে সম্মান দিয়ে "আপনি" সম্বোধন করবেন।\n২. কাস্টমার কোনো প্রোডাক্ট পছন্দ করলে তাকে সাইজ ও কালার সিলেক্ট করতে সহায়তা করবেন।\n৩. অর্ডার কনফার্ম করতে কাস্টমারের কাছে তার নাম, মোবাইল নাম্বার এবং সম্পূর্ণ ডেলিভারি ঠিকানা চাইবেন।\n৪. আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।\n৫. কোনো তথ্য অজানা থাকলে কাস্টমারকে বলবেন যে আমাদের ম্যানেজার শীঘ্রই তার সাথে যোগাযোগ করবেন।`
                     )
                   }
                   className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
@@ -491,7 +492,7 @@ export default function AIAutomationSectorPage() {
                 className="w-full p-4 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-purple-500 font-sans leading-relaxed resize-y"
               />
               <p className="text-[11px] text-[#888]">
-                💡 <strong>Tip:</strong> You can include any special sales policies, discount limits, return policies, or Bengali conversational style instructions. Gemini will follow this prompt strictly on every message.
+                💡 <strong>Tip:</strong> You can include any special sales policies, discount limits, return policies, or Bengali conversational style instructions. Mogent AI will follow this prompt strictly on every message.
               </p>
             </div>
 
@@ -525,9 +526,10 @@ export default function AIAutomationSectorPage() {
                 </div>
               </div>
               {contactSaved && (
-                <span className="text-xs font-semibold text-[#10B981] flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved!
-                </span>
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span className="font-semibold">WhatsApp ও বিজনেস কনট্যাক্ট প্রোটোকল সফলভাবে সেভ হয়েছে!</span>
+                </div>
               )}
             </div>
 
@@ -582,7 +584,7 @@ export default function AIAutomationSectorPage() {
                   />
                   <div>
                     <p className="font-bold text-xs text-[#25D366]">
-                      💬 Persistent WhatsApp Button in Every Message
+                      💬 Persistent WhatsApp Link in Every Message
                     </p>
                     <p className="text-[11px] text-[#888] mt-0.5 leading-relaxed">
                       Every single message sent by the AI will automatically attach a direct clickable <strong>"Chat on WhatsApp"</strong> link at the bottom.
@@ -685,9 +687,16 @@ export default function AIAutomationSectorPage() {
             <div className="flex justify-end pt-2">
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-white text-black font-bold text-xs hover:bg-[#EDEDED] transition-colors shadow-md"
+                disabled={isSavingContact}
+                className="px-6 py-2.5 rounded-xl bg-white text-black font-bold text-xs hover:bg-[#EDEDED] transition-colors shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
               >
-                Save Contact Protocol
+                {isSavingContact ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving Protocol...
+                  </>
+                ) : (
+                  "Save Contact Protocol"
+                )}
               </button>
             </div>
           </div>

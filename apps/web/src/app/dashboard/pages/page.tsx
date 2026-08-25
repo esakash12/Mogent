@@ -148,7 +148,7 @@ export default function PagesManagementPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">Connected Facebook Pages</h1>
           <p className="text-xs text-[#888]">
-            Connect your Facebook Pages with Page Access Token for autonomous Gemini 2.0 AI Messenger sales & support.
+            Connect your Facebook Pages with Page Access Token for autonomous Mogent AI Messenger sales & support.
           </p>
         </div>
 
@@ -209,7 +209,7 @@ export default function PagesManagementPage() {
           <div className="space-y-1">
             <h3 className="text-sm font-bold text-[#EDEDED]">No Facebook Pages Connected Yet</h3>
             <p className="text-xs text-[#777] max-w-sm">
-              Connect your business Facebook page to start automating Messenger sales, answering customer inquiries, and capturing orders with Gemini 2.0 AI.
+              Connect your business Facebook page to start automating Messenger sales, answering customer inquiries, and capturing orders with Mogent AI.
             </p>
           </div>
           <button

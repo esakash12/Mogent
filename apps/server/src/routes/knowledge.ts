@@ -240,10 +240,30 @@ knowledgeRouter.post("/playground", async (c) => {
       model: config.aiProxy.defaultModel,
     });
 
+    let replyText = aiRes.data.replyText;
+    if (
+      workspace?.whatsAppMode === "ALWAYS" &&
+      workspace.whatsAppNumber &&
+      replyText
+    ) {
+      const cleanDigits = workspace.whatsAppNumber.replace(/[^\d]/g, "");
+      const waLink = `https://wa.me/${cleanDigits}${
+        workspace.whatsAppPrefillText
+          ? `?text=${encodeURIComponent(workspace.whatsAppPrefillText)}`
+          : ""
+      }`;
+
+      if (!replyText.includes("wa.me") && !replyText.includes(workspace.whatsAppNumber)) {
+        replyText += `\n\n📲 সরাসরি WhatsApp চ্যাট: ${waLink}\n📞 হটলাইন: ${
+          workspace.hotlineNumber || workspace.whatsAppNumber
+        }`;
+      }
+    }
+
     return c.json({
       success: true,
       data: {
-        replyText: aiRes.data.replyText,
+        replyText,
         thinking: aiRes.data.thinking,
         sentimentScore: aiRes.data.sentimentScore,
       },

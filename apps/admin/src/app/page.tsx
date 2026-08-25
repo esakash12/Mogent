@@ -67,7 +67,7 @@ export default function AdminOverviewPage() {
 
         <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A]">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-[#888]">Active Gemini Keys</span>
+            <span className="text-sm font-medium text-[#888]">Active API Keys</span>
             <div className="p-2 rounded-lg bg-[#222] text-[#EDEDED]">
               <Key className="w-4 h-4 text-indigo-400" />
             </div>
@@ -162,8 +162,8 @@ export default function AdminOverviewPage() {
               <span className="text-xs font-semibold text-[#EDEDED] block">Multiplexing Status</span>
               <p className="text-xs text-[#888] leading-relaxed">
                 {activeKeysCount > 0
-                  ? `${activeKeysCount} Gemini keys actively rotating with automatic rate limit failover.`
-                  : "No Gemini keys in pool. Add keys in the Key Rotator tab."}
+                  ? `${activeKeysCount} API keys actively rotating with automatic rate limit failover.`
+                  : "No API keys in pool. Add keys in the Key Rotator tab."}
               </p>
             </div>
           </div>

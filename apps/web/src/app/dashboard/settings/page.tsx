@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -341,7 +341,7 @@ export default function SettingsSectorPage() {
 
             <div className="p-4 rounded-xl bg-[#111] border border-[#222]">
               <span className="text-xs text-[#888]">AI Model</span>
-              <p className="text-lg font-bold text-[#10B981] mt-1">Gemini 3.5 Flash</p>
+              <p className="text-lg font-bold text-[#10B981] mt-1">Mogent Engine Ultra</p>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -161,7 +161,7 @@ export default function AutomationPage() {
             <span>Fallback AI Engine</span>
             <Bot className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-2xl font-bold text-emerald-400">Gemini 3.5</p>
+          <p className="text-2xl font-bold text-emerald-400">Mogent AI</p>
           <span className="text-[11px] text-[#666]">Answers non-escalated standard queries</span>
         </div>
       </div>

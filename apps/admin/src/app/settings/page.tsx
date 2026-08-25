@@ -213,8 +213,8 @@ export default function AdminSettingsPage() {
                 onChange={(e) => setDefaultModel(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
               >
-                <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (main)</option>
-                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (backup)</option>
+                <option value="gemini-3.5-flash-lite">Mogent Engine Ultra (v3.5)</option>
+                <option value="gemini-3.1-flash-lite">Mogent Engine Turbo (v3.1)</option>
               </select>
             </div>
 

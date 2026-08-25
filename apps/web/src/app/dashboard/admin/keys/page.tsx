@@ -116,7 +116,7 @@ export default function ApiKeysPage() {
             <span>Super Admin Key Pool</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#EDEDED]">
-            Gemini Key Rotator & Gateway
+            Mogent API Key Rotator & Gateway
           </h1>
           <p className="text-[#888] text-xs mt-1">
             Real-time RPM/TPM load balancing, cooldown tracking, and automatic failover across master keys.
@@ -175,7 +175,7 @@ export default function ApiKeysPage() {
             type="text"
             value={newKeyInput}
             onChange={(e) => setNewKeyInput(e.target.value)}
-            placeholder="Add new Gemini API Key (e.g. AIzaSy...)"
+            placeholder="Add new Mogent Engine API Key (e.g. AIzaSy...)"
             className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-[13px] text-[#EDEDED] focus:outline-none focus:border-amber-500 transition-colors placeholder:text-[#555] font-mono"
           />
         </div>

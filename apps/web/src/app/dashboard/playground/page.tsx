@@ -61,7 +61,7 @@ export default function PlaygroundPage() {
         think = "Detected ORDER_INTENT. Prompted user for delivery address & phone number.";
       } else {
         reply = "ধন্যবাদ মেসেজ দেওয়ার জন্য! জি, আপনার এই বিষয়ে বিস্তারিত জানতে আমরা আনন্দের সাথে সাহায্য করব। আপনি কি নির্দিষ্ট কোনো মডেল বা সাইজ খুঁজছেন?";
-        think = "General inquiry fallback using Gemini 2.0 with temperature " + temperature;
+        think = "General inquiry fallback using Mogent AI with temperature " + temperature;
       }
 
       setMessages((prev) => [
@@ -144,7 +144,7 @@ export default function PlaygroundPage() {
               <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
               <span>Facebook Messenger Sandbox</span>
             </div>
-            <span className="font-mono text-[#555]">Gemini 2.0 Flash</span>
+            <span className="font-mono text-[#555]">Mogent Engine Ultra</span>
           </div>
 
           {/* Messages Stream */}

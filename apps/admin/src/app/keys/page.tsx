@@ -115,7 +115,7 @@ export default function ApiKeysPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#EDEDED]">
-            Gemini Key Rotator & Gateway
+            Mogent API Key Rotator & Gateway
           </h1>
           <p className="text-[#888] text-sm mt-1">
             Real-time Redis API key pool with automatic round-robin multiplexing.
@@ -140,7 +140,7 @@ export default function ApiKeysPage() {
           <p className="text-2xl font-bold text-[#EDEDED] mt-1">
             {keys.length * 15} <span className="text-xs font-normal text-[#888]">RPM</span>
           </p>
-          <span className="text-[11px] text-[#10B981] mt-1 block">15 RPM per Gemini Free Key</span>
+          <span className="text-[11px] text-[#10B981] mt-1 block">15 RPM per Master Key</span>
         </div>
 
         <div>
@@ -166,7 +166,7 @@ export default function ApiKeysPage() {
             type="text"
             value={newKeyInput}
             onChange={(e) => setNewKeyInput(e.target.value)}
-            placeholder="Add new Gemini API Key (e.g. AIzaSy...)"
+            placeholder="Add new Mogent Master API Key (e.g. AIzaSy...)"
             className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-[13px] text-[#EDEDED] focus:outline-none focus:border-amber-500 transition-colors placeholder:text-[#555] font-mono"
           />
         </div>
@@ -175,14 +175,14 @@ export default function ApiKeysPage() {
           onChange={(e) => setSelectedModel(e.target.value)}
           className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-[13px] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
         >
-          <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (main)</option>
-          <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (backup)</option>
+          <option value="gemini-3.5-flash-lite">Mogent Engine Ultra (v3.5)</option>
+          <option value="gemini-3.1-flash-lite">Mogent Engine Turbo (v3.1)</option>
         </select>
         <button
           type="button"
           onClick={() => {
             if (!newKeyInput.trim()) {
-              alert("Please enter a valid Gemini API Key first.");
+              alert("Please enter a valid API Key first.");
               return;
             }
             handleAddKey({ preventDefault: () => {} } as any);
@@ -203,7 +203,7 @@ export default function ApiKeysPage() {
       <div className="rounded-xl border border-[#222] bg-[#0A0A0A] overflow-hidden">
         <div className="p-4 border-b border-[#222] flex items-center justify-between">
           <h3 className="font-semibold text-sm text-[#EDEDED]">Active Key Matrix</h3>
-          <span className="text-xs text-[#888] font-mono">Live Redis Set: mogent:gemini_keys_pool</span>
+          <span className="text-xs text-[#888] font-mono">Live Redis Set: mogent:keys_pool</span>
         </div>
 
         {loading ? (
@@ -214,9 +214,9 @@ export default function ApiKeysPage() {
         ) : keys.length === 0 ? (
           <div className="py-16 text-center space-y-2 p-4">
             <Key className="w-8 h-8 text-[#555] mx-auto" />
-            <p className="text-xs text-[#EDEDED] font-semibold">No Custom Gemini Keys in Pool</p>
+            <p className="text-xs text-[#EDEDED] font-semibold">No Custom API Keys in Pool</p>
             <p className="text-[11px] text-[#777] max-w-sm mx-auto">
-              Add your Google AI Studio Gemini API keys above. They will be stored in Redis and automatically multiplexed for all merchants.
+              Add your master API keys above. They will be stored in Redis and automatically multiplexed for all merchants.
             </p>
           </div>
         ) : (

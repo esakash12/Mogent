@@ -172,7 +172,7 @@ export default function ContactsPage() {
             <div className="space-y-1">
               <h3 className="font-bold text-sm text-[#EDEDED]">No customer contacts captured yet</h3>
               <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-                When customers message your Facebook Page, Gemini 2.0 AI will automatically extract their name, verified mobile phone, and delivery address here.
+                When customers message your Facebook Page, Mogent AI will automatically extract their name, verified mobile phone, and delivery address here.
               </p>
             </div>
             <Link

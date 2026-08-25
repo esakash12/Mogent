@@ -130,7 +130,7 @@ export default function AnalyticsDashboardPage() {
               </h3>
             </div>
             <p className="text-xs text-[#888] max-w-xl leading-relaxed">
-              You haven't connected any Facebook Pages yet. Connect your Facebook Page now to activate Gemini 3.5 AI auto-replies, product recommendations, and automated order booking.
+              You haven't connected any Facebook Pages yet. Connect your Facebook Page now to activate Mogent AI auto-replies, product recommendations, and automated order booking.
             </p>
           </div>
 
@@ -218,7 +218,7 @@ export default function AnalyticsDashboardPage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold tracking-tight text-[#10B981]">
-              Gemini 2.0
+              Mogent AI
             </div>
             <div className="text-[11px] text-[#888] mt-1">
               Autonomous conversational RAG

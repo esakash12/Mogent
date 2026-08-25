@@ -18,7 +18,7 @@ const navigation = [
   { name: "System Overview", href: "/", icon: LayoutDashboard },
   { name: "Payment Approvals", href: "/billing", icon: CreditCard, badge: "Live" },
   { name: "Client Workspaces", href: "/clients", icon: Users },
-  { name: "Gemini Key Rotator", href: "/keys", icon: Key },
+  { name: "Mogent Key Rotator", href: "/keys", icon: Key },
   { name: "Infrastructure", href: "/infrastructure", icon: Server },
   { name: "Global Settings", href: "/settings", icon: Settings },
 ];
