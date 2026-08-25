@@ -209,22 +209,17 @@ knowledgeRouter.post("/playground", async (c) => {
     );
 
     const workspace = targetWorkspaceId
-      ? await prisma.workspace.findUnique({ where: { id: targetWorkspaceId } })
+      ? await prisma.workspace.findUnique({
+          where: { id: targetWorkspaceId },
+          include: { facebookPages: true },
+        })
       : null;
 
-    let systemPrompt = `আপনি "${workspace?.name || "আমাদের শপ"}" এর একজন অভিজ্ঞ, অত্যন্ত আন্তরিক ও চটপটে বাস্তব মানব বিক্রয় প্রতিনিধি/মডারেটর (Sales Representative)।
-কখনোই নিজেকে AI বা বট বলবেন না। সবসময় মিষ্টি ও সুন্দর বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং কাস্টমার-বান্ধব উত্তর দেবেন।
-কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা সংগ্রহ করবেন।`;
+    const primaryPage = workspace?.facebookPages?.[0];
 
-    if (workspace?.whatsAppNumber) {
-      systemPrompt += `\nহোয়াটসঅ্যাপ নাম্বার: ${workspace.whatsAppNumber}`;
-    }
-    if (workspace?.hotlineNumber) {
-      systemPrompt += `\nহটলাইন: ${workspace.hotlineNumber}`;
-    }
-    if (workspace?.officeAddress) {
-      systemPrompt += `\nঅফিস ঠিকানা: ${workspace.officeAddress}`;
-    }
+    let systemPrompt =
+      primaryPage?.systemPrompt ||
+      `আপনি "${primaryPage?.businessName || workspace?.name || "আমাদের শপ"}" এর একজন অভিজ্ঞ, অত্যন্ত আন্তরিক ও চটপটে বাস্তব মানব বিক্রয় প্রতিনিধি/মডারেটর (Sales Representative)।`;
 
     const aiRes = await aiClient.generateReply({
       systemPrompt,
