@@ -70,7 +70,7 @@ adminRouter.get("/keys", async (c) => {
         id: `k-${idx + 1}`,
         rawKey: key,
         maskedKey: masked,
-        model: config.aiProxy.defaultModel || "gemini-2.0-flash",
+        model: config.aiProxy.defaultModel || "gemini-3.5-flash-lite",
         rpmUsed: 0,
         rpmLimit: 15,
         totalCallsToday: 0,

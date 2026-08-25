@@ -63,7 +63,7 @@ export function createAiProxyRoutes(geminiService: GeminiService, rotator: Gemin
 
       const startTime = Date.now();
       const response = await geminiService.generateReply({
-        model: body.model || process.env.DEFAULT_GEMINI_MODEL || "gemini-2.0-flash",
+        model: body.model || process.env.DEFAULT_GEMINI_MODEL || "gemini-3.5-flash-lite",
         systemPrompt: body.systemPrompt,
         knowledgeBaseContext: body.knowledgeBaseContext || [],
         history: body.history || [],

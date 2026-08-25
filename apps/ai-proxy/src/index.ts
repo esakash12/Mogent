@@ -12,7 +12,7 @@ import path from "path";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const port = Number(process.env.AI_PROXY_PORT) || 5000;
-const defaultModel = process.env.DEFAULT_GEMINI_MODEL || "gemini-2.0-flash";
+const defaultModel = process.env.DEFAULT_GEMINI_MODEL || "gemini-3.5-flash-lite";
 
 // 1. Initialize Redis for Key State & Cooldown Persistence
 let redisClient: Redis | null = null;
@@ -36,8 +36,13 @@ if (process.env.REDIS_HOST) {
   }
 }
 
-// 2. We don't read from .env anymore, we strictly use Redis.
-const keysList: string[] = [];
+// 2. Load initial keys from .env if available, and also sync from Redis
+const envKeys = (process.env.GEMINI_API_KEYS || "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter((k) => k.length > 0);
+
+const keysList: string[] = envKeys;
 
 // 3. Initialize Rotator & Gemini Service
 const rotator = new GeminiKeyRotator(keysList, redisClient);

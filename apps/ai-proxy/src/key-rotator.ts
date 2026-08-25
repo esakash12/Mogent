@@ -60,28 +60,35 @@ export class GeminiKeyRotator {
   public async syncKeysFromRedis() {
     if (!this.redis) return;
     try {
-      const customKeys = await this.redis.smembers("mogent:gemini_pool_keys");
+      const [pool1, pool2] = await Promise.all([
+        this.redis.smembers("mogent:gemini_keys_pool").catch(() => []),
+        this.redis.smembers("mogent:gemini_pool_keys").catch(() => []),
+      ]);
+      const customKeys = Array.from(new Set([...(pool1 || []), ...(pool2 || [])]));
       
-      const newKeys = customKeys.filter(k => !this.keys.find(existing => existing.key === k));
-      
-      for (const key of newKeys) {
-        const keyHash = crypto.createHash("md5").update(key).digest("hex").substring(0, 10);
-        this.keys.push({
-          index: this.keys.length,
-          key,
-          keyHash,
-          maskedKey: this.maskKey(key),
-          totalRequests: 0,
-          successfulRequests: 0,
-          failedRequests: 0,
-          cooldownUntil: null,
-          isExhausted: false,
-        });
+      for (const key of customKeys) {
+        if (!key || !key.trim()) continue;
+        const cleanKey = key.trim();
+        if (!this.keys.find((existing) => existing.key === cleanKey)) {
+          const keyHash = crypto.createHash("md5").update(cleanKey).digest("hex").substring(0, 10);
+          this.keys.push({
+            index: this.keys.length,
+            key: cleanKey,
+            keyHash,
+            maskedKey: this.maskKey(cleanKey),
+            totalRequests: 0,
+            successfulRequests: 0,
+            failedRequests: 0,
+            cooldownUntil: null,
+            isExhausted: false,
+          });
+        }
       }
       
-      // Keep only keys that are in Redis
-      this.keys = this.keys.filter(existing => customKeys.includes(existing.key));
-      
+      if (customKeys.length > 0) {
+        // If Redis has keys, only keep keys that exist in Redis or initial config
+        this.keys = this.keys.filter((existing) => customKeys.includes(existing.key) || existing.index < 50);
+      }
     } catch (e) {
       console.warn("⚠️ Failed to sync keys from Redis:", e);
     }

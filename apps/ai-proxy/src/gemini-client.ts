@@ -25,7 +25,7 @@ export class GeminiService {
   private rotator: GeminiKeyRotator;
   private defaultModel: string;
 
-  constructor(rotator: GeminiKeyRotator, defaultModel: string = "gemini-2.0-flash") {
+  constructor(rotator: GeminiKeyRotator, defaultModel: string = "gemini-3.5-flash-lite") {
     this.rotator = rotator;
     this.defaultModel = defaultModel;
   }
@@ -94,12 +94,16 @@ export class GeminiService {
     options: GenerateAiReplyOptions
   ): Promise<GeminiAiResponse> {
     
-    // Map custom display names to actual Google API identifiers
-    let model = rawModel;
-    if (model.includes("3.1 Flash Lite")) {
-      model = "gemini-3.1-flash-lite";
-    } else if (model.includes("3.5 Flash Lite") || model.includes("Gemini 3.5")) {
-      model = "gemini-3.5-flash-lite";
+    // Map custom display names or deprecated models to actual valid Google API identifiers
+    let model = "gemini-3.5-flash-lite";
+    if (rawModel) {
+      if (rawModel.includes("3.1") || rawModel.includes("backup")) {
+        model = "gemini-3.1-flash-lite";
+      } else if (rawModel.includes("3.5") || rawModel.includes("main")) {
+        model = "gemini-3.5-flash-lite";
+      } else if (rawModel === "gemini-3.1-flash-lite" || rawModel === "gemini-3.5-flash-lite") {
+        model = rawModel;
+      }
     }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
