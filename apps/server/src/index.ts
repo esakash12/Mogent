@@ -132,11 +132,68 @@ app.route("/webhook", webhookRouter);
 app.route("/api/webhook", webhookRouter);
 
 // -----------------------------------------------------------------------------
-// 3. START BACKGROUND BULLMQ WORKERS
+// 3. AUTOMATIC DATABASE SCHEMA SYNCHRONIZATION (SELF-HEALING)
+// -----------------------------------------------------------------------------
+async function syncDatabaseSchema() {
+  try {
+    console.log("🔄 Ensuring PostgreSQL database schema & tables are up to date...");
+
+    // 1. Add missing columns to payment_transactions safely
+    await prisma.$executeRawUnsafe(`
+      DO $$ 
+      BEGIN 
+        BEGIN
+          ALTER TABLE "payment_transactions" ADD COLUMN IF NOT EXISTS "couponCode" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "payment_transactions" ADD COLUMN IF NOT EXISTS "discountAmount" DOUBLE PRECISION DEFAULT 0;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+      END $$;
+    `);
+
+    // 2. Create coupons table if it does not exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "coupons" (
+        "id" TEXT NOT NULL,
+        "code" TEXT NOT NULL,
+        "discountType" TEXT NOT NULL DEFAULT 'PERCENTAGE',
+        "discountValue" DOUBLE PRECISION NOT NULL,
+        "maxDiscount" DOUBLE PRECISION,
+        "minOrderAmount" DOUBLE PRECISION DEFAULT 0,
+        "applicablePlan" TEXT DEFAULT 'ALL',
+        "usageLimit" INTEGER,
+        "usedCount" INTEGER NOT NULL DEFAULT 0,
+        "expiresAt" TIMESTAMP(3),
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "coupons_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "coupons_code_key" ON "coupons"("code");
+    `);
+
+    console.log("✅ PostgreSQL database schema synchronized successfully!");
+  } catch (err: any) {
+    console.warn("⚠️ PostgreSQL schema auto-sync notice:", err.message);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 4. START BACKGROUND BULLMQ WORKERS & RUN DATABASE AUTO-SYNC
 // -----------------------------------------------------------------------------
 console.log("\n🚀 Starting BullMQ Background Workers...");
 const messageWorker = startMessageWorker();
 const telegramWorker = startTelegramWorker();
+
+// Trigger self-healing database schema sync asynchronously
+syncDatabaseSchema();
 
 // Graceful Shutdown
 process.on("SIGTERM", async () => {

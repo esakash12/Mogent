@@ -150,9 +150,9 @@ export default function SettingsSectorPage() {
     );
   }
 
-  const activePlan = billingData?.subscription?.plan || "FREE";
-  const messageUsage = billingData?.subscription?.usageCount || 0;
-  const messageQuota = billingData?.subscription?.monthlyLimit || 500;
+  const activePlan = (billingData?.currentPlan || billingData?.subscription?.plan || "FREE").toUpperCase();
+  const messageUsage = billingData?.messagesUsed || billingData?.subscription?.usageCount || 0;
+  const messageQuota = billingData?.currentPlanDetails?.msgLimit || billingData?.subscription?.monthlyLimit || 5000;
   const usagePercent = Math.min(100, Math.round((messageUsage / (messageQuota || 1)) * 100));
 
   return (

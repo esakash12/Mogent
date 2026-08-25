@@ -1,6 +1,8 @@
 import { Hono } from "hono";
+import { verify } from "hono/jwt";
 import { prisma, PaymentStatus, PaymentMethod } from "@mogent/database";
 import { redisConnection } from "../redis";
+import { config } from "../config";
 import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
 
 export const billingRouter = new Hono();
@@ -9,6 +11,19 @@ const REDIS_PAYMENT_CONFIG = "mogent:payment_gateway_config";
 
 // Plan Definitions
 export const PLANS: Record<string, { name: string; price: number; pageLimit: number; msgLimit: number; features: string[] }> = {
+  FREE: {
+    name: "Free Trial Plan",
+    price: 0,
+    pageLimit: 1,
+    msgLimit: 100,
+    features: [
+      "1 Facebook Page Connection",
+      "100 AI Automated Messages/mo",
+      "Mogent Engine Turbo v3.1",
+      "Basic FAQ Knowledge Base",
+      "Community Support",
+    ],
+  },
   STARTER: {
     name: "Starter Plan",
     price: 999,
@@ -54,41 +69,68 @@ export const PLANS: Record<string, { name: string; price: number; pageLimit: num
 };
 
 // -----------------------------------------------------------------------------
-// 1. GET WORKSPACE BILLING & SUBSCRIPTION STATUS
+// 1. GET WORKSPACE BILLING & SUBSCRIPTION STATUS (Fail-Safe & Resilient)
 // -----------------------------------------------------------------------------
 billingRouter.get("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceHeader = c.req.header("x-workspace-id");
+  const authHeader = c.req.header("Authorization");
 
   try {
+    let targetWorkspaceId = workspaceHeader?.trim() || null;
+
+    // Resolve workspace from user token if not explicitly passed
+    if (!targetWorkspaceId && authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const payload = (await verify(authHeader.substring(7), config.jwtSecret, "HS256")) as any;
+        if (payload?.workspaceId) {
+          targetWorkspaceId = payload.workspaceId;
+        } else if (payload?.userId) {
+          const mem = await prisma.workspaceMember.findFirst({
+            where: { userId: payload.userId },
+          });
+          if (mem) targetWorkspaceId = mem.workspaceId;
+        }
+      } catch {}
+    }
+
     let workspace: any = null;
-    if (workspaceId) {
+    if (targetWorkspaceId) {
       workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
+        where: { id: targetWorkspaceId },
         include: {
-          paymentTransactions: {
-            orderBy: { createdAt: "desc" },
-            take: 10,
-          },
           facebookPages: { select: { id: true } },
         },
       });
     }
 
     if (!workspace) {
-      const defaultWs = await prisma.workspace.findFirst({
+      workspace = await prisma.workspace.findFirst({
+        orderBy: { updatedAt: "desc" },
         include: {
-          paymentTransactions: { orderBy: { createdAt: "desc" }, take: 10 },
           facebookPages: { select: { id: true } },
         },
       });
-      workspace = defaultWs;
     }
 
-    const currentPlanKey = (workspace?.plan || "STARTER").toUpperCase();
-    const currentPlanInfo = PLANS[currentPlanKey] || PLANS.STARTER;
+    const currentPlanKey = (workspace?.plan || "FREE").toUpperCase();
+    const currentPlanInfo = PLANS[currentPlanKey] || PLANS.FREE;
+
+    // Fail-safe query for payment transactions (won't crash if columns are syncing)
+    let paymentHistory: any[] = [];
+    try {
+      if (workspace?.id) {
+        paymentHistory = await prisma.paymentTransaction.findMany({
+          where: { workspaceId: workspace.id },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        });
+      }
+    } catch (err: any) {
+      console.warn("Payment history notice:", err.message);
+    }
 
     // Check if there is any pending payment verification
-    const pendingPayment = workspace?.paymentTransactions?.find(
+    const pendingPayment = paymentHistory.find(
       (tx: any) => tx.status === PaymentStatus.PENDING
     );
 
@@ -103,14 +145,7 @@ billingRouter.get("/", async (c) => {
         connectedPagesCount: workspace?.facebookPages?.length || 0,
         pageLimit: currentPlanInfo.pageLimit,
         pendingPayment: pendingPayment || null,
-        paymentHistory: workspace?.paymentTransactions || [],
-        paymentAccounts: {
-          bKashMerchant: "01819234567 (Merchant / Make Payment)",
-          bKashPersonal: "01711998877 (Send Money)",
-          nagadPersonal: "01711998877 (Send Money)",
-          rocketPersonal: "01711998877-0 (Send Money)",
-          bankAccount: "City Bank, Account: 1234567890, Branch: Dhanmondi",
-        },
+        paymentHistory: paymentHistory,
       },
     });
   } catch (error: any) {
