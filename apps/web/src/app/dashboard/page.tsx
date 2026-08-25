@@ -130,7 +130,7 @@ export default function AnalyticsDashboardPage() {
               </h3>
             </div>
             <p className="text-xs text-[#888] max-w-xl leading-relaxed">
-              You haven't connected any Facebook Pages yet. Connect your Facebook Page now to activate Gemini 2.0 AI auto-replies, product recommendations, and automated order booking.
+              You haven't connected any Facebook Pages yet. Connect your Facebook Page now to activate Gemini 3.5 AI auto-replies, product recommendations, and automated order booking.
             </p>
           </div>
 

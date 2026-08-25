@@ -369,7 +369,7 @@ export default function LiveInboxPage() {
             {messages.map((msg) => {
               const isCustomer = msg.sender === "CUSTOMER";
               const isAI = msg.sender === "AI";
-              const isHuman = msg.sender === "HUMAN";
+              const isHuman = msg.sender === "HUMAN" || (msg.sender as any) === "HUMAN_AGENT";
 
               return (
                 <div
@@ -383,12 +383,12 @@ export default function LiveInboxPage() {
                     {isCustomer && <span>{selectedConv.customerName}</span>}
                     {isAI && (
                       <span className="text-indigo-400 font-medium flex items-center gap-1">
-                        <Bot className="w-3 h-3" /> Gemini 2.0
+                        <Bot className="w-3 h-3" /> Gemini 3.5
                       </span>
                     )}
                     {isHuman && (
                       <span className="text-amber-500 font-medium flex items-center gap-1">
-                        <User className="w-3 h-3" /> Support Manager
+                        <User className="w-3 h-3" /> Human Agent
                       </span>
                     )}
                     <span>• {msg.time}</span>

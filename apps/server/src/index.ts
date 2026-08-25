@@ -13,6 +13,8 @@ import { productsRouter } from "./routes/products";
 import { contactsRouter } from "./routes/contacts";
 import { knowledgeRouter } from "./routes/knowledge";
 import { billingRouter } from "./routes/billing";
+import { ordersRouter } from "./routes/orders";
+import { automationRouter } from "./routes/automation";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
 import { AiProxyClient } from "./ai-client";
@@ -75,6 +77,8 @@ app.route("/api/conversations", conversationsRouter);
 app.route("/api/products", productsRouter);
 app.route("/api/contacts", contactsRouter);
 app.route("/api/knowledge", knowledgeRouter);
+app.route("/api/orders", ordersRouter);
+app.route("/api/automation", automationRouter);
 
 // Mount webhooks on both /webhook and /api/webhook for universal support
 app.route("/webhook", webhookRouter);

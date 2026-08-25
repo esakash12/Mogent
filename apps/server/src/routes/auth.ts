@@ -335,6 +335,225 @@ authRouter.get("/me", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
+// 3.1 UPDATE USER PROFILE
+// -----------------------------------------------------------------------------
+authRouter.put("/profile", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.substring(7);
+
+  try {
+    const payload = (await verify(token, config.jwtSecret, "HS256")) as {
+      userId: string;
+    };
+
+    const body = await c.req.json();
+    const { name, password } = body;
+
+    const updateData: any = {};
+    if (name) updateData.name = name.trim();
+    if (password && password.length >= 6) {
+      const salt = await bcrypt.genSalt(10);
+      updateData.passwordHash = await bcrypt.hash(password, salt);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: payload.userId },
+      data: updateData,
+      select: { id: true, name: true, email: true, avatarUrl: true },
+    });
+
+    return c.json({ success: true, data: updatedUser, message: "Profile updated successfully!" });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Failed to update profile" }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3.2 GET WORKSPACE TEAM MEMBERS
+// -----------------------------------------------------------------------------
+authRouter.get("/team", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst();
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    if (!targetWorkspaceId) {
+      return c.json({ success: true, data: [] });
+    }
+
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId: targetWorkspaceId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return c.json({
+      success: true,
+      data: members.map((m) => ({
+        id: m.id,
+        userId: m.user.id,
+        name: m.user.name || "Team Member",
+        email: m.user.email,
+        role: m.role,
+        avatarUrl: m.user.avatarUrl,
+        joinedAt: m.createdAt,
+      })),
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3.3 INVITE TEAM MEMBER
+// -----------------------------------------------------------------------------
+authRouter.post("/team/invite", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { name, email, role } = body;
+
+    if (!email || !email.trim()) {
+      return c.json({ success: false, error: "Email is required" }, 400);
+    }
+
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst();
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "No active workspace found" }, 404);
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check if user exists or create invite placeholder
+    let targetUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    if (!targetUser) {
+      const tempHash = await bcrypt.hash("mogent123456", 10);
+      targetUser = await prisma.user.create({
+        data: {
+          email: cleanEmail,
+          name: name ? name.trim() : cleanEmail.split("@")[0],
+          passwordHash: tempHash,
+        },
+      });
+    }
+
+    // Check if already in workspace
+    const existingMembership = await prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: targetWorkspaceId,
+          userId: targetUser.id,
+        },
+      },
+    });
+
+    if (existingMembership) {
+      return c.json({ success: false, error: "This user is already a member of this workspace" }, 409);
+    }
+
+    const memberRole = role === "ADMIN" ? Role.ADMIN : Role.AGENT;
+
+    const membership = await prisma.workspaceMember.create({
+      data: {
+        workspaceId: targetWorkspaceId,
+        userId: targetUser.id,
+        role: memberRole,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true } },
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: "Team member added successfully!",
+      data: {
+        id: membership.id,
+        userId: membership.user.id,
+        name: membership.user.name,
+        email: membership.user.email,
+        role: membership.role,
+        joinedAt: membership.createdAt,
+      },
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3.4 REMOVE TEAM MEMBER
+// -----------------------------------------------------------------------------
+authRouter.delete("/team/:id", async (c) => {
+  const { id } = c.req.param();
+
+  try {
+    await prisma.workspaceMember.delete({ where: { id } });
+    return c.json({ success: true, message: "Member removed from workspace" });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3.5 EXPORT WORKSPACE DATA (CSV)
+// -----------------------------------------------------------------------------
+authRouter.get("/export-data", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst();
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    const pages = await prisma.facebookPage.findMany({
+      where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
+      select: { id: true },
+    });
+    const pageIds = pages.map((p) => p.id);
+
+    const customers = await prisma.customer.findMany({
+      where: { facebookPageId: { in: pageIds } },
+      include: { orders: true },
+    });
+
+    let csvContent = "ID,Name,Phone,Address,Orders Count,Total Spent,Sentiment,PSID\n";
+    for (const cust of customers) {
+      const name = `"${(cust.firstName || "") + " " + (cust.lastName || "")}"`.trim();
+      const phone = `"${cust.phoneNumber || ""}"`;
+      const address = `"${(cust.deliveryAddress || "").replace(/"/g, '""')}"`;
+      csvContent += `${cust.id},${name},${phone},${address},${cust.totalOrders},${cust.totalSpent},${cust.sentimentScore ?? 0},${cust.psid}\n`;
+    }
+
+    c.header("Content-Type", "text/csv");
+    c.header("Content-Disposition", `attachment; filename="mogent_crm_export_${Date.now()}.csv"`);
+    return c.text(csvContent);
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
 // 4. SUPER ADMIN AUTHENTICATION (ENTERPRISE BCRYPT & RBAC)
 // -----------------------------------------------------------------------------
 authRouter.post("/admin/login", async (c) => {

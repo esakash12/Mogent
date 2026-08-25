@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Zap,
@@ -17,329 +17,314 @@ import {
   Sparkles,
   Bot,
   BookOpen,
-  PlayCircle
+  PlayCircle,
+  Loader2,
+  X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  fetchAutomationRules,
+  createAutomationRule,
+  toggleAutomationRule,
+  deleteAutomationRule
+} from "@/lib/api";
 
 interface TriggerRule {
   id: string;
   name: string;
-  triggerType: "KEYWORD" | "GREETING" | "AFTER_HOURS" | "ORDER_INTENT";
+  reason: string;
   keywords: string[];
-  actionType: "INSTANT_REPLY" | "ROUTE_TO_HUMAN" | "APPLY_TAG" | "COLLECT_PHONE";
-  replyContent: string;
+  action: string;
   isActive: boolean;
-  timesTriggered: number;
+  hitsCount: number;
 }
 
-const mockRules: TriggerRule[] = [
-  {
-    id: "r-1",
-    name: "Instant Price & Stock Query",
-    triggerType: "KEYWORD",
-    keywords: ["দাম কত", "price", "koto", "cost", "টাকা"],
-    actionType: "INSTANT_REPLY",
-    replyContent: "আমাদের সকল প্রোডাক্টের বর্তমান প্রাইস ও ডিসকাউন্ট অফার জানতে আমাদের ক্যাটালগ দেখতে পারেন। আপনি নির্দিষ্ট কোন মডেলটি সম্পর্কে জানতে চাচ্ছেন?",
-    isActive: true,
-    timesTriggered: 1420,
-  },
-  {
-    id: "r-2",
-    name: "Delivery Charge & COD Info",
-    triggerType: "KEYWORD",
-    keywords: ["ডেলিভারি চার্জ", "delivery charge", "cod", "ক্যাশ অন ডেলিভারি"],
-    actionType: "INSTANT_REPLY",
-    replyContent: "সারা বাংলাদেশে আমাদের ক্যাশ অন ডেলিভারি সুবিধা আছে। ঢাকার ভেতরে ডেলিভারি চার্জ ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।",
-    isActive: true,
-    timesTriggered: 980,
-  },
-  {
-    id: "r-3",
-    name: "Night Time / After-Hours Auto Greeting",
-    triggerType: "AFTER_HOURS",
-    keywords: ["11:00 PM - 08:00 AM"],
-    actionType: "INSTANT_REPLY",
-    replyContent: "আমাদের অফিস এখন বন্ধ রয়েছে। তবে আমাদের AI সহকারী আপনাকে সাহায্য করতে প্রস্তুত। আপনার যেকোনো প্রশ্ন বা অর্ডার বিস্তারিত এখানে লিখে রাখুন।",
-    isActive: true,
-    timesTriggered: 450,
-  },
-  {
-    id: "r-4",
-    name: "Urgent Human Escalation on Complaint",
-    triggerType: "KEYWORD",
-    keywords: ["নষ্ট", "খারাপ", "fraud", "বাটপারি", "ম্যানেজার"],
-    actionType: "ROUTE_TO_HUMAN",
-    replyContent: "আমরা আপনার অভিযোগটি অত্যন্ত গুরুত্ব সহকারে দেখছি। আমাদের কাস্টমার সাপোর্ট ম্যানেজার আপনার সাথে অবিলম্বে যোগাযোগ করবেন।",
-    isActive: true,
-    timesTriggered: 38,
-  },
-];
-
 export default function AutomationPage() {
-  const [rules, setRules] = useState<TriggerRule[]>(mockRules);
+  const [rules, setRules] = useState<TriggerRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRuleName, setNewRuleName] = useState("");
   const [newKeywords, setNewKeywords] = useState("");
-  const [newReply, setNewReply] = useState("");
-  const [newTriggerType, setNewTriggerType] = useState<"KEYWORD" | "GREETING" | "AFTER_HOURS">("KEYWORD");
+  const [newReason, setNewReason] = useState("CUSTOM_KEYWORD");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const toggleRule = (id: string) => {
+  const loadRules = async () => {
+    setLoading(true);
+    const data = await fetchAutomationRules();
+    if (Array.isArray(data)) {
+      setRules(data);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadRules();
+  }, []);
+
+  const handleToggleRule = async (id: string, currentActive: boolean) => {
     setRules((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, isActive: !r.isActive } : r))
+      prev.map((r) => (r.id === id ? { ...r, isActive: !currentActive } : r))
     );
+    await toggleAutomationRule(id, !currentActive);
   };
 
-  const deleteRule = (id: string) => {
+  const handleDeleteRule = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this escalation rule?")) return;
     setRules((prev) => prev.filter((r) => r.id !== id));
+    await deleteAutomationRule(id);
   };
 
-  const handleCreateRule = (e: React.FormEvent) => {
+  const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRuleName.trim() || !newReply.trim()) return;
+    if (!newRuleName.trim()) return;
 
-    const newRule: TriggerRule = {
-      id: `r-${Date.now()}`,
-      name: newRuleName,
-      triggerType: newTriggerType,
-      keywords: newKeywords.split(",").map((k) => k.trim()).filter((k) => k.length > 0),
-      actionType: "INSTANT_REPLY",
-      replyContent: newReply,
-      isActive: true,
-      timesTriggered: 0,
-    };
+    setIsSubmitting(true);
+    const keywordsArray = newKeywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
 
-    setRules([newRule, ...rules]);
-    setNewRuleName("");
-    setNewKeywords("");
-    setNewReply("");
-    setShowAddModal(false);
+    const res = await createAutomationRule({
+      name: newRuleName.trim(),
+      keywords: keywordsArray,
+      reason: newReason,
+    });
+    setIsSubmitting(false);
+
+    if (res.success && res.data) {
+      setRules((prev) => [
+        {
+          id: res.data.id,
+          name: res.data.name,
+          reason: res.data.reason,
+          keywords: res.data.keywords,
+          action: "TRANSFER_HUMAN",
+          isActive: res.data.isActive,
+          hitsCount: 0,
+        },
+        ...prev,
+      ]);
+      setShowAddModal(false);
+      setNewRuleName("");
+      setNewKeywords("");
+    } else {
+      alert(res.error || "Failed to create rule");
+    }
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Sector Tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-[#222] pb-3 text-xs">
-        <Link
-          href="/dashboard/knowledge"
-          className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Knowledge Base</span>
-        </Link>
-        <Link
-          href="/dashboard/automation"
-          className="px-3 py-1.5 rounded-lg bg-[#222] text-[#EDEDED] font-semibold flex items-center gap-2"
-        >
-          <Zap className="w-3.5 h-3.5 text-amber-500" />
-          <span>Rules & Triggers</span>
-        </Link>
-        <Link
-          href="/dashboard/playground"
-          className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-        >
-          <PlayCircle className="w-3.5 h-3.5" />
-          <span>AI Playground</span>
-        </Link>
-      </div>
+    <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            Rules & Keyword Triggers
+          <h1 className="text-2xl font-semibold tracking-tight text-[#EDEDED]">
+            Automation & Instant Triggers
           </h1>
-          <p className="text-[#888] text-sm mt-1">
-            Configure instant keyword shortcuts, after-hours greetings, and custom escalation flows.
+          <p className="text-[14px] text-[#888] mt-1">
+            Configure keyword-based human escalation rules, instant alert triggers, and manager handoff protocols.
           </p>
         </div>
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-2.5 rounded-lg bg-white text-black font-semibold text-xs flex items-center gap-2 hover:bg-[#EDEDED] transition-colors w-fit"
+          className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors w-fit cursor-pointer shadow-lg shadow-amber-500/10"
         >
           <Plus className="w-4 h-4" />
-          <span>Create New Rule</span>
+          <span>New Escalation Rule</span>
         </button>
       </div>
 
-      {/* Overview Cards */}
+      {/* Quick Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-xl border border-[#222] bg-[#0A0A0A]">
+        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-1">
           <div className="flex items-center justify-between text-xs text-[#888]">
             <span>Active Trigger Rules</span>
             <Zap className="w-4 h-4 text-amber-500" />
           </div>
-          <p className="text-2xl font-bold text-[#EDEDED] mt-2">
+          <p className="text-2xl font-bold text-[#EDEDED]">
             {rules.filter((r) => r.isActive).length} / {rules.length}
           </p>
+          <span className="text-[11px] text-[#666]">Monitoring incoming Messenger chats</span>
         </div>
 
-        <div className="p-5 rounded-xl border border-[#222] bg-[#0A0A0A]">
+        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-1">
           <div className="flex items-center justify-between text-xs text-[#888]">
-            <span>Total Automated Hits</span>
-            <Sparkles className="w-4 h-4 text-indigo-400" />
+            <span>Escalation Action</span>
+            <ShieldCheck className="w-4 h-4 text-indigo-400" />
           </div>
-          <p className="text-2xl font-bold text-[#EDEDED] mt-2">
-            {rules.reduce((acc, r) => acc + r.timesTriggered, 0).toLocaleString()}
-          </p>
+          <p className="text-2xl font-bold text-indigo-400">Human Takeover</p>
+          <span className="text-[11px] text-[#666]">Alerts Telegram & switches chat to human</span>
         </div>
 
-        <div className="p-5 rounded-xl border border-[#222] bg-[#0A0A0A]">
+        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-1">
           <div className="flex items-center justify-between text-xs text-[#888]">
-            <span>AI Fallback Safety</span>
-            <Bot className="w-4 h-4 text-[#10B981]" />
+            <span>Fallback AI Engine</span>
+            <Bot className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-2xl font-bold text-[#10B981] mt-2">100% Active</p>
+          <p className="text-2xl font-bold text-emerald-400">Gemini 3.5</p>
+          <span className="text-[11px] text-[#666]">Answers non-escalated standard queries</span>
         </div>
       </div>
 
       {/* Rules List */}
       <div className="space-y-4">
-        {rules.map((rule) => (
-          <div
-            key={rule.id}
-            className={cn(
-              "p-5 rounded-xl border bg-[#0A0A0A] transition-all",
-              rule.isActive ? "border-[#222] hover:border-[#333]" : "border-[#222]/50 opacity-60"
-            )}
-          >
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-2 flex-1">
-                <div className="flex items-center gap-3">
-                  <h3 className="font-semibold text-sm text-[#EDEDED]">{rule.name}</h3>
-                  <span
-                    className={cn(
-                      "text-[10px] font-mono px-2 py-0.5 rounded-full border",
-                      rule.triggerType === "KEYWORD"
-                        ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                        : rule.triggerType === "AFTER_HOURS"
-                        ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                        : "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                    )}
-                  >
-                    {rule.triggerType}
-                  </span>
-                  <span className="text-xs text-[#888] font-mono">
-                    Triggered {rule.timesTriggered.toLocaleString()} times
-                  </span>
+        <h3 className="text-sm font-semibold text-[#EDEDED]">Configured Rules</h3>
+
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+            <span className="text-xs text-[#888]">Loading automation rules...</span>
+          </div>
+        ) : rules.length === 0 ? (
+          <div className="p-12 text-center rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-3">
+            <Zap className="w-8 h-8 text-[#444] mx-auto" />
+            <h3 className="font-semibold text-sm text-[#EDEDED]">No automation rules defined</h3>
+            <p className="text-xs text-[#888] max-w-sm mx-auto">
+              Create rules like "Urgent refund", "Manager demand", or "Angry complaint" to automatically hand off chats to a human agent.
+            </p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-[#EDEDED] cursor-pointer"
+            >
+              + Create First Rule
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {rules.map((rule) => (
+              <div
+                key={rule.id}
+                className={cn(
+                  "p-5 rounded-2xl border transition-all space-y-4",
+                  rule.isActive
+                    ? "bg-[#0A0A0A] border-[#222] hover:border-[#333]"
+                    : "bg-[#080808] border-[#181818] opacity-60"
+                )}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-bold text-sm text-[#EDEDED]">{rule.name}</h4>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold mt-1 inline-block">
+                      {rule.reason}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleToggleRule(rule.id, rule.isActive)}
+                      className="text-[#888] hover:text-white transition-colors"
+                      title={rule.isActive ? "Disable Rule" : "Enable Rule"}
+                    >
+                      {rule.isActive ? (
+                        <ToggleRight className="w-6 h-6 text-emerald-400" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-[#666]" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRule(rule.id)}
+                      className="p-1 text-[#666] hover:text-red-400 rounded transition-colors"
+                      title="Delete Rule"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Keywords Tags */}
-                {rule.keywords.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-xs text-[#888]">Matches:</span>
-                    {rule.keywords.map((k, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-0.5 rounded bg-[#111] border border-[#222] text-[11px] font-mono text-[#EDEDED]"
-                      >
-                        "{k}"
-                      </span>
-                    ))}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] text-[#888] font-medium">Trigger Keywords:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rule.keywords && rule.keywords.length > 0 ? (
+                      rule.keywords.map((kw, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded bg-[#161616] border border-[#262626] text-[11px] text-[#DDD] font-mono"
+                        >
+                          "{kw}"
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[11px] text-[#666] italic">Any negative sentiment</span>
+                    )}
                   </div>
-                )}
+                </div>
 
-                {/* Reply snippet */}
-                <p className="text-xs text-[#888] bg-[#111] p-3 rounded-lg border border-[#222] leading-relaxed mt-2">
-                  <span className="text-[#555] font-semibold">Response: </span>
-                  {rule.replyContent}
-                </p>
+                <div className="pt-2 border-t border-[#1a1a1a] flex items-center justify-between text-[11px] text-[#888]">
+                  <span>Action: <strong>Switch to Human Takeover</strong></span>
+                  <span className="font-mono text-[10px] text-[#666]">Active</span>
+                </div>
               </div>
-
-              {/* Actions & Switch */}
-              <div className="flex items-center gap-3 self-end md:self-center shrink-0">
-                <button
-                  onClick={() => toggleRule(rule.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors",
-                    rule.isActive
-                      ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/20"
-                      : "bg-[#222] text-[#888] border-[#333] hover:text-[#EDEDED]"
-                  )}
-                >
-                  {rule.isActive ? "Enabled" : "Disabled"}
-                </button>
-                <button
-                  onClick={() => deleteRule(rule.id)}
-                  className="p-2 rounded-lg hover:bg-red-500/10 text-[#555] hover:text-red-400 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
-      {/* Create Modal */}
+      {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-[#333] bg-[#0A0A0A] p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            <h2 className="text-lg font-bold text-[#EDEDED]">Create Automation Rule</h2>
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#111] border border-[#222] rounded-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#222] pb-3">
+              <h3 className="font-bold text-sm text-[#EDEDED]">New Escalation Rule</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-[#888] hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleCreateRule} className="space-y-4">
+            <form onSubmit={handleCreateRule} className="space-y-3">
               <div>
-                <label className="block text-xs text-[#888] mb-1.5">Rule Name</label>
+                <label className="block text-xs text-[#888] mb-1">Rule Name</label>
                 <input
                   type="text"
+                  required
                   value={newRuleName}
                   onChange={(e) => setNewRuleName(e.target.value)}
-                  placeholder="e.g. Bkash Payment Details"
-                  className="w-full px-3.5 py-2 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-white"
-                  required
+                  placeholder="e.g. Complaint & Fraud Alert"
+                  className="w-full px-3 py-2 rounded-lg bg-[#0A0A0A] border border-[#222] text-xs text-[#EDEDED] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-[#888] mb-1.5">Trigger Type</label>
+                <label className="block text-xs text-[#888] mb-1">Escalation Category</label>
                 <select
-                  value={newTriggerType}
-                  onChange={(e) => setNewTriggerType(e.target.value as any)}
-                  className="w-full px-3.5 py-2 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-white"
+                  value={newReason}
+                  onChange={(e) => setNewReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-[#0A0A0A] border border-[#222] text-xs text-[#EDEDED] focus:outline-none"
                 >
-                  <option value="KEYWORD">Keyword Match (Exact & Partial)</option>
-                  <option value="GREETING">First-Time Customer Greeting</option>
-                  <option value="AFTER_HOURS">After-Hours / Night Shift</option>
+                  <option value="CUSTOM_KEYWORD">Custom Keywords</option>
+                  <option value="NEGATIVE_SENTIMENT">Negative Sentiment Detected</option>
+                  <option value="COMPLAINT_DETECTED">Customer Complaint / Refund</option>
+                  <option value="HUMAN_REQUESTED">Explicit Human Request</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs text-[#888] mb-1.5">
-                  Keywords (Comma separated)
-                </label>
+                <label className="block text-xs text-[#888] mb-1">Trigger Keywords (comma separated)</label>
                 <input
                   type="text"
                   value={newKeywords}
                   onChange={(e) => setNewKeywords(e.target.value)}
-                  placeholder="e.g. বিকাশ, bkash, payment, send money"
-                  className="w-full px-3.5 py-2 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-white"
+                  placeholder="e.g. বাটপার, নষ্ট, refund, scam, ম্যানেজার"
+                  className="w-full px-3 py-2 rounded-lg bg-[#0A0A0A] border border-[#222] text-xs text-[#EDEDED] focus:outline-none"
                 />
+                <span className="text-[10px] text-[#666] mt-1 block">
+                  When a customer types any of these words, the chat will automatically escalate to human mode.
+                </span>
               </div>
 
-              <div>
-                <label className="block text-xs text-[#888] mb-1.5">Instant Reply Message</label>
-                <textarea
-                  rows={3}
-                  value={newReply}
-                  onChange={(e) => setNewReply(e.target.value)}
-                  placeholder="Type the exact message to reply with..."
-                  className="w-full px-3.5 py-2 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-white leading-relaxed"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#222]">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-lg bg-[#111] text-xs text-[#888] hover:text-[#EDEDED]"
+                  className="px-4 py-2 rounded-lg bg-[#222] text-xs font-semibold text-[#888]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-white text-black font-semibold text-xs hover:bg-[#EDEDED]"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-lg bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 disabled:opacity-50"
                 >
-                  Save Rule
+                  {isSubmitting ? "Creating..." : "Create Rule"}
                 </button>
               </div>
             </form>

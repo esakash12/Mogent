@@ -406,5 +406,169 @@ export async function testPlaygroundChat(message: string, history: Array<{ role:
   }
 }
 
+// --- PROFILE & USER ---
+export async function fetchCurrentUser() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.success ? json.data : null;
+  } catch (err) {
+    console.error("Error fetching user:", err);
+    return null;
+  }
+}
+
+export async function updateUserProfile(data: { name?: string; password?: string }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/profile`, {
+      method: "PUT",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- TEAM MANAGEMENT ---
+export async function fetchTeamMembers() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/team`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.success ? json.data : [];
+  } catch (err) {
+    console.error("Error fetching team members:", err);
+    return [];
+  }
+}
+
+export async function inviteTeamMember(data: { name?: string; email: string; role: string }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/team/invite`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteTeamMember(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/team/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- ORDERS ---
+export async function fetchOrders(status?: string) {
+  try {
+    const url = status && status !== "ALL" ? `${API_BASE}/api/orders?status=${status}` : `${API_BASE}/api/orders`;
+    const res = await fetch(url, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.success ? json.data : [];
+  } catch (err) {
+    console.error("Error fetching orders:", err);
+    return [];
+  }
+}
+
+export async function createOrder(data: any) {
+  try {
+    const res = await fetch(`${API_BASE}/api/orders`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function updateOrderStatus(orderId: string, status: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: getHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- AUTOMATION & RULES ---
+export async function fetchAutomationRules() {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/rules`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.success ? json.data : [];
+  } catch (err) {
+    console.error("Error fetching rules:", err);
+    return [];
+  }
+}
+
+export async function createAutomationRule(data: { name: string; keywords: string[]; reason?: string }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/rules`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function toggleAutomationRule(id: string, isActive: boolean) {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/rules/${id}`, {
+      method: "PATCH",
+      headers: getHeaders(),
+      body: JSON.stringify({ isActive }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteAutomationRule(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/rules/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+
 
 
