@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   BookOpen,
   HelpCircle,
-  Zap
+  Zap,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ interface SimulatorMessage {
   content: string;
   thinking?: string;
   latency?: string;
+  button?: { title: string; url: string };
 }
 
 export default function PlaygroundPage() {
@@ -177,6 +179,20 @@ export default function PlaygroundPage() {
                   )}
                 >
                   <p>{m.content}</p>
+
+                  {m.button && (
+                    <div className="mt-3 pt-2 border-t border-[#262626]">
+                      <a
+                        href={m.button.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-2 px-3 rounded-xl bg-[#222] hover:bg-[#2a2a2a] border border-[#333] text-[#25D366] text-xs font-semibold flex items-center justify-center gap-2 transition-all text-center shadow-sm cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+                        <span>{m.button.title}</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {m.thinking && (

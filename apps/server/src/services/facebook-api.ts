@@ -9,6 +9,13 @@ export interface FbCustomerProfile {
   gender?: string;
 }
 
+export interface FbButton {
+  type: "web_url" | "postback" | "phone_number";
+  url?: string;
+  title: string;
+  payload?: string;
+}
+
 export class FacebookApiService {
   private baseUrl: string;
 
@@ -39,6 +46,49 @@ export class FacebookApiService {
     if (!res.ok) {
       const errorData = await res.text();
       throw new Error(`Facebook Send API Error (${res.status}): ${errorData}`);
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Sends an interactive button template message via Facebook Messenger Send API.
+   */
+  public async sendButtonMessage(
+    pageAccessToken: string,
+    recipientPsid: string,
+    text: string,
+    buttons: FbButton[]
+  ): Promise<any> {
+    const url = `${this.baseUrl}/me/messages?access_token=${pageAccessToken}`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: recipientPsid },
+        messaging_type: "RESPONSE",
+        message: {
+          attachment: {
+            type: "template",
+            payload: {
+              template_type: "button",
+              text: text.slice(0, 640),
+              buttons: buttons.slice(0, 3).map((b) => ({
+                ...b,
+                title: b.title.slice(0, 20),
+              })),
+            },
+          },
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.text();
+      console.error(`Facebook Button Send API Error (${res.status}): ${errorData}`);
+      // Graceful fallback to regular text message if button template fails
+      return this.sendTextMessage(pageAccessToken, recipientPsid, text);
     }
 
     return res.json();

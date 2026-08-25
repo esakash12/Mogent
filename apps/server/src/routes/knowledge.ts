@@ -241,22 +241,43 @@ knowledgeRouter.post("/playground", async (c) => {
     });
 
     let replyText = aiRes.data.replyText;
-    if (
-      workspace?.whatsAppMode === "ALWAYS" &&
-      workspace.whatsAppNumber &&
-      replyText
-    ) {
-      const cleanDigits = workspace.whatsAppNumber.replace(/[^\d]/g, "");
-      const waLink = `https://wa.me/${cleanDigits}${
-        workspace.whatsAppPrefillText
-          ? `?text=${encodeURIComponent(workspace.whatsAppPrefillText)}`
-          : ""
-      }`;
+    let button: { title: string; url: string } | null = null;
 
-      if (!replyText.includes("wa.me") && !replyText.includes(workspace.whatsAppNumber)) {
-        replyText += `\n\n📲 সরাসরি WhatsApp চ্যাট: ${waLink}\n📞 হটলাইন: ${
-          workspace.hotlineNumber || workspace.whatsAppNumber
-        }`;
+    if (workspace?.whatsAppNumber && replyText) {
+      const rawNumber = workspace.whatsAppNumber.trim();
+      let cleanDigits = rawNumber.replace(/[^\d]/g, "");
+      if (cleanDigits.startsWith("01") && cleanDigits.length === 11) {
+        cleanDigits = `88${cleanDigits}`;
+      }
+      const textParam = workspace.whatsAppPrefillText
+        ? `?text=${encodeURIComponent(workspace.whatsAppPrefillText)}`
+        : "";
+      const waUrl = `https://wa.me/${cleanDigits}${textParam}`;
+
+      if (workspace.whatsAppMode === "ALWAYS") {
+        button = {
+          title: "WhatsApp এ চ্যাট",
+          url: waUrl,
+        };
+        if (!replyText.includes(rawNumber)) {
+          let contactFooter = `\n\nWhatsApp:\n${rawNumber}`;
+          if (workspace.hotlineNumber && workspace.hotlineNumber !== rawNumber) {
+            contactFooter += `\nHotline: ${workspace.hotlineNumber}`;
+          }
+          replyText += contactFooter;
+        }
+      } else if (
+        workspace.whatsAppMode === "ON_DEMAND" &&
+        (replyText.includes(rawNumber) ||
+          replyText.toLowerCase().includes("whatsapp") ||
+          message.toLowerCase().includes("whatsapp") ||
+          message.includes("নাম্বার") ||
+          message.includes("কন্টাক্ট"))
+      ) {
+        button = {
+          title: "WhatsApp এ চ্যাট",
+          url: waUrl,
+        };
       }
     }
 
@@ -264,6 +285,7 @@ knowledgeRouter.post("/playground", async (c) => {
       success: true,
       data: {
         replyText,
+        button,
         thinking: aiRes.data.thinking,
         sentimentScore: aiRes.data.sentimentScore,
       },

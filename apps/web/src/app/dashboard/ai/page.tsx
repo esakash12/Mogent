@@ -136,12 +136,12 @@ export default function AIAutomationSectorPage() {
 
   // --- 4. PLAYGROUND STATE ---
   const [simMessages, setSimMessages] = useState<
-    Array<{ role: string; content: string; thinking?: string }>
+    Array<{ role: string; content: string; thinking?: string; button?: { title: string; url: string } }>
   >([
     {
       role: "model",
-      content: "আসসালামু আলাইকুম! আমি আপনার AI সহকারী। প্রোডাক্ট অর্ডার বা যেকোনো তথ্যের জন্য আমাকে মেসেজ দিন।",
-      thinking: "Persona initialized with friendly Bangladeshi e-commerce tone.",
+      content: "আসসালামু আলাইকুম! কীভাবে সাহায্য করতে পারি? আপনার অর্ডার বা যেকোনো তথ্যের জন্য বলতে পারেন।",
+      thinking: "Persona initialized with friendly Bangladeshi sales moderator tone.",
     },
   ]);
   const [testInput, setTestInput] = useState("");
@@ -170,6 +170,7 @@ export default function AIAutomationSectorPage() {
             role: "model",
             content: res.data.replyText || "কোনো উত্তর পাওয়া যায়নি।",
             thinking: res.data.thinking || "Generated via Mogent AI Engine with Knowledge Base.",
+            button: res.data.button,
           },
         ]);
       } else {
@@ -800,6 +801,20 @@ export default function AIAutomationSectorPage() {
                     )}
                   >
                     <p className="whitespace-pre-wrap">{m.content}</p>
+
+                    {m.button && (
+                      <div className="mt-3 pt-2 border-t border-[#262626]">
+                        <a
+                          href={m.button.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2 px-3 rounded-xl bg-[#222] hover:bg-[#2a2a2a] border border-[#333] text-[#25D366] text-xs font-semibold flex items-center justify-center gap-2 transition-all text-center shadow-sm cursor-pointer"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+                          <span>{m.button.title}</span>
+                        </a>
+                      </div>
+                    )}
                   </div>
                   {m.thinking && (
                     <div className="mt-1 p-2 rounded bg-[#111] border border-[#222] text-[10px] font-mono text-[#888]">

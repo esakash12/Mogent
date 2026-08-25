@@ -238,29 +238,54 @@ export function startMessageWorker() {
           } catch {}
         }
 
-        // Check if WhatsApp auto-append is enabled (ALWAYS mode)
-        if (
-          page.workspace?.whatsAppMode === "ALWAYS" &&
-          page.workspace.whatsAppNumber &&
-          finalReplyText
-        ) {
-          const cleanDigits = page.workspace.whatsAppNumber.replace(/[^\d]/g, "");
-          const waLink = `https://wa.me/${cleanDigits}${
-            page.workspace.whatsAppPrefillText
-              ? `?text=${encodeURIComponent(page.workspace.whatsAppPrefillText)}`
-              : ""
-          }`;
+        // Check if WhatsApp interactive button should be attached
+        let waButtonUrl: string | null = null;
 
-          if (!finalReplyText.includes("wa.me") && !finalReplyText.includes(page.workspace.whatsAppNumber)) {
-            finalReplyText += `\n\n📲 সরাসরি WhatsApp চ্যাট: ${waLink}\n📞 হটলাইন: ${
-              page.workspace.hotlineNumber || page.workspace.whatsAppNumber
-            }`;
+        if (page.workspace?.whatsAppNumber && finalReplyText) {
+          const rawNumber = page.workspace.whatsAppNumber.trim();
+          let cleanDigits = rawNumber.replace(/[^\d]/g, "");
+          if (cleanDigits.startsWith("01") && cleanDigits.length === 11) {
+            cleanDigits = `88${cleanDigits}`;
+          }
+          const textParam = page.workspace.whatsAppPrefillText
+            ? `?text=${encodeURIComponent(page.workspace.whatsAppPrefillText)}`
+            : "";
+          const generatedWaUrl = `https://wa.me/${cleanDigits}${textParam}`;
+
+          if (page.workspace.whatsAppMode === "ALWAYS") {
+            waButtonUrl = generatedWaUrl;
+            if (!finalReplyText.includes(rawNumber)) {
+              let contactFooter = `\n\nWhatsApp:\n${rawNumber}`;
+              if (page.workspace.hotlineNumber && page.workspace.hotlineNumber !== rawNumber) {
+                contactFooter += `\nHotline: ${page.workspace.hotlineNumber}`;
+              }
+              finalReplyText += contactFooter;
+            }
+          } else if (
+            page.workspace.whatsAppMode === "ON_DEMAND" &&
+            (finalReplyText.includes(rawNumber) ||
+              finalReplyText.toLowerCase().includes("whatsapp") ||
+              (text && text.toLowerCase().includes("whatsapp")) ||
+              (text && text.includes("নাম্বার")) ||
+              (text && text.includes("কন্টাক্ট")))
+          ) {
+            waButtonUrl = generatedWaUrl;
           }
         }
 
         // 10. Send Reply to Customer via Facebook Messenger Send API
         if (finalReplyText && page.aiMode !== "MANUAL") {
-          await facebookApi.sendTextMessage(pageAccessToken, senderPsid, finalReplyText);
+          if (waButtonUrl) {
+            await facebookApi.sendButtonMessage(pageAccessToken, senderPsid, finalReplyText, [
+              {
+                type: "web_url",
+                url: waButtonUrl,
+                title: "WhatsApp এ চ্যাট",
+              },
+            ]);
+          } else {
+            await facebookApi.sendTextMessage(pageAccessToken, senderPsid, finalReplyText);
+          }
 
           // Save AI Message to DB
           await prisma.message.create({
