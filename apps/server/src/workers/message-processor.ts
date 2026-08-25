@@ -152,7 +152,8 @@ export function startMessageWorker() {
         },
       });
 
-      // 7. Send "typing_on" to Messenger for natural feel
+      // 7. Send "mark_seen" and "typing_on" to Messenger for instant read receipt and typing bubbles
+      await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "mark_seen");
       await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "typing_on");
 
       // 8. Fetch Context: Chat History & Knowledge Base
@@ -187,14 +188,12 @@ export function startMessageWorker() {
         (k) => `[${k.type} - ${k.title}]: ${k.content}`
       );
 
-      // Default system prompt
+      // Default system prompt (Real Human Bangladeshi Sales Moderator)
       const systemPrompt =
         page.systemPrompt ||
-        `You are a polite, helpful AI sales & customer support executive for "${
-          page.businessName || page.name
-        }".
-Respond accurately based on the business knowledge base in a natural, polite tone.
-If information is not found in knowledge base, kindly inform the user or suggest connecting with a manager.`;
+        `আপনি "${page.businessName || page.name}" ফেসবুক পেজের একজন প্রফেশনাল, অত্যন্ত আন্তরিক ও চটপটে বিক্রয় প্রতিনিধি (Human Sales Moderator)।
+কখনোই নিজেকে রোবট বা AI বলবেন না। সবসময় সুন্দর ও মিষ্টি বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং হেল্পফুল উত্তর দেবেন।
+কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে সঠিক তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা চেয়ে নিন।`;
 
       // 9. Call Dedicated AI Proxy Gateway (with shohag Master Key)
       try {

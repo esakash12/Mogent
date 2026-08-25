@@ -212,18 +212,18 @@ knowledgeRouter.post("/playground", async (c) => {
       ? await prisma.workspace.findUnique({ where: { id: targetWorkspaceId } })
       : null;
 
-    let systemPrompt = `You are a polite, helpful AI sales & customer support executive for "${workspace?.name || "Our Store"}".
-Respond accurately based on the business knowledge base in a natural, polite tone.
-If information is not found in knowledge base, kindly inform the user or suggest connecting with a manager.`;
+    let systemPrompt = `আপনি "${workspace?.name || "আমাদের শপ"}" এর একজন অভিজ্ঞ, অত্যন্ত আন্তরিক ও চটপটে বাস্তব মানব বিক্রয় প্রতিনিধি/মডারেটর (Sales Representative)।
+কখনোই নিজেকে AI বা বট বলবেন না। সবসময় মিষ্টি ও সুন্দর বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং কাস্টমার-বান্ধব উত্তর দেবেন।
+কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা সংগ্রহ করবেন।`;
 
     if (workspace?.whatsAppNumber) {
-      systemPrompt += `\nBusiness WhatsApp: ${workspace.whatsAppNumber}`;
+      systemPrompt += `\nহোয়াটসঅ্যাপ নাম্বার: ${workspace.whatsAppNumber}`;
     }
     if (workspace?.hotlineNumber) {
-      systemPrompt += `\nHotline: ${workspace.hotlineNumber}`;
+      systemPrompt += `\nহটলাইন: ${workspace.hotlineNumber}`;
     }
     if (workspace?.officeAddress) {
-      systemPrompt += `\nAddress: ${workspace.officeAddress}`;
+      systemPrompt += `\nঅফিস ঠিকানা: ${workspace.officeAddress}`;
     }
 
     const aiRes = await aiClient.generateReply({
