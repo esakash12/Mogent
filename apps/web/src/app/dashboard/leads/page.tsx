@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -65,10 +65,7 @@ export default function LeadsPage() {
   };
 
   const handleExportCSV = () => {
-    if (leads.length === 0) {
-      alert("No leads to export!");
-      return;
-    }
+    if (leads.length === 0) return;
     let csv = "ID,Name,Phone,Address,Orders Count,Total Spent,Sentiment,PSID\n";
     for (const l of leads) {
       const name = `"${l.name}"`;

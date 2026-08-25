@@ -125,13 +125,36 @@ export class FacebookApiService {
     pageAccessToken: string,
     psid: string
   ): Promise<FbCustomerProfile | null> {
-    const url = `${this.baseUrl}/${psid}?fields=first_name,last_name,profile_pic,locale,timezone,gender&access_token=${pageAccessToken}`;
+    const url = `${this.baseUrl}/${psid}?fields=first_name,last_name,name,profile_pic,locale,timezone,gender&access_token=${pageAccessToken}`;
 
     try {
       const res = await fetch(url);
-      if (!res.ok) return null;
-      return (await res.json()) as FbCustomerProfile;
-    } catch {
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.warn(`Facebook fetchCustomerProfile error for PSID [${psid}]:`, errorText);
+        return null;
+      }
+      const data = await res.json();
+      
+      let firstName = data.first_name;
+      let lastName = data.last_name;
+      
+      if (!firstName && data.name) {
+        const parts = data.name.trim().split(" ");
+        firstName = parts[0];
+        lastName = parts.slice(1).join(" ");
+      }
+
+      return {
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+        profile_pic: data.profile_pic || undefined,
+        locale: data.locale || undefined,
+        timezone: data.timezone || undefined,
+        gender: data.gender || undefined,
+      };
+    } catch (err) {
+      console.warn(`Facebook fetchCustomerProfile network error for PSID [${psid}]:`, err);
       return null;
     }
   }

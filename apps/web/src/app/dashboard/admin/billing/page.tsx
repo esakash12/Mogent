@@ -16,6 +16,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface PaymentTransaction {
   id: string;
@@ -62,8 +63,12 @@ export default function AdminBillingApprovalsPage() {
     loadPayments();
   }, []);
 
-  const handleApprove = async (id: string) => {
-    if (!confirm("Are you sure you want to approve this payment and activate the 30-day subscription?")) return;
+  const [approveModalTx, setApproveModalTx] = useState<PaymentTransaction | null>(null);
+  const [rejectModalTx, setRejectModalTx] = useState<PaymentTransaction | null>(null);
+
+  const confirmApprove = async () => {
+    if (!approveModalTx) return;
+    const id = approveModalTx.id;
     setActionLoadingId(id);
     try {
       const res = await fetch(`${API_BASE}/api/billing/admin/payments/${id}/approve`, {
@@ -77,19 +82,18 @@ export default function AdminBillingApprovalsPage() {
         setPayments((prev) =>
           prev.map((p) => (p.id === id ? { ...p, status: "APPROVED" } : p))
         );
-      } else {
-        alert(json.error || "Approval failed");
       }
     } catch (err) {
       console.error("Approve error:", err);
     } finally {
       setActionLoadingId(null);
+      setApproveModalTx(null);
     }
   };
 
-  const handleReject = async (id: string) => {
-    const reason = prompt("Enter rejection reason (optional):");
-    if (reason === null) return;
+  const confirmReject = async (reason?: string) => {
+    if (!rejectModalTx) return;
+    const id = rejectModalTx.id;
     setActionLoadingId(id);
     try {
       const res = await fetch(`${API_BASE}/api/billing/admin/payments/${id}/reject`, {
@@ -98,7 +102,7 @@ export default function AdminBillingApprovalsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
         },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason: reason || "Invalid Transaction ID" }),
       });
       const json = await res.json();
       if (json.success) {
@@ -110,6 +114,7 @@ export default function AdminBillingApprovalsPage() {
       console.error("Reject error:", err);
     } finally {
       setActionLoadingId(null);
+      setRejectModalTx(null);
     }
   };
 
@@ -275,7 +280,7 @@ export default function AdminBillingApprovalsPage() {
                       {item.status === "PENDING" ? (
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => handleApprove(item.id)}
+                            onClick={() => setApproveModalTx(item)}
                             disabled={actionLoadingId === item.id}
                             className="px-3 py-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] text-black font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                           >
@@ -283,7 +288,7 @@ export default function AdminBillingApprovalsPage() {
                             <span>Approve</span>
                           </button>
                           <button
-                            onClick={() => handleReject(item.id)}
+                            onClick={() => setRejectModalTx(item)}
                             disabled={actionLoadingId === item.id}
                             className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
                           >
@@ -302,6 +307,33 @@ export default function AdminBillingApprovalsPage() {
           </div>
         )}
       </div>
+
+      {/* Approve Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!approveModalTx}
+        onClose={() => setApproveModalTx(null)}
+        onConfirm={confirmApprove}
+        title="Approve Subscription Payment"
+        description={`Are you sure you want to verify TrxID [${approveModalTx?.transactionId}] (৳${approveModalTx?.amount}) and activate the ${approveModalTx?.plan} plan for "${approveModalTx?.workspaceName}"?`}
+        confirmText="Approve & Activate"
+        variant="success"
+        isLoading={!!actionLoadingId}
+      />
+
+      {/* Reject Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!rejectModalTx}
+        onClose={() => setRejectModalTx(null)}
+        onConfirm={confirmReject}
+        title="Reject Transaction"
+        description={`Reject payment submission for TrxID [${rejectModalTx?.transactionId}]. You can provide a reason for the merchant.`}
+        confirmText="Reject Transaction"
+        variant="danger"
+        requiresInput={true}
+        inputPlaceholder="e.g. Invalid TrxID / Payment not received"
+        defaultValue="Invalid Transaction ID"
+        isLoading={!!actionLoadingId}
+      />
     </div>
   );
 }

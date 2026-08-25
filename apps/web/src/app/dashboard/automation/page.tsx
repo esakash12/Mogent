@@ -28,6 +28,7 @@ import {
   toggleAutomationRule,
   deleteAutomationRule
 } from "@/lib/api";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface TriggerRule {
   id: string;
@@ -61,6 +62,8 @@ export default function AutomationPage() {
     loadRules();
   }, []);
 
+  const [deleteRuleItem, setDeleteRuleItem] = useState<TriggerRule | null>(null);
+
   const handleToggleRule = async (id: string, currentActive: boolean) => {
     setRules((prev) =>
       prev.map((r) => (r.id === id ? { ...r, isActive: !currentActive } : r))
@@ -68,10 +71,12 @@ export default function AutomationPage() {
     await toggleAutomationRule(id, !currentActive);
   };
 
-  const handleDeleteRule = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this escalation rule?")) return;
+  const confirmDeleteRule = async () => {
+    if (!deleteRuleItem) return;
+    const id = deleteRuleItem.id;
     setRules((prev) => prev.filter((r) => r.id !== id));
     await deleteAutomationRule(id);
+    setDeleteRuleItem(null);
   };
 
   const handleCreateRule = async (e: React.FormEvent) => {
@@ -106,9 +111,8 @@ export default function AutomationPage() {
       ]);
       setShowAddModal(false);
       setNewRuleName("");
-      setNewKeywords("");
     } else {
-      alert(res.error || "Failed to create rule");
+      console.error("Failed to create rule:", res.error);
     }
   };
 
@@ -222,8 +226,8 @@ export default function AutomationPage() {
                       )}
                     </button>
                     <button
-                      onClick={() => handleDeleteRule(rule.id)}
-                      className="p-1 text-[#666] hover:text-red-400 rounded transition-colors"
+                      onClick={() => setDeleteRuleItem(rule)}
+                      className="p-1 text-[#666] hover:text-red-400 rounded transition-colors cursor-pointer"
                       title="Delete Rule"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -331,6 +335,17 @@ export default function AutomationPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Rule Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteRuleItem}
+        onClose={() => setDeleteRuleItem(null)}
+        onConfirm={confirmDeleteRule}
+        title="Delete Escalation Rule"
+        description={`Are you sure you want to delete escalation rule "${deleteRuleItem?.name}"?`}
+        confirmText="Delete Rule"
+        variant="danger"
+      />
     </div>
   );
 }

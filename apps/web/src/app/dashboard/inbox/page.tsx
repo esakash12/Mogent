@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   MessageSquare,
@@ -63,6 +63,11 @@ export default function LiveInboxPage() {
   const [loading, setLoading] = useState(true);
 
   const [connectedPages, setConnectedPages] = useState<any[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, selectedId]);
 
   // Fetch live conversations from DB
   const loadConversations = async (isBackground = false) => {
@@ -430,6 +435,7 @@ export default function LiveInboxPage() {
                 </div>
               );
             })}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Input Box */}

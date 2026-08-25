@@ -113,8 +113,6 @@ export default function AIAutomationSectorPage() {
     if (res) {
       setContactSaved(true);
       setTimeout(() => setContactSaved(false), 3000);
-    } else {
-      alert("Failed to save WhatsApp & Contact settings. Please try again.");
     }
   };
 
@@ -126,8 +124,6 @@ export default function AIAutomationSectorPage() {
     if (res && (res.success || !res.error)) {
       setPromptSaved(true);
       setTimeout(() => setPromptSaved(false), 2500);
-    } else {
-      alert("Failed to save: " + (res?.error || "Unknown error"));
     }
   };
 

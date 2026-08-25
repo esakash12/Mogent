@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem } from "@/lib/api";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface KnowledgeItem {
   id: string;
@@ -80,9 +81,12 @@ export default function KnowledgeBasePage() {
     setIsSubmitting(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this knowledge document?")) return;
-    await deleteKnowledgeItem(id);
+  const [deleteKbItem, setDeleteKbItem] = useState<KnowledgeItem | null>(null);
+
+  const confirmDeleteKnowledge = async () => {
+    if (!deleteKbItem) return;
+    await deleteKnowledgeItem(deleteKbItem.id);
+    setDeleteKbItem(null);
     loadKnowledge();
   };
 
@@ -200,7 +204,7 @@ export default function KnowledgeBasePage() {
                     {item.category}
                   </span>
                   <button
-                    onClick={() => handleDelete(item.id)}
+                    onClick={() => setDeleteKbItem(item)}
                     className="p-1.5 rounded-md hover:bg-red-500/10 text-[#555] hover:text-red-400 transition-colors cursor-pointer"
                     title="Delete"
                   >
@@ -296,6 +300,17 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
       )}
+
+      {/* Delete Knowledge Item Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteKbItem}
+        onClose={() => setDeleteKbItem(null)}
+        onConfirm={confirmDeleteKnowledge}
+        title="Delete Knowledge Document"
+        description={`Are you sure you want to remove "${deleteKbItem?.title}" from Mogent AI knowledge base?`}
+        confirmText="Delete Document"
+        variant="danger"
+      />
     </div>
   );
 }

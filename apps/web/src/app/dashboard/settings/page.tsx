@@ -27,6 +27,7 @@ import {
   inviteTeamMember,
   deleteTeamMember
 } from "@/lib/api";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 export default function SettingsSectorPage() {
   const [activeTab, setActiveTab] = useState<"PROFILE" | "BILLING" | "TEAM" | "DANGER">("PROFILE");
@@ -78,8 +79,6 @@ export default function SettingsSectorPage() {
       setSaved(true);
       setPassword("");
       setTimeout(() => setSaved(false), 2500);
-    } else {
-      alert("Failed to update profile: " + (res.error || "Unknown error"));
     }
   };
 
@@ -101,14 +100,20 @@ export default function SettingsSectorPage() {
       setInviteEmail("");
       setInviteName("");
     } else {
-      alert(res.error || "Failed to add team member");
+      setInviteError(res.error || "Failed to add team member");
     }
   };
 
-  const handleRemoveMember = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this member from the workspace?")) return;
+  const [deleteMemberItem, setDeleteMemberItem] = useState<any | null>(null);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  const confirmDeleteMember = async () => {
+    if (!deleteMemberItem) return;
+    const id = deleteMemberItem.id;
     setTeamMembers((prev) => prev.filter((m) => m.id !== id));
     await deleteTeamMember(id);
+    setDeleteMemberItem(null);
   };
 
   const handleExportData = () => {
@@ -133,7 +138,7 @@ export default function SettingsSectorPage() {
         a.click();
         a.remove();
       })
-      .catch((err) => alert("Export failed: " + err.message));
+      .catch((err) => console.error("Export failed:", err));
   };
 
   if (loading) {
@@ -389,8 +394,8 @@ export default function SettingsSectorPage() {
                   </span>
                   {member.role !== "OWNER" && (
                     <button
-                      onClick={() => handleRemoveMember(member.id)}
-                      className="p-1 rounded hover:bg-red-500/10 text-[#666] hover:text-red-400 transition-colors"
+                      onClick={() => setDeleteMemberItem(member)}
+                      className="p-1 rounded hover:bg-red-500/10 text-[#666] hover:text-red-400 transition-colors cursor-pointer"
                       title="Remove member"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -500,11 +505,7 @@ export default function SettingsSectorPage() {
                 <p className="text-[#888] mt-0.5">Permanently erase all AI training knowledge, customer contacts, and token keys.</p>
               </div>
               <button
-                onClick={() => {
-                  if (confirm("Are you ABSOLUTELY sure? This action cannot be undone and will erase your workspace permanently.")) {
-                    alert("Please contact enterprise support at support@mogent.tech to complete workspace deletion.");
-                  }
-                }}
+                onClick={() => setShowDeleteAccountModal(true)}
                 className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-1.5 w-fit cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -514,6 +515,30 @@ export default function SettingsSectorPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Member Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteMemberItem}
+        onClose={() => setDeleteMemberItem(null)}
+        onConfirm={confirmDeleteMember}
+        title="Remove Team Member"
+        description={`Are you sure you want to remove "${deleteMemberItem?.user?.name || deleteMemberItem?.user?.email}" from the workspace?`}
+        confirmText="Remove Member"
+        variant="danger"
+      />
+
+      {/* Delete Workspace Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteAccountModal}
+        onClose={() => setShowDeleteAccountModal(false)}
+        onConfirm={() => {
+          setShowDeleteAccountModal(false);
+        }}
+        title="Delete Workspace Account"
+        description="Are you ABSOLUTELY sure? This action cannot be undone. Please contact enterprise support at support@mogent.tech to complete workspace deletion."
+        confirmText="Contact Support"
+        variant="danger"
+      />
     </div>
   );
 }

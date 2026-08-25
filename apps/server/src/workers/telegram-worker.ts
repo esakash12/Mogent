@@ -24,9 +24,20 @@ export function startTelegramWorker() {
         return;
       }
 
+      let botToken = config.botToken;
+      if (!botToken) {
+        try {
+          const redisVal = await redisConnection.get("mogent:telegram_master_config");
+          if (redisVal) {
+            const parsed = JSON.parse(redisVal);
+            botToken = parsed.botToken;
+          }
+        } catch {}
+      }
+
       // 2. Dispatch via Telegram Bot API
       const success = await telegramApi.sendEscalationAlert(
-        config.botToken,
+        botToken,
         config.chatId,
         payload
       );

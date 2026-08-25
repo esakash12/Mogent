@@ -70,14 +70,27 @@ export function startMessageWorker() {
           data: {
             facebookPageId: page.id,
             psid: senderPsid,
-            firstName: profile?.first_name,
-            lastName: profile?.last_name,
-            profilePic: profile?.profile_pic,
-            locale: profile?.locale,
-            timezone: profile?.timezone,
-            gender: profile?.gender,
+            firstName: profile?.first_name || null,
+            lastName: profile?.last_name || null,
+            profilePic: profile?.profile_pic || null,
+            locale: profile?.locale || null,
+            timezone: profile?.timezone || null,
+            gender: profile?.gender || null,
           },
         });
+      } else if (!customer.firstName || customer.firstName === "Customer") {
+        // Re-fetch profile if name was previously missing
+        const profile = await facebookApi.fetchCustomerProfile(pageAccessToken, senderPsid);
+        if (profile?.first_name) {
+          customer = await prisma.customer.update({
+            where: { id: customer.id },
+            data: {
+              firstName: profile.first_name,
+              lastName: profile.last_name || customer.lastName,
+              profilePic: profile.profile_pic || customer.profilePic,
+            },
+          });
+        }
       }
 
       // 4. Find or Create Active Conversation
@@ -254,13 +267,6 @@ export function startMessageWorker() {
 
           if (page.workspace.whatsAppMode === "ALWAYS") {
             waButtonUrl = generatedWaUrl;
-            if (!finalReplyText.includes(rawNumber)) {
-              let contactFooter = `\n\nWhatsApp:\n${rawNumber}`;
-              if (page.workspace.hotlineNumber && page.workspace.hotlineNumber !== rawNumber) {
-                contactFooter += `\nHotline: ${page.workspace.hotlineNumber}`;
-              }
-              finalReplyText += contactFooter;
-            }
           } else if (
             page.workspace.whatsAppMode === "ON_DEMAND" &&
             (finalReplyText.includes(rawNumber) ||

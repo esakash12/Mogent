@@ -65,7 +65,7 @@ export interface ProcessMessageJobPayload {
 
 export interface SendTelegramAlertPayload {
   workspaceId: string;
-  pageId: string;
+  pageId?: string;
   conversationId: string;
   customerName?: string;
   customerPsid: string;

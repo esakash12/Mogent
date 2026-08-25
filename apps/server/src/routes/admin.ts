@@ -231,3 +231,90 @@ adminRouter.post("/meta-config", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
+const REDIS_TELEGRAM_MASTER_CONFIG = "mogent:telegram_master_config";
+const REDIS_CLOUDFLARE_CONFIG = "mogent:cloudflare_r2_config";
+
+// -----------------------------------------------------------------------------
+// 7. GET & UPDATE MASTER TELEGRAM BOT CONFIG
+// -----------------------------------------------------------------------------
+adminRouter.get("/telegram-master-config", async (c) => {
+  try {
+    const redisVal = await redisConnection.get(REDIS_TELEGRAM_MASTER_CONFIG);
+    let parsed = redisVal ? JSON.parse(redisVal) : null;
+
+    const data = {
+      botToken: parsed?.botToken || config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "",
+      botUsername: parsed?.botUsername || process.env.TELEGRAM_BOT_USERNAME || "MogentAlertBot",
+      adminChatId: parsed?.adminChatId || "-1002349182390",
+    };
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.post("/telegram-master-config", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { botToken, botUsername, adminChatId } = body;
+
+    const updated = {
+      botToken: (botToken || "").trim(),
+      botUsername: (botUsername || "MogentAlertBot").trim().replace(/^@/, ""),
+      adminChatId: (adminChatId || "").trim(),
+    };
+
+    await redisConnection.set(REDIS_TELEGRAM_MASTER_CONFIG, JSON.stringify(updated));
+
+    if (updated.botToken) config.telegram.botToken = updated.botToken;
+
+    return c.json({ success: true, message: "Telegram Master Bot configuration saved successfully!", data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 8. GET & UPDATE CLOUDFLARE R2 STORAGE CONFIG
+// -----------------------------------------------------------------------------
+adminRouter.get("/cloudflare-config", async (c) => {
+  try {
+    const redisVal = await redisConnection.get(REDIS_CLOUDFLARE_CONFIG);
+    let parsed = redisVal ? JSON.parse(redisVal) : null;
+
+    const data = {
+      accountId: parsed?.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || "",
+      accessKeyId: parsed?.accessKeyId || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || "",
+      secretAccessKey: parsed?.secretAccessKey || process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || "",
+      bucketName: parsed?.bucketName || process.env.CLOUDFLARE_R2_BUCKET_NAME || "mogent-assets",
+      publicDomain: parsed?.publicDomain || process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || "",
+    };
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.post("/cloudflare-config", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { accountId, accessKeyId, secretAccessKey, bucketName, publicDomain } = body;
+
+    const updated = {
+      accountId: (accountId || "").trim(),
+      accessKeyId: (accessKeyId || "").trim(),
+      secretAccessKey: (secretAccessKey || "").trim(),
+      bucketName: (bucketName || "mogent-assets").trim(),
+      publicDomain: (publicDomain || "").trim(),
+    };
+
+    await redisConnection.set(REDIS_CLOUDFLARE_CONFIG, JSON.stringify(updated));
+
+    return c.json({ success: true, message: "Cloudflare R2 Storage credentials saved successfully!", data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});

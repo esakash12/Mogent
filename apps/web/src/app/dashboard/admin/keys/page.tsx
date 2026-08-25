@@ -17,6 +17,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface KeyStatus {
   id: string;
@@ -88,8 +89,11 @@ export default function ApiKeysPage() {
     }
   };
 
-  const removeKey = async (keyItem: KeyStatus) => {
-    if (!confirm("Are you sure you want to remove this API key from rotation?")) return;
+  const [deleteKeyItem, setDeleteKeyItem] = useState<KeyStatus | null>(null);
+
+  const confirmDeleteKey = async () => {
+    if (!deleteKeyItem) return;
+    const keyItem = deleteKeyItem;
     setKeys((prev) => prev.filter((k) => k.id !== keyItem.id));
 
     try {
@@ -103,6 +107,8 @@ export default function ApiKeysPage() {
       });
     } catch (err) {
       console.error("Failed to delete key:", err);
+    } finally {
+      setDeleteKeyItem(null);
     }
   };
 
@@ -270,7 +276,7 @@ export default function ApiKeysPage() {
                   {/* Actions */}
                   <div className="flex items-center gap-2 self-end md:self-auto">
                     <button
-                      onClick={() => removeKey(k)}
+                      onClick={() => setDeleteKeyItem(k)}
                       className="p-1.5 rounded-md hover:bg-red-500/10 text-[#555] hover:text-red-400 transition-colors cursor-pointer"
                       title="Remove key"
                     >
@@ -283,6 +289,17 @@ export default function ApiKeysPage() {
           </div>
         )}
       </div>
+
+      {/* Delete API Key Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteKeyItem}
+        onClose={() => setDeleteKeyItem(null)}
+        onConfirm={confirmDeleteKey}
+        title="Remove API Key"
+        description={`Are you sure you want to remove API key [${deleteKeyItem?.maskedKey}] from the rotation pool?`}
+        confirmText="Remove Key"
+        variant="danger"
+      />
     </div>
   );
 }

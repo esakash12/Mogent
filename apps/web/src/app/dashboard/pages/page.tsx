@@ -18,6 +18,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/confirm-modal";
 import {
   fetchPages,
   createPage,
@@ -135,10 +136,14 @@ export default function PagesManagementPage() {
     await updatePageSettings(pageId, { aiMode: newMode });
   };
 
-  const handleDelete = async (pageId: string, pageName: string) => {
-    if (!confirm(`Are you sure you want to disconnect Facebook Page [${pageName}]?`)) return;
+  const [deleteModalPage, setDeleteModalPage] = useState<FacebookPageItem | null>(null);
+
+  const confirmDeletePage = async () => {
+    if (!deleteModalPage) return;
+    const pageId = deleteModalPage.id;
     setPages((prev) => prev.filter((p) => p.id !== pageId));
     await deletePage(pageId);
+    setDeleteModalPage(null);
   };
 
   return (
@@ -249,7 +254,7 @@ export default function PagesManagementPage() {
                       {page.webhookStatus || "SUBSCRIBED"}
                     </span>
                     <button
-                      onClick={() => handleDelete(page.id, page.name)}
+                      onClick={() => setDeleteModalPage(page)}
                       className="p-1.5 rounded-lg hover:bg-red-500/10 text-[#555] hover:text-red-400 transition-colors cursor-pointer"
                       title="Disconnect page"
                     >
@@ -457,6 +462,17 @@ export default function PagesManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Disconnect Page Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteModalPage}
+        onClose={() => setDeleteModalPage(null)}
+        onConfirm={confirmDeletePage}
+        title="Disconnect Facebook Page"
+        description={`Are you sure you want to disconnect Facebook Page "${deleteModalPage?.name}"? Mogent AI will stop responding to Messenger conversations for this page.`}
+        confirmText="Disconnect Page"
+        variant="danger"
+      />
     </div>
   );
 }

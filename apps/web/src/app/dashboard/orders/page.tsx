@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -61,10 +61,7 @@ export default function OrdersPage() {
   };
 
   const handleExportCSV = () => {
-    if (orders.length === 0) {
-      alert("No orders to export!");
-      return;
-    }
+    if (orders.length === 0) return;
     let csv = "Order Number,Customer Name,Phone,Address,Items,Amount,Status,Captured At,Page\n";
     for (const o of orders) {
       const name = `"${o.customerName}"`;

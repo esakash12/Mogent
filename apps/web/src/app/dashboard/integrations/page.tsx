@@ -26,6 +26,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/confirm-modal";
 import {
   fetchPages,
   createPage,
@@ -241,9 +242,12 @@ export default function IntegrationsPage() {
     setIsSubmitting(false);
   };
 
-  const handleDeletePage = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to disconnect Facebook Page [${name}]?`)) return;
-    await deletePage(id);
+  const [deleteModalPage, setDeleteModalPage] = useState<any | null>(null);
+
+  const confirmDeletePage = async () => {
+    if (!deleteModalPage) return;
+    await deletePage(deleteModalPage.id);
+    setDeleteModalPage(null);
     loadPages();
   };
 
@@ -423,7 +427,7 @@ export default function IntegrationsPage() {
                     </button>
 
                     <button
-                      onClick={() => handleDeletePage(p.id, p.name || p.pageName)}
+                      onClick={() => setDeleteModalPage(p)}
                       className="p-2 rounded-lg hover:bg-red-500/10 text-[#666] hover:text-red-400 transition-colors cursor-pointer"
                       title="Disconnect Page"
                     >
@@ -440,57 +444,34 @@ export default function IntegrationsPage() {
       {/* 2. TELEGRAM TAB */}
       {activeTab === "TELEGRAM" && (
         <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] max-w-2xl space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-              <Smartphone className="w-5 h-5" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                <Smartphone className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-[#EDEDED]">Single Master Telegram Alert Bot</h3>
+                <p className="text-xs text-[#888]">1-Click pairing with our central platform bot. No developer keys required.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-sm text-[#EDEDED]">Telegram Push Alert Gateway</h3>
-              <p className="text-xs text-[#888]">Get instant notification on your smartphone when a customer requires human manager.</p>
-            </div>
+
+            <Link
+              href="/dashboard/telegram"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-amber-500/10"
+            >
+              <span>Manage Telegram</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
-          <form onSubmit={handleSaveTelegram} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Telegram Bot Token</label>
-              <input
-                type="text"
-                value={botToken}
-                onChange={(e) => setBotToken(e.target.value)}
-                placeholder="e.g. 7189204918:AAFlw902JkLmNoP..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Manager Group / Chat ID</label>
-              <input
-                type="text"
-                value={chatId}
-                onChange={(e) => setChatId(e.target.value)}
-                placeholder="e.g. -1002349182390"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            {telegramSaved && (
-              <div className="p-3 rounded-lg text-xs bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Telegram notification settings saved successfully!</span>
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={savingTelegram}
-                className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {savingTelegram ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                <span>Save Telegram Settings</span>
-              </button>
-            </div>
-          </form>
+          <div className="p-4 rounded-xl bg-[#111] border border-[#222] space-y-2">
+            <h4 className="text-xs font-semibold text-[#EDEDED]">Instant Mobile Notifications Include:</h4>
+            <ul className="text-xs text-[#888] space-y-1.5 list-disc list-inside">
+              <li>Customer sentiment anger / negative reviews escalation</li>
+              <li>Human manager takeover requests</li>
+              <li>New e-commerce orders and customer delivery addresses</li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -773,6 +754,17 @@ export default function IntegrationsPage() {
           </div>
         </div>
       )}
+
+      {/* Disconnect Facebook Page Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteModalPage}
+        onClose={() => setDeleteModalPage(null)}
+        onConfirm={confirmDeletePage}
+        title="Disconnect Facebook Page"
+        description={`Are you sure you want to disconnect Facebook Page "${deleteModalPage?.name || deleteModalPage?.pageName}"?`}
+        confirmText="Disconnect Page"
+        variant="danger"
+      />
     </div>
   );
 }

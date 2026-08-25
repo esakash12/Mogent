@@ -261,6 +261,47 @@ export async function toggleProductStock(productId: string) {
   }
 }
 
+export async function deleteProduct(productId: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/products/${productId}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    const json = await res.json();
+    return json.success;
+  } catch (err) {
+    console.error("Error deleting product:", err);
+    return false;
+  }
+}
+
+export async function uploadImageFile(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_token") : "";
+    const wsId = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace_id") : "";
+
+    const res = await fetch(`${API_BASE}/api/upload`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(wsId ? { "x-workspace-id": wsId } : {}),
+      },
+      body: formData,
+    });
+
+    const json = await res.json();
+    if (json.success && json.data) {
+      return { success: true, url: json.data.url };
+    }
+    return { success: false, error: json.error || "Upload failed" };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Network error during upload" };
+  }
+}
+
 // --- CONTACTS ---
 export async function fetchContacts(filter?: string) {
   try {

@@ -17,6 +17,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 interface KeyStatus {
   id: string;
@@ -38,6 +39,7 @@ export default function ApiKeysPage() {
   const [newKeyInput, setNewKeyInput] = useState("");
   const [selectedModel, setSelectedModel] = useState("gemini-3.5-flash-lite");
   const [isAdding, setIsAdding] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   const fetchKeys = async () => {
     setLoading(true);
@@ -81,18 +83,21 @@ export default function ApiKeysPage() {
         setKeys((prev) => [json.data, ...prev.filter((k) => k.maskedKey !== json.data.maskedKey)]);
         setNewKeyInput("");
       } else {
-        alert("Error adding key: " + (json.error || "Unknown error"));
+        setKeyError(json.error || "Failed to add key");
       }
     } catch (err: any) {
       console.error("Failed to add key:", err);
-      alert("Failed to connect to the backend server. Make sure it is running. Error: " + err.message);
+      setKeyError(err.message || "Failed to connect to backend server");
     } finally {
       setIsAdding(false);
     }
   };
 
-  const removeKey = async (keyItem: KeyStatus) => {
-    if (!confirm("Are you sure you want to remove this API key from rotation?")) return;
+  const [deleteKeyItem, setDeleteKeyItem] = useState<KeyStatus | null>(null);
+
+  const confirmRemoveKey = async () => {
+    if (!deleteKeyItem) return;
+    const keyItem = deleteKeyItem;
     setKeys((prev) => prev.filter((k) => k.id !== keyItem.id));
 
     try {
@@ -106,6 +111,8 @@ export default function ApiKeysPage() {
       });
     } catch (err) {
       console.error("Failed to delete key:", err);
+    } finally {
+      setDeleteKeyItem(null);
     }
   };
 
@@ -181,13 +188,10 @@ export default function ApiKeysPage() {
         <button
           type="button"
           onClick={() => {
-            if (!newKeyInput.trim()) {
-              alert("Please enter a valid API Key first.");
-              return;
-            }
+            if (!newKeyInput.trim()) return;
             handleAddKey({ preventDefault: () => {} } as any);
           }}
-          disabled={isAdding}
+          disabled={isAdding || !newKeyInput.trim()}
           className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-semibold text-xs flex items-center justify-center gap-2 transition-colors shrink-0 cursor-pointer shadow-lg shadow-amber-500/10"
         >
           {isAdding ? (
@@ -253,7 +257,7 @@ export default function ApiKeysPage() {
                 {/* Actions */}
                 <div className="flex items-center gap-2 self-end md:self-auto">
                   <button
-                    onClick={() => removeKey(k)}
+                    onClick={() => setDeleteKeyItem(k)}
                     className="p-1.5 rounded-md hover:bg-red-500/10 text-[#555] hover:text-red-400 transition-colors cursor-pointer"
                     title="Remove key from rotation"
                   >
@@ -265,6 +269,16 @@ export default function ApiKeysPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!deleteKeyItem}
+        onClose={() => setDeleteKeyItem(null)}
+        onConfirm={confirmRemoveKey}
+        title="Remove API Key"
+        description={`Are you sure you want to remove API Key [${deleteKeyItem?.maskedKey}] from the rotation pool?`}
+        confirmText="Remove Key"
+        variant="danger"
+      />
     </div>
   );
 }

@@ -254,13 +254,6 @@ knowledgeRouter.post("/playground", async (c) => {
           title: "WhatsApp এ চ্যাট",
           url: waUrl,
         };
-        if (!replyText.includes(rawNumber)) {
-          let contactFooter = `\n\nWhatsApp:\n${rawNumber}`;
-          if (workspace.hotlineNumber && workspace.hotlineNumber !== rawNumber) {
-            contactFooter += `\nHotline: ${workspace.hotlineNumber}`;
-          }
-          replyText += contactFooter;
-        }
       } else if (
         workspace.whatsAppMode === "ON_DEMAND" &&
         (replyText.includes(rawNumber) ||

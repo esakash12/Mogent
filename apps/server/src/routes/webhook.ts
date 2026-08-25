@@ -152,3 +152,134 @@ webhookRouter.get("/", handleVerify);
 webhookRouter.get("/facebook", handleVerify);
 webhookRouter.post("/", handleIngest);
 webhookRouter.post("/facebook", handleIngest);
+
+// -----------------------------------------------------------------------------
+// TELEGRAM MASTER BOT WEBHOOK (1-Click Deep Link Pairing & Plan Gating)
+// -----------------------------------------------------------------------------
+webhookRouter.post("/telegram", async (c) => {
+  try {
+    const update = await c.req.json();
+    const msg = update.message;
+    if (!msg || !msg.text) return c.json({ ok: true });
+
+    const chatId = msg.chat?.id;
+    const text = msg.text.trim();
+    const fromName = msg.from?.first_name || "Merchant";
+
+    // Fetch Master Bot Token from Redis or Config
+    let masterBotToken = config.telegram.botToken;
+    try {
+      const redisVal = await redisConnection.get("mogent:telegram_master_config");
+      if (redisVal) {
+        const parsed = JSON.parse(redisVal);
+        if (parsed.botToken) masterBotToken = parsed.botToken;
+      }
+    } catch {}
+
+    const sendReply = async (replyText: string) => {
+      if (!masterBotToken || !chatId) return;
+      try {
+        await fetch(`https://api.telegram.org/bot${masterBotToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: replyText, parse_mode: "Markdown" }),
+        });
+      } catch (err) {
+        console.error("Telegram Webhook reply failed:", err);
+      }
+    };
+
+    // Check for /start or /link parameter, e.g. "/start mg_ws_cm123" or "/link mg_ws_cm123"
+    let linkKey: string | null = null;
+    if (text.startsWith("/start ")) {
+      linkKey = text.replace("/start ", "").trim();
+    } else if (text.startsWith("/link ")) {
+      linkKey = text.replace("/link ", "").trim();
+    } else if (text.startsWith("mg_ws_")) {
+      linkKey = text.trim();
+    }
+
+    if (linkKey) {
+      // Find workspace by ID, slug, or strip "mg_ws_" prefix
+      const cleanWsId = linkKey.replace(/^mg_ws_/, "");
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          OR: [{ id: cleanWsId }, { slug: cleanWsId }, { id: linkKey }],
+        },
+      });
+
+      if (!workspace) {
+        await sendReply("❌ দুঃখিত! এই কানেকশন কি (Link Key)-এর সাথে কোনো Mogent Workspace পাওয়া যায়নি। দয়া করে আপনার ড্যাশবোর্ড থেকে সঠিক লিংক ব্যবহার করুন।");
+        return c.json({ ok: true });
+      }
+
+      // Check Plan Gating
+      const eligiblePlans = ["PRO", "ENTERPRISE"];
+      const isEligible = eligiblePlans.includes(workspace.plan.toUpperCase());
+
+      if (!isEligible) {
+        await sendReply(
+          `⚠️ *আপগ্রেড প্রয়োজন!*\n\nপ্রিয় ${fromName}, আপনার শপ *${workspace.name}* বর্তমানে *${workspace.plan}* প্ল্যানে রয়েছে।\n\nটেলিগ্রাম ইনস্ট্যান্ট কাস্টমার এসকেলেশন ও অর্ডার নোটিফিকেশন সুবিধা পেতে দয়া করে ড্যাশবোর্ড থেকে *Pro* অথবা *Enterprise* প্ল্যানে আপগ্রেড করুন। 🚀`
+        );
+        return c.json({ ok: true });
+      }
+
+      // Upsert TelegramConfig for Workspace
+      const existingConfig = await prisma.telegramConfig.findFirst({
+        where: { workspaceId: workspace.id },
+      });
+
+      if (existingConfig) {
+        await prisma.telegramConfig.update({
+          where: { id: existingConfig.id },
+          data: {
+            chatId: String(chatId),
+            botToken: masterBotToken,
+            isActive: true,
+          },
+        });
+      } else {
+        await prisma.telegramConfig.create({
+          data: {
+            workspaceId: workspace.id,
+            chatId: String(chatId),
+            botToken: masterBotToken,
+            isActive: true,
+          },
+        });
+      }
+
+      await sendReply(
+        `✅ *অভিনন্দন!*\n\nআপনার ফেসবুক পেজ/শপ *${workspace.name}* এর সাথে Mogent Alert Bot সফলভাবে কানেক্ট হয়েছে।\n\nএখন থেকে কোনো কাস্টমার ক্ষোভ প্রকাশ করলে, হিউম্যান সহায়তা চাইলে বা নতুন অর্ডার প্লেস করলে সাথে সাথে আপনি এখানে নোটিফিকেশন পেয়ে যাবেন! 🎉`
+      );
+      return c.json({ ok: true });
+    }
+
+    if (text === "/start" || text === "/help") {
+      await sendReply(
+        `🤖 *স্বাগতম Mogent Alert Bot-এ!*\n\nআপনার ফেসবুক পেজের সাথে এই বটটি কানেক্ট করতে আপনার Mogent ড্যাশবোর্ড (Integrations -> Telegram)-এ গিয়ে *Connect Telegram* বাটনে ক্লিক করুন অথবা কানেকশন কি দিয়ে \`/link <YOUR_KEY>\` মেসেজ পাঠান।`
+      );
+      return c.json({ ok: true });
+    }
+
+    if (text === "/status") {
+      const activeConfigs = await prisma.telegramConfig.findMany({
+        where: { chatId: String(chatId), isActive: true },
+        include: { workspace: true },
+      });
+
+      if (activeConfigs.length > 0) {
+        const wsNames = activeConfigs.map((c) => `• *${c.workspace.name}* (${c.workspace.plan} Plan)`).join("\n");
+        await sendReply(`📱 *কানেক্টেড পেজসমূহ:*\n\n${wsNames}\n\nআপনার এলার্ট সার্ভিস সক্রিয় রয়েছে! ✅`);
+      } else {
+        await sendReply(`⚠️ বর্তমানে কোনো পেজ এই টেলিগ্রাম অ্যাকাউন্টের সাথে কানেক্টেড নেই। ড্যাশবোর্ড থেকে কানেক্ট করুন।`);
+      }
+      return c.json({ ok: true });
+    }
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    console.error("Telegram Webhook processing error:", err);
+    return c.json({ ok: true }); // Always return 200 to Telegram
+  }
+});
