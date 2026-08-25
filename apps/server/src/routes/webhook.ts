@@ -177,13 +177,26 @@ webhookRouter.post("/telegram", async (c) => {
     } catch {}
 
     const sendReply = async (replyText: string) => {
-      if (!masterBotToken || !chatId) return;
+      if (!masterBotToken || !chatId) {
+        console.warn("Cannot send Telegram reply: Missing masterBotToken or chatId", { masterBotToken: Boolean(masterBotToken), chatId });
+        return;
+      }
       try {
-        await fetch(`https://api.telegram.org/bot${masterBotToken}/sendMessage`, {
+        const res = await fetch(`https://api.telegram.org/bot${masterBotToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_id: chatId, text: replyText, parse_mode: "Markdown" }),
         });
+        const json = await res.json();
+        if (!json.ok) {
+          console.warn("Telegram sendMessage response not OK:", json);
+          // Retry without Markdown if formatting caused error
+          await fetch(`https://api.telegram.org/bot${masterBotToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text: replyText.replace(/[*_`]/g, "") }),
+          });
+        }
       } catch (err) {
         console.error("Telegram Webhook reply failed:", err);
       }
@@ -214,8 +227,11 @@ webhookRouter.post("/telegram", async (c) => {
       }
 
       // Check Plan Gating
-      const eligiblePlans = ["PRO", "ENTERPRISE"];
-      const isEligible = eligiblePlans.includes(workspace.plan.toUpperCase());
+      const eligiblePlans = ["PRO", "ENTERPRISE", "BUSINESS", "GROWTH"];
+      const planUpper = (workspace.plan || "FREE").toUpperCase();
+      const isEligible =
+        eligiblePlans.includes(planUpper) ||
+        Boolean(workspace.planExpiresAt && new Date(workspace.planExpiresAt) > new Date());
 
       if (!isEligible) {
         await sendReply(

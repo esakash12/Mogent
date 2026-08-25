@@ -21,6 +21,7 @@ import { startTelegramWorker } from "./workers/telegram-worker";
 import { createRateLimiter } from "./middleware/rate-limiter";
 import { AiProxyClient } from "./ai-client";
 import { prisma } from "@mogent/database";
+import { redisConnection } from "./redis";
 
 const app = new Hono();
 
@@ -186,14 +187,47 @@ async function syncDatabaseSchema() {
 }
 
 // -----------------------------------------------------------------------------
-// 4. START BACKGROUND BULLMQ WORKERS & RUN DATABASE AUTO-SYNC
+// 4. AUTOMATIC TELEGRAM BOT WEBHOOK REGISTRATION
+// -----------------------------------------------------------------------------
+async function syncTelegramWebhook() {
+  try {
+    let token = config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "8784653620:AAF2Y-Hy3De5YLZ7WFqPVhzE26kHeitddoY";
+    try {
+      const redisVal = await redisConnection.get("mogent:telegram_master_config");
+      if (redisVal) {
+        const parsed = JSON.parse(redisVal);
+        if (parsed.botToken) token = parsed.botToken;
+      }
+    } catch {}
+
+    if (token) {
+      console.log("🤖 Ensuring Telegram Master Bot Webhook is active...");
+      const webhookUrl = "https://api.mogent.tech/webhook/telegram";
+      const hookRes = await fetch(
+        `https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`
+      );
+      const hookJson = await hookRes.json();
+      if (hookJson.ok) {
+        console.log(`✅ Telegram Webhook successfully connected to ${webhookUrl}`);
+      } else {
+        console.warn("⚠️ Telegram setWebhook response:", hookJson);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Telegram Webhook auto-init notice:", err.message);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 5. START BACKGROUND BULLMQ WORKERS & RUN AUTO-SYNC
 // -----------------------------------------------------------------------------
 console.log("\n🚀 Starting BullMQ Background Workers...");
 const messageWorker = startMessageWorker();
 const telegramWorker = startTelegramWorker();
 
-// Trigger self-healing database schema sync asynchronously
+// Trigger self-healing database schema sync & Telegram webhook registration
 syncDatabaseSchema();
+syncTelegramWebhook();
 
 // Graceful Shutdown
 process.on("SIGTERM", async () => {

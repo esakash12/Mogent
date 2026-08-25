@@ -261,18 +261,53 @@ adminRouter.post("/telegram-master-config", async (c) => {
   try {
     const body = await c.req.json();
     const { botToken, botUsername, adminChatId } = body;
+    const cleanToken = (botToken || "").trim();
+
+    let resolvedUsername = (botUsername || "MogentAlertBot").trim().replace(/^@/, "");
+    let webhookRegistered = false;
+    let botVerificationInfo: any = null;
+
+    if (cleanToken) {
+      try {
+        // 1. Verify token with Telegram getMe API
+        const meRes = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`);
+        const meJson = await meRes.json();
+        if (meJson.ok && meJson.result?.username) {
+          resolvedUsername = meJson.result.username;
+          botVerificationInfo = meJson.result;
+        }
+
+        // 2. Register Webhook with Telegram
+        const webhookUrl = "https://api.mogent.tech/webhook/telegram";
+        const hookRes = await fetch(
+          `https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`
+        );
+        const hookJson = await hookRes.json();
+        webhookRegistered = hookJson.ok === true;
+      } catch (err: any) {
+        console.warn("Telegram webhook registration warning:", err.message);
+      }
+    }
 
     const updated = {
-      botToken: (botToken || "").trim(),
-      botUsername: (botUsername || "MogentAlertBot").trim().replace(/^@/, ""),
+      botToken: cleanToken,
+      botUsername: resolvedUsername,
       adminChatId: (adminChatId || "").trim(),
+      webhookRegistered,
+      verifiedAt: new Date().toISOString(),
     };
 
     await redisConnection.set(REDIS_TELEGRAM_MASTER_CONFIG, JSON.stringify(updated));
 
     if (updated.botToken) config.telegram.botToken = updated.botToken;
 
-    return c.json({ success: true, message: "Telegram Master Bot configuration saved successfully!", data: updated });
+    return c.json({
+      success: true,
+      message: webhookRegistered
+        ? `Telegram Bot @${resolvedUsername} connected and Webhook registered successfully!`
+        : `Telegram Bot @${resolvedUsername} configuration saved.`,
+      data: updated,
+    });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }

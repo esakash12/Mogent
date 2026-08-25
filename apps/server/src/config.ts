@@ -38,6 +38,6 @@ export const config = {
 
   // Telegram Alerts
   telegram: {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "8784653620:AAF2Y-Hy3De5YLZ7WFqPVhzE26kHeitddoY",
   },
 };

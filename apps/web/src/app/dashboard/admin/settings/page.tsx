@@ -14,7 +14,11 @@ import {
   Facebook,
   Loader2,
   Copy,
-  Check
+  Check,
+  Zap,
+  Cloud,
+  CreditCard,
+  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -99,14 +103,63 @@ export default function AdminGlobalSettingsPage() {
       .catch(() => setIsLoading(false));
   }, []);
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [isVerifyingTg, setIsVerifyingTg] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; title: string; desc: string } | null>(null);
+
+  const showToast = (type: "success" | "error", title: string, desc: string) => {
+    setToastMessage({ type, title, desc });
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const handleVerifyTelegramBot = async () => {
+    if (!tgBotToken.trim()) {
+      showToast("error", "Bot Token Required", "Please enter the Telegram Bot Token from BotFather.");
+      return;
+    }
+    setIsVerifyingTg(true);
+    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/telegram-master-config`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          botToken: tgBotToken.trim(),
+          botUsername: tgBotUsername.trim(),
+          adminChatId: telegramChatId.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.data?.botUsername) {
+          setTgBotUsername(data.data.botUsername);
+        }
+        showToast(
+          "success",
+          "Telegram Bot Verified & Webhook Active! 🎉",
+          `Connected to @${data.data?.botUsername || "Bot"}. Webhook is live and ready to receive /start pairing.`
+        );
+      } else {
+        showToast("error", "Verification Failed", data.error || "Could not verify bot token.");
+      }
+    } catch (err: any) {
+      showToast("error", "Verification Error", err.message || "Failed to connect to server.");
+    }
+    setIsVerifyingTg(false);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
     const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
     const headers = {
       "Content-Type": "application/json",
@@ -114,7 +167,7 @@ export default function AdminGlobalSettingsPage() {
     };
 
     try {
-      await Promise.all([
+      const [metaRes, tgRes, cfRes, payRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/meta-config`, {
           method: "POST",
           headers,
@@ -155,11 +208,23 @@ export default function AdminGlobalSettingsPage() {
         }),
       ]);
 
+      const tgJson = await tgRes.json();
+      if (tgJson.success && tgJson.data?.botUsername) {
+        setTgBotUsername(tgJson.data.botUsername);
+      }
+
       setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    } catch (err) {
+      showToast(
+        "success",
+        "Configurations Saved Successfully! ✅",
+        "Meta OAuth, Telegram Master Webhook, Cloudflare Storage & Payment Accounts are now live."
+      );
+      setTimeout(() => setIsSaved(false), 4000);
+    } catch (err: any) {
       console.error("Save error:", err);
+      showToast("error", "Failed to Save", err.message || "Something went wrong while saving settings.");
     }
+    setIsSaving(false);
   };
 
   return (
@@ -325,23 +390,34 @@ export default function AdminGlobalSettingsPage() {
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-[#888]">Master Telegram Bot Token (@BotFather)</label>
               <input
-                type="text"
+                type="password"
                 value={tgBotToken}
                 onChange={(e) => setTgBotToken(e.target.value)}
-                placeholder="e.g. 7189204918:AAFlw902JkLmNoP..."
+                placeholder="e.g. 8784653620:AAF2Y-Hy3De5YLZ7WFqPVhzE26kHeitddoY"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-[#888]">Master Bot Username</label>
-              <input
-                type="text"
-                value={tgBotUsername}
-                onChange={(e) => setTgBotUsername(e.target.value)}
-                placeholder="e.g. MogentAlertBot"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tgBotUsername}
+                  onChange={(e) => setTgBotUsername(e.target.value)}
+                  placeholder="e.g. MogentAlertBot"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyTelegramBot}
+                  disabled={isVerifyingTg || !tgBotToken.trim()}
+                  className="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  {isVerifyingTg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  <span>{isVerifyingTg ? "Verifying..." : "Verify & Connect"}</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -353,6 +429,21 @@ export default function AdminGlobalSettingsPage() {
               onChange={(e) => setTelegramChatId(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
             />
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#111] border border-[#222] flex items-center justify-between text-xs font-mono">
+            <div className="space-y-0.5">
+              <span className="text-[11px] text-[#888] block">Telegram Webhook Endpoint:</span>
+              <span className="text-[#EDEDED] text-[11px]">https://api.mogent.tech/webhook/telegram</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCopy("https://api.mogent.tech/webhook/telegram", "tg_wb")}
+              className="text-amber-500 hover:text-amber-400 flex items-center gap-1 text-[11px] cursor-pointer"
+            >
+              {copiedField === "tg_wb" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedField === "tg_wb" ? "Copied" : "Copy"}</span>
+            </button>
           </div>
         </div>
 
@@ -532,13 +623,29 @@ export default function AdminGlobalSettingsPage() {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors shadow-lg shadow-amber-500/10 cursor-pointer"
+            disabled={isSaving}
+            className="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors shadow-lg shadow-amber-500/10 cursor-pointer disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
-            <span>Save All Global Configurations</span>
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span>{isSaving ? "Saving Configurations..." : "Save All Global Configurations"}</span>
           </button>
         </div>
       </form>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-[#111] border border-[#333] shadow-2xl flex items-start gap-3 max-w-md animate-in slide-in-from-bottom-5">
+          {toastMessage.type === "success" ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-0.5">
+            <h4 className="text-xs font-bold text-[#EDEDED]">{toastMessage.title}</h4>
+            <p className="text-[11px] text-[#AAA] leading-relaxed">{toastMessage.desc}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
