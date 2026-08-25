@@ -28,7 +28,7 @@ export default function AdminSettingsPage() {
   const [verifyToken, setVerifyToken] = useState("mogent_fb_verify_token_secure");
 
   // System Settings
-  const [defaultModel, setDefaultModel] = useState("gemini-2.0-flash");
+  const [defaultModel, setDefaultModel] = useState("gemini-3.5-flash-lite");
   const [cooldownSecs, setCooldownSecs] = useState("60");
   const [masterKey, setMasterKey] = useState("shohag-mogent-super-secret-key-2026");
   const [telegramChatId, setTelegramChatId] = useState("-1002349182390");
@@ -213,9 +213,8 @@ export default function AdminSettingsPage() {
                 onChange={(e) => setDefaultModel(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
               >
-                <option value="gemini-2.0-flash">gemini-2.0-flash (Recommended, Ultra Fast)</option>
-                <option value="gemini-2.0-flash-lite-preview">gemini-2.0-flash-lite-preview (Cost Saver)</option>
-                <option value="gemini-1.5-pro">gemini-1.5-pro (Deep Reasoning)</option>
+                <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (main)</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (backup)</option>
               </select>
             </div>
 

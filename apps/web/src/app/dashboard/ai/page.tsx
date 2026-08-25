@@ -23,7 +23,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol } from "@/lib/api";
+import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol, testPlaygroundChat } from "@/lib/api";
 
 export default function AIAutomationSectorPage() {
   const [activeTab, setActiveTab] = useState<"KNOWLEDGE" | "WHATSAPP_CONTACT" | "RULES" | "PLAYGROUND">("KNOWLEDGE");
@@ -125,41 +125,53 @@ export default function AIAutomationSectorPage() {
   const [testInput, setTestInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  const handleSimSend = (e: React.FormEvent) => {
+  const handleSimSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!testInput.trim()) return;
+    if (!testInput.trim() || isTyping) return;
     const q = testInput;
     setTestInput("");
-    setSimMessages((prev) => [...prev, { role: "user", content: q }]);
+    
+    const updatedHistory = [...simMessages, { role: "user", content: q }];
+    setSimMessages(updatedHistory);
     setIsTyping(true);
 
-    setTimeout(() => {
-      let ans = "ধন্যবাদ মেসেজ দেওয়ার জন্য! আপনার প্রশ্নটির সঠিক সমাধান দিতে আমাদের AI সিস্টেম সর্বদা প্রস্তুত।";
-      let think = "General context retrieval from Knowledge Base.";
+    try {
+      const res = await testPlaygroundChat(
+        q,
+        simMessages.map((m) => ({ role: m.role, content: m.content }))
+      );
 
-      if (q.includes("কন্টাক্ট") || q.includes("নাম্বার") || q.includes("phone") || q.includes("whatsapp") || q.includes("কথা")) {
-        ans = `আমাদের সাথে সরাসরি যোগাযোগ করতে কল করুন হটলাইন: ${hotlineNumber} অথবা WhatsApp-এ মেসেজ দিন: ${whatsAppNumber}। আমাদের ঠিকানা: ${officeAddress}।`;
-        think = "CUSTOMER_CONTACT_REQUEST detected. Injected WhatsApp & Business Hotline details per On-Demand Protocol.";
-      } else if (q.includes("দাম") || q.includes("price")) {
-        ans = "আমাদের স্মার্টওয়াচ প্রো এর অফার প্রাইস ২৪৫০ টাকা। ক্যাশ অন ডেলিভারিতে নিতে নাম ও ঠিকানা পাঠান।";
-        if (whatsAppMode === "ALWAYS") {
-          ans += `\n\n💬 সরাসরি WhatsApp এ কথা বলতে ক্লিক করুন: https://wa.me/88${whatsAppNumber.replace(/[^0-9]/g, "")}`;
-        }
-        think = "Matched Knowledge Base -> 'Smartwatch Ultra Pro' (2450 BDT).";
-      } else if (q.includes("ডেলিভারি") || q.includes("delivery")) {
-        ans = "ঢাকার ভেতরে ডেলিভারি চার্জ ৬০ টাকা (১ দিন) এবং ঢাকার বাইরে ১২০ টাকা (২-৩ দিন)।";
-        if (whatsAppMode === "ALWAYS") {
-          ans += `\n\n💬 WhatsApp সাপোর্ট: ${whatsAppNumber}`;
-        }
-        think = "Matched Knowledge Base -> 'Delivery Charges & Return Policy'.";
+      if (res.success && res.data) {
+        setSimMessages((prev) => [
+          ...prev,
+          {
+            role: "model",
+            content: res.data.replyText || "কোনো উত্তর পাওয়া যায়নি।",
+            thinking: res.data.thinking || "Generated via Google Gemini 3.5 Flash Lite with Knowledge Base.",
+          },
+        ]);
+      } else {
+        setSimMessages((prev) => [
+          ...prev,
+          {
+            role: "model",
+            content: res.error || "AI সার্ভারের সাথে যোগাযোগ করা যায়নি। অনুগ্রহ করে নিশ্চিত করুন যে আপনার জেমিনি কী একটিভ আছে।",
+            thinking: "Error communicating with AI Proxy Gateway.",
+          },
+        ]);
       }
-
+    } catch (err: any) {
       setSimMessages((prev) => [
         ...prev,
-        { role: "model", content: ans, thinking: think },
+        {
+          role: "model",
+          content: "একটি ত্রুটি হয়েছে: " + err.message,
+          thinking: "Connection error",
+        },
       ]);
+    } finally {
       setIsTyping(false);
-    }, 600);
+    }
   };
 
   return (

@@ -378,3 +378,19 @@ export async function submitPayment(data: {
   }
 }
 
+export async function testPlaygroundChat(message: string, history: Array<{ role: string; content: string }>) {
+  try {
+    const res = await fetch(`${API_BASE}/api/knowledge/playground`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ message, history }),
+    });
+    const json = await res.json();
+    return json;
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to reach AI Playground" };
+  }
+}
+
+
+

@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import { prisma, KnowledgeType } from "@mogent/database";
+import { config } from "../config";
+import { AiProxyClient } from "../ai-client";
+
+const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey);
 
 export const knowledgeRouter = new Hono();
 
@@ -124,6 +128,86 @@ knowledgeRouter.post("/whatsapp", async (c) => {
   }
 });
 
+// POST /api/knowledge/playground - Test AI generation in studio sandbox
+knowledgeRouter.post("/playground", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { message, history } = body;
+
+    if (!message) {
+      return c.json({ success: false, error: "Message is required" }, 400);
+    }
+
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst();
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    // Fetch knowledge base context
+    const knowledgeItems = targetWorkspaceId
+      ? await prisma.knowledgeBase.findMany({
+          where: { workspaceId: targetWorkspaceId, isActive: true },
+          orderBy: { priority: "desc" },
+          take: 15,
+        })
+      : [];
+
+    const knowledgeContext = knowledgeItems.map(
+      (k) => `[${k.type} - ${k.title}]: ${k.content}`
+    );
+
+    const workspace = targetWorkspaceId
+      ? await prisma.workspace.findUnique({ where: { id: targetWorkspaceId } })
+      : null;
+
+    let systemPrompt = `You are a polite, helpful AI sales & customer support executive for "${workspace?.name || "Our Store"}".
+Respond accurately based on the business knowledge base in a natural, polite tone.
+If information is not found in knowledge base, kindly inform the user or suggest connecting with a manager.`;
+
+    if (workspace?.whatsAppNumber) {
+      systemPrompt += `\nBusiness WhatsApp: ${workspace.whatsAppNumber}`;
+    }
+    if (workspace?.hotlineNumber) {
+      systemPrompt += `\nHotline: ${workspace.hotlineNumber}`;
+    }
+    if (workspace?.officeAddress) {
+      systemPrompt += `\nAddress: ${workspace.officeAddress}`;
+    }
+
+    const aiRes = await aiClient.generateReply({
+      systemPrompt,
+      knowledgeBaseContext: knowledgeContext,
+      history: (history || []).map((h: any) => ({
+        role: h.role === "user" ? "user" : "model",
+        content: h.content,
+      })),
+      latestMessage: {
+        text: message,
+      },
+      temperature: 0.7,
+      model: config.aiProxy.defaultModel,
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        replyText: aiRes.data.replyText,
+        thinking: aiRes.data.thinking,
+        sentimentScore: aiRes.data.sentimentScore,
+      },
+    });
+  } catch (error: any) {
+    console.error("Playground error:", error);
+    return c.json({
+      success: false,
+      error: error.message || "Failed to generate AI reply",
+    }, 500);
+  }
+});
+
 // DELETE /api/knowledge/:id - Delete knowledge item
 knowledgeRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
@@ -134,3 +218,5 @@ knowledgeRouter.delete("/:id", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
+
