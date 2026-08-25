@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "../redis";
 import { config } from "../config";
-import { prisma } from "@mogent/database";
+import { prisma, EscalationReason } from "@mogent/database";
 import { decryptToken, ProcessMessageJobPayload, SendTelegramAlertPayload } from "@mogent/shared";
 import { facebookApi } from "../services/facebook-api";
 import { AiProxyClient } from "../ai-client";
@@ -327,9 +327,68 @@ export function startMessageWorker() {
           }
         }
 
-        // 12. Handle Escalation & Telegram Instant Alert
-        if (shouldEscalate || (sentimentScore !== undefined && sentimentScore <= -0.6)) {
-          console.warn(`🚨 Escalation Triggered for Customer [${senderPsid}]: ${escalationReason}`);
+        // Helper: Check if customer repeated message 3 times consecutively (Stuck in Loop)
+        const previousCustomerMessages = await prisma.message.findMany({
+          where: {
+            conversationId: conversation.id,
+            sender: "CUSTOMER",
+            mid: { not: mid },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 4,
+          select: { content: true },
+        });
+
+        const normalizeText = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "").trim();
+        const currentNorm = normalizeText(text || "");
+        let isStuckInLoop = false;
+
+        if (currentNorm && currentNorm.length >= 2) {
+          let consecutiveMatches = 1;
+          for (const prev of previousCustomerMessages) {
+            const prevNorm = normalizeText(prev.content || "");
+            if (!prevNorm) continue;
+            if (
+              prevNorm === currentNorm ||
+              (prevNorm.length >= 4 && (prevNorm.includes(currentNorm) || currentNorm.includes(prevNorm)))
+            ) {
+              consecutiveMatches++;
+              if (consecutiveMatches >= 3) {
+                isStuckInLoop = true;
+                break;
+              }
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Helper: Check Human Takeover Keywords (Bangla & English)
+        const humanKeywords = [
+          "মানুষ", "হিউম্যান", "এজেন্ট", "মডারেটর", "মালিক", "অ্যাডমিন", "এডমিন",
+          "কথা বলতে চাই", "কল দেন", "ফোন দেন", "ফোন নাম্বার", "হটলাইন", "কল দিন", "কথা বলব", "যোগাযোগ করব", "সাপোর্ট",
+          "agent", "human", "representative", "operator", "talk to human", "real person", "call me", "phone number", "manager", "support person"
+        ];
+        const hasHumanKeyword = text ? humanKeywords.some((kw) => text.toLowerCase().includes(kw)) : false;
+
+        // 12. Handle Escalation & Telegram Instant Alert (Triggers on: AI flag, 3x repetition, keywords, low sentiment)
+        const mustEscalate =
+          shouldEscalate ||
+          isStuckInLoop ||
+          hasHumanKeyword ||
+          (sentimentScore !== undefined && sentimentScore <= -0.6);
+
+        let finalEscalationReason = escalationReason;
+        if (isStuckInLoop) {
+          finalEscalationReason = "Customer repeated the same query 3 times (Stuck in Loop / Escalation Triggered)";
+        } else if (hasHumanKeyword && !finalEscalationReason) {
+          finalEscalationReason = "Customer explicitly requested human agent / live representative";
+        } else if (!finalEscalationReason && sentimentScore !== undefined && sentimentScore <= -0.6) {
+          finalEscalationReason = "Negative Customer Sentiment / Frustration Detected";
+        }
+
+        if (mustEscalate) {
+          console.warn(`🚨 Escalation Triggered for Customer [${senderPsid}]: ${finalEscalationReason}`);
 
           await prisma.conversation.update({
             where: { id: conversation.id },
@@ -340,12 +399,12 @@ export function startMessageWorker() {
             },
           });
 
-          const escalation = await prisma.escalationEvent.create({
+          await prisma.escalationEvent.create({
             data: {
               conversationId: conversation.id,
-              reason: "NEGATIVE_SENTIMENT",
+              reason: isStuckInLoop ? EscalationReason.UNSUPPORTED_QUERY : hasHumanKeyword ? EscalationReason.HUMAN_REQUESTED : EscalationReason.NEGATIVE_SENTIMENT,
               triggerMessage: text,
-              summary: escalationReason || "Negative sentiment or human requested",
+              summary: finalEscalationReason || "Human Takeover Triggered",
               status: "PENDING",
             },
           });
@@ -357,9 +416,9 @@ export function startMessageWorker() {
             conversationId: conversation.id,
             customerName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || undefined,
             customerPsid: senderPsid,
-            reason: escalationReason || "Negative Customer Sentiment / Manager Needed",
+            reason: finalEscalationReason || "Human Takeover Triggered",
             messageSnippet: text || "[Media Attachment]",
-            urgency: sentimentScore <= -0.8 ? "CRITICAL" : "HIGH",
+            urgency: isStuckInLoop || (sentimentScore !== undefined && sentimentScore <= -0.8) ? "CRITICAL" : "HIGH",
           };
 
           await telegramAlertsQueue.add("send-escalation-alert", telegramPayload);
@@ -395,6 +454,22 @@ export function startMessageWorker() {
             humanTakeoverAt: new Date(),
           },
         });
+
+        // Enqueue Telegram Alert on AI Failure
+        try {
+          await telegramAlertsQueue.add("send-escalation-alert", {
+            workspaceId: page.workspaceId,
+            pageId: page.pageId,
+            conversationId: conversation.id,
+            customerName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || undefined,
+            customerPsid: senderPsid,
+            reason: `AI Technical Fallback: ${aiErr.message || "Unknown error"}`,
+            messageSnippet: text || "[Media Attachment]",
+            urgency: "CRITICAL",
+          });
+        } catch (queueErr) {
+          console.error("Failed to enqueue fallback Telegram alert:", queueErr);
+        }
       } finally {
         await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "typing_off");
       }

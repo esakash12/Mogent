@@ -19,26 +19,28 @@ export function startTelegramWorker() {
         },
       });
 
-      if (!config) {
-        console.warn(`⚠️ No active TelegramConfig found for Workspace [${payload.workspaceId}]. Alert not sent.`);
-        return;
-      }
+      let botToken = config?.botToken || "";
+      let targetChatId = config?.chatId || "";
 
-      let botToken = config.botToken;
-      if (!botToken) {
-        try {
-          const redisVal = await redisConnection.get("mogent:telegram_master_config");
-          if (redisVal) {
-            const parsed = JSON.parse(redisVal);
-            botToken = parsed.botToken;
-          }
-        } catch {}
+      // Fallback to Master Redis Telegram Config if token or chat ID is missing
+      try {
+        const redisVal = await redisConnection.get("mogent:telegram_master_config");
+        if (redisVal) {
+          const parsed = JSON.parse(redisVal);
+          if (!botToken && parsed.botToken) botToken = parsed.botToken;
+          if (!targetChatId && parsed.adminChatId) targetChatId = parsed.adminChatId;
+        }
+      } catch {}
+
+      if (!targetChatId) {
+        console.warn(`⚠️ No active TelegramConfig or fallback Admin Chat ID found for Workspace [${payload.workspaceId}].`);
+        return;
       }
 
       // 2. Dispatch via Telegram Bot API
       const success = await telegramApi.sendEscalationAlert(
         botToken,
-        config.chatId,
+        targetChatId,
         payload
       );
 

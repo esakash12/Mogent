@@ -3,6 +3,7 @@ import { prisma, MessageSender, MessageStatus } from "@mogent/database";
 import { facebookApi } from "../services/facebook-api";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
+import { telegramAlertsQueue } from "../queue/message-queue";
 
 export const conversationsRouter = new Hono();
 
@@ -164,7 +165,29 @@ conversationsRouter.post("/:id/toggle-mode", async (c) => {
         status: isHuman ? "HANDOFF_REQUIRED" : "OPEN",
         humanTakeoverAt: isHuman ? new Date() : null
       },
+      include: {
+        facebookPage: true,
+        customer: true,
+      },
     });
+
+    // If human control was activated, dispatch a Telegram notification
+    if (isHuman && updated.facebookPage) {
+      try {
+        await telegramAlertsQueue.add("send-escalation-alert", {
+          workspaceId: updated.facebookPage.workspaceId,
+          pageId: updated.facebookPage.pageId,
+          conversationId: updated.id,
+          customerName: `${updated.customer.firstName || ""} ${updated.customer.lastName || ""}`.trim() || undefined,
+          customerPsid: updated.customer.psid,
+          reason: "Manual Human Takeover Activated from Dashboard Inbox",
+          messageSnippet: "Manager manually took over the conversation.",
+          urgency: "HIGH",
+        });
+      } catch (err: any) {
+        console.warn("Failed to dispatch manual takeover Telegram alert:", err.message);
+      }
+    }
 
     return c.json({ success: true, data: updated });
   } catch (error: any) {
