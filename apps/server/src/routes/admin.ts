@@ -2,11 +2,13 @@ import { Hono } from "hono";
 import { prisma } from "@mogent/database";
 import { redisConnection } from "../redis";
 import { config } from "../config";
+import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
 
 export const adminRouter = new Hono();
 
 const REDIS_KEYS_SET = "mogent:gemini_keys_pool";
 const REDIS_META_CONFIG = "mogent:meta_developer_config";
+const REDIS_PAYMENT_CONFIG = "mogent:payment_gateway_config";
 
 // -----------------------------------------------------------------------------
 // 1. GET REAL PLATFORM OVERVIEW STATS (100% LIVE FROM POSTGRES & REDIS)
@@ -318,3 +320,155 @@ adminRouter.post("/cloudflare-config", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
+// -----------------------------------------------------------------------------
+// 9. GET & UPDATE PAYMENT GATEWAY RECEIVER ACCOUNTS (BKASH, NAGAD, ROCKET)
+// -----------------------------------------------------------------------------
+adminRouter.get("/payment-config", async (c) => {
+  try {
+    const redisVal = await redisConnection.get(REDIS_PAYMENT_CONFIG);
+    let parsed = redisVal ? JSON.parse(redisVal) : null;
+
+    const data = {
+      bkashNumber: parsed?.bkashNumber || "01711998877",
+      bkashType: parsed?.bkashType || "Personal (Send Money)",
+      nagadNumber: parsed?.nagadNumber || "01711998877",
+      nagadType: parsed?.nagadType || "Personal (Send Money)",
+      rocketNumber: parsed?.rocketNumber || "01711998877-0",
+      rocketType: parsed?.rocketType || "Personal (Send Money)",
+      instructions:
+        parsed?.instructions ||
+        "Send the exact plan amount to any number above, then submit your mobile number and Transaction ID (TrxID) for instant verification.",
+    };
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.post("/payment-config", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { bkashNumber, bkashType, nagadNumber, nagadType, rocketNumber, rocketType, instructions } = body;
+
+    // Strict Bangladeshi phone number validation
+    if (bkashNumber && !isValidBdPhone(bkashNumber)) {
+      return c.json({ success: false, error: "Invalid bKash number. Must be a valid 11-digit Bangladeshi mobile number." }, 400);
+    }
+    if (nagadNumber && !isValidBdPhone(nagadNumber)) {
+      return c.json({ success: false, error: "Invalid Nagad number. Must be a valid 11-digit Bangladeshi mobile number." }, 400);
+    }
+
+    const updated = {
+      bkashNumber: cleanBdPhone(bkashNumber || "01711998877"),
+      bkashType: sanitizeText(bkashType || "Personal (Send Money)", 50),
+      nagadNumber: cleanBdPhone(nagadNumber || "01711998877"),
+      nagadType: sanitizeText(nagadType || "Personal (Send Money)", 50),
+      rocketNumber: sanitizeText(rocketNumber || "01711998877-0", 20),
+      rocketType: sanitizeText(rocketType || "Personal (Send Money)", 50),
+      instructions: sanitizeText(instructions, 1000),
+    };
+
+    await redisConnection.set(REDIS_PAYMENT_CONFIG, JSON.stringify(updated));
+
+    return c.json({ success: true, message: "Payment gateway accounts saved successfully!", data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 10. COUPON & DISCOUNT CODE MANAGEMENT
+// -----------------------------------------------------------------------------
+adminRouter.get("/coupons", async (c) => {
+  try {
+    const coupons = await prisma.coupon.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return c.json({ success: true, data: coupons });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.post("/coupons", async (c) => {
+  try {
+    const body = await c.req.json();
+    const {
+      code,
+      discountType = "PERCENTAGE",
+      discountValue,
+      maxDiscount,
+      minOrderAmount = 0,
+      applicablePlan = "ALL",
+      usageLimit,
+      expiresAt,
+    } = body;
+
+    const cleanCode = sanitizeText(code, 30).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    if (!cleanCode || cleanCode.length < 3) {
+      return c.json({ success: false, error: "Coupon code must be at least 3 alphanumeric characters" }, 400);
+    }
+
+    const val = Number(discountValue);
+    if (isNaN(val) || val <= 0) {
+      return c.json({ success: false, error: "Discount value must be greater than 0" }, 400);
+    }
+
+    if (discountType === "PERCENTAGE" && val > 100) {
+      return c.json({ success: false, error: "Percentage discount cannot exceed 100%" }, 400);
+    }
+
+    const existing = await prisma.coupon.findUnique({ where: { code: cleanCode } });
+    if (existing) {
+      return c.json({ success: false, error: `Coupon code [${cleanCode}] already exists` }, 400);
+    }
+
+    const created = await prisma.coupon.create({
+      data: {
+        code: cleanCode,
+        discountType: discountType === "FLAT" ? "FLAT" : "PERCENTAGE",
+        discountValue: val,
+        maxDiscount: maxDiscount ? Number(maxDiscount) : null,
+        minOrderAmount: minOrderAmount ? Number(minOrderAmount) : 0,
+        applicablePlan: applicablePlan || "ALL",
+        usageLimit: usageLimit ? Number(usageLimit) : null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        isActive: true,
+      },
+    });
+
+    return c.json({ success: true, message: `Coupon [${cleanCode}] created successfully!`, data: created });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.delete("/coupons/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    await prisma.coupon.delete({ where: { id } });
+    return c.json({ success: true, message: "Coupon deleted successfully!" });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+adminRouter.patch("/coupons/:id/toggle", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const coupon = await prisma.coupon.findUnique({ where: { id } });
+    if (!coupon) return c.json({ success: false, error: "Coupon not found" }, 404);
+
+    const updated = await prisma.coupon.update({
+      where: { id },
+      data: { isActive: !coupon.isActive },
+    });
+
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+

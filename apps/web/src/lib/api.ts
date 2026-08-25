@@ -418,6 +418,7 @@ export async function submitPayment(data: {
   method: string;
   senderNumber: string;
   trxId: string;
+  couponCode?: string;
   notes?: string;
 }) {
   try {
@@ -602,6 +603,161 @@ export async function deleteAutomationRule(id: string) {
   try {
     const res = await fetch(`${API_BASE}/api/automation/rules/${id}`, {
       method: "DELETE",
+      headers: getHeaders(),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- TELEGRAM MASTER BOT ALERTS ---
+export async function fetchTelegramStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/telegram`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function disconnectTelegram() {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/telegram/disconnect`, {
+      method: "POST",
+      headers: getHeaders(),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function sendTestTelegramAlert() {
+  try {
+    const res = await fetch(`${API_BASE}/api/automation/telegram/test`, {
+      method: "POST",
+      headers: getHeaders(),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- PAYMENT CONFIG & RECEIVER NUMBERS ---
+export async function fetchPaymentConfig() {
+  try {
+    const res = await fetch(`${API_BASE}/api/billing/payment-config`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchAdminPaymentConfig() {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payment-config`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveAdminPaymentConfig(data: {
+  bkashNumber?: string;
+  bkashType?: string;
+  nagadNumber?: string;
+  nagadType?: string;
+  rocketNumber?: string;
+  rocketType?: string;
+  instructions?: string;
+}) {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payment-config`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- COUPON & DISCOUNT CODES ---
+export async function validateCouponCode(code: string, plan: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/billing/coupons/validate`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ code, plan }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchAdminCoupons() {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/coupons`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function createAdminCoupon(data: {
+  code: string;
+  discountType: "PERCENTAGE" | "FLAT";
+  discountValue: number;
+  maxDiscount?: number;
+  minOrderAmount?: number;
+  applicablePlan?: string;
+  usageLimit?: number;
+  expiresAt?: string;
+}) {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/coupons`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteAdminCoupon(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/coupons/${id}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function toggleAdminCoupon(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/coupons/${id}/toggle`, {
+      method: "PATCH",
       headers: getHeaders(),
     });
     return await res.json();

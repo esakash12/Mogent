@@ -516,18 +516,42 @@ model PaymentTransaction {
   amount        Float
   currency      String         @default("BDT")
   method        PaymentMethod  @default(BKASH)
-  senderNumber  String
-  trxId         String         @unique
-  status        PaymentStatus  @default(PENDING)
-  notes         String?        @db.Text
-  adminNote     String?        @db.Text
-  approvedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  senderNumber   String
+  trxId          String         @unique
+  couponCode     String?
+  discountAmount Float?         @default(0)
+  status         PaymentStatus  @default(PENDING)
+  notes          String?        @db.Text
+  adminNote      String?        @db.Text
+  approvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status])
   @@map("payment_transactions")
+}
+
+// ----------------------------------------------------
+// COUPON & DISCOUNT CODES
+// ----------------------------------------------------
+
+model Coupon {
+  id             String    @id @default(cuid())
+  code           String    @unique // e.g. MOGENT50, EID2026
+  discountType   String    @default("PERCENTAGE") // PERCENTAGE or FLAT
+  discountValue  Float     // e.g. 50 (for 50%) or 500 (for 500 BDT)
+  maxDiscount    Float?    // Cap for percentage discounts (e.g. max 1000 BDT)
+  minOrderAmount Float?    @default(0)
+  applicablePlan String?   @default("ALL") // ALL, STARTER, PRO, ENTERPRISE
+  usageLimit     Int?      // Max total times coupon can be used
+  usedCount      Int       @default(0)
+  expiresAt      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("coupons")
 }
 

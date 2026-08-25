@@ -18,6 +18,7 @@ import { automationRouter } from "./routes/automation";
 import { uploadRouter } from "./routes/upload";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
+import { createRateLimiter } from "./middleware/rate-limiter";
 import { AiProxyClient } from "./ai-client";
 import { prisma } from "@mogent/database";
 
@@ -31,6 +32,50 @@ app.use(
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization", "x-workspace-id", "Accept"],
     maxAge: 86400,
+  })
+);
+
+// Global anti-abuse & rate limiting (120 req/min per IP)
+app.use(
+  "/api/*",
+  createRateLimiter({
+    windowSeconds: 60,
+    maxRequests: 120,
+    keyPrefix: "mogent:rl:api",
+    message: "Too many requests to Mogent API. Please wait a moment.",
+  })
+);
+
+// Auth endpoints rate limiting (20 req/min per IP)
+app.use(
+  "/api/auth/*",
+  createRateLimiter({
+    windowSeconds: 60,
+    maxRequests: 20,
+    keyPrefix: "mogent:rl:auth",
+    message: "Too many login/registration attempts. Please wait 1 minute.",
+  })
+);
+
+// Payment submission rate limiting (5 req/5min per IP/workspace)
+app.use(
+  "/api/billing/submit-payment",
+  createRateLimiter({
+    windowSeconds: 300,
+    maxRequests: 5,
+    keyPrefix: "mogent:rl:payment",
+    message: "Too many payment submission attempts. Please wait 5 minutes before submitting again.",
+  })
+);
+
+// Uploads rate limiting (30 uploads/min)
+app.use(
+  "/api/upload/*",
+  createRateLimiter({
+    windowSeconds: 60,
+    maxRequests: 30,
+    keyPrefix: "mogent:rl:upload",
+    message: "Upload rate limit reached. Please wait a moment.",
   })
 );
 

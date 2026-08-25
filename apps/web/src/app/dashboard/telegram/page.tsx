@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { fetchTelegramStatus as getTelegramStatusApi, disconnectTelegram as disconnectTelegramApi, sendTestTelegramAlert as sendTestTelegramApi } from "@/lib/api";
 
 export default function TelegramAlertsPage() {
   const [data, setData] = useState<{
@@ -45,16 +46,9 @@ export default function TelegramAlertsPage() {
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
   const fetchTelegramStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/automation/telegram`, {
-        headers: {
-          "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace_id") || "" : "",
-        },
-      });
-      const json = await res.json();
+      const json = await getTelegramStatusApi();
       if (json.success && json.data) {
         setData(json.data);
       }
@@ -82,13 +76,7 @@ export default function TelegramAlertsPage() {
     setIsTesting(true);
     setTestMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/automation/telegram/test`, {
-        method: "POST",
-        headers: {
-          "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace_id") || "" : "",
-        },
-      });
-      const json = await res.json();
+      const json = await sendTestTelegramApi();
       if (json.success) {
         setTestMsg({ type: "success", text: json.message || "Test alert delivered to Telegram!" });
       } else {
@@ -104,12 +92,7 @@ export default function TelegramAlertsPage() {
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
     try {
-      await fetch(`${API_BASE}/api/automation/telegram/disconnect`, {
-        method: "POST",
-        headers: {
-          "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace_id") || "" : "",
-        },
-      });
+      await disconnectTelegramApi();
       setShowDisconnectModal(false);
       fetchTelegramStatus();
     } catch (err) {

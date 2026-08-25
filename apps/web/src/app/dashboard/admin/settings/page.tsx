@@ -32,22 +32,67 @@ export default function AdminGlobalSettingsPage() {
   // System Settings
   const [defaultModel, setDefaultModel] = useState("gemini-3.5-flash-lite");
   const [cooldownSecs, setCooldownSecs] = useState("60");
+  // Master Telegram Bot Settings
+  const [tgBotToken, setTgBotToken] = useState("");
+  const [tgBotUsername, setTgBotUsername] = useState("MogentAlertBot");
   const [telegramChatId, setTelegramChatId] = useState("-1002349182390");
+
+  // Cloudflare R2 Storage Settings
+  const [cfAccountId, setCfAccountId] = useState("");
+  const [cfAccessKeyId, setCfAccessKeyId] = useState("");
+  const [cfSecretAccessKey, setCfSecretAccessKey] = useState("");
+  const [cfBucketName, setCfBucketName] = useState("mogent-assets");
+  const [cfPublicDomain, setCfPublicDomain] = useState("");
+
+  // Payment Gateways Settings (bKash, Nagad, Rocket)
+  const [bkashNumber, setBkashNumber] = useState("01711998877");
+  const [bkashType, setBkashType] = useState("Personal (Send Money)");
+  const [nagadNumber, setNagadNumber] = useState("01711998877");
+  const [nagadType, setNagadType] = useState("Personal (Send Money)");
+  const [rocketNumber, setRocketNumber] = useState("01711998877-0");
+  const [rocketType, setRocketType] = useState("Personal (Send Money)");
+  const [paymentInstructions, setPaymentInstructions] = useState(
+    "Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) for instant admin verification."
+  );
 
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/admin/meta-config`, {
-      headers: {
-        Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-      },
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data) {
-          setAppId(json.data.appId || "");
-          setAppSecret(json.data.appSecret || "");
-          setVerifyToken(json.data.verifyToken || "mogent_fb_verify_token_secure");
+    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
+    const headers = { Authorization: `Bearer ${token}` };
+
+    Promise.all([
+      fetch(`${API_BASE}/api/admin/meta-config`, { headers }).then((r) => r.json()),
+      fetch(`${API_BASE}/api/admin/telegram-master-config`, { headers }).then((r) => r.json()),
+      fetch(`${API_BASE}/api/admin/cloudflare-config`, { headers }).then((r) => r.json()),
+      fetch(`${API_BASE}/api/admin/payment-config`, { headers }).then((r) => r.json()),
+    ])
+      .then(([metaJson, tgJson, cfJson, payJson]) => {
+        if (metaJson.success && metaJson.data) {
+          setAppId(metaJson.data.appId || "");
+          setAppSecret(metaJson.data.appSecret || "");
+          setVerifyToken(metaJson.data.verifyToken || "mogent_fb_verify_token_secure");
+        }
+        if (tgJson.success && tgJson.data) {
+          setTgBotToken(tgJson.data.botToken || "");
+          setTgBotUsername(tgJson.data.botUsername || "MogentAlertBot");
+          setTelegramChatId(tgJson.data.adminChatId || "-1002349182390");
+        }
+        if (cfJson.success && cfJson.data) {
+          setCfAccountId(cfJson.data.accountId || "");
+          setCfAccessKeyId(cfJson.data.accessKeyId || "");
+          setCfSecretAccessKey(cfJson.data.secretAccessKey || "");
+          setCfBucketName(cfJson.data.bucketName || "mogent-assets");
+          setCfPublicDomain(cfJson.data.publicDomain || "");
+        }
+        if (payJson.success && payJson.data) {
+          setBkashNumber(payJson.data.bkashNumber || "01711998877");
+          setBkashType(payJson.data.bkashType || "Personal (Send Money)");
+          setNagadNumber(payJson.data.nagadNumber || "01711998877");
+          setNagadType(payJson.data.nagadType || "Personal (Send Money)");
+          setRocketNumber(payJson.data.rocketNumber || "01711998877-0");
+          setRocketType(payJson.data.rocketType || "Personal (Send Money)");
+          setPaymentInstructions(payJson.data.instructions || "");
         }
         setIsLoading(false);
       })
@@ -62,20 +107,53 @@ export default function AdminGlobalSettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
 
     try {
-      await fetch(`${API_BASE}/api/admin/meta-config`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-        body: JSON.stringify({
-          appId,
-          appSecret,
-          verifyToken,
+      await Promise.all([
+        fetch(`${API_BASE}/api/admin/meta-config`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ appId, appSecret, verifyToken }),
         }),
-      });
+        fetch(`${API_BASE}/api/admin/telegram-master-config`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            botToken: tgBotToken,
+            botUsername: tgBotUsername,
+            adminChatId: telegramChatId,
+          }),
+        }),
+        fetch(`${API_BASE}/api/admin/cloudflare-config`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            accountId: cfAccountId,
+            accessKeyId: cfAccessKeyId,
+            secretAccessKey: cfSecretAccessKey,
+            bucketName: cfBucketName,
+            publicDomain: cfPublicDomain,
+          }),
+        }),
+        fetch(`${API_BASE}/api/admin/payment-config`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            bkashNumber,
+            bkashType,
+            nagadNumber,
+            nagadType,
+            rocketNumber,
+            rocketType,
+            instructions: paymentInstructions,
+          }),
+        }),
+      ]);
 
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 3000);
@@ -229,25 +307,223 @@ export default function AdminGlobalSettingsPage() {
           </div>
         </div>
 
-        {/* 3. Global Telegram Notification Channel */}
+        {/* 3. Single Master Telegram Bot Settings */}
         <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
               <Bell className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-[#EDEDED]">Super Admin Telegram Alerts</h3>
-              <p className="text-xs text-[#888]">Receive instant push notifications when a merchant requests manual payment approval.</p>
+              <h3 className="font-semibold text-sm text-[#EDEDED]">Single Master Telegram Bot (Platform Bot)</h3>
+              <p className="text-xs text-[#888]">
+                All merchants will connect their workspace to this central bot using 1-click deep links without creating their own bot tokens.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Master Telegram Bot Token (@BotFather)</label>
+              <input
+                type="text"
+                value={tgBotToken}
+                onChange={(e) => setTgBotToken(e.target.value)}
+                placeholder="e.g. 7189204918:AAFlw902JkLmNoP..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Master Bot Username</label>
+              <input
+                type="text"
+                value={tgBotUsername}
+                onChange={(e) => setTgBotUsername(e.target.value)}
+                placeholder="e.g. MogentAlertBot"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#888]">Admin Telegram Chat ID</label>
+            <label className="text-xs font-medium text-[#888]">Super Admin Notifications Chat ID</label>
             <input
               type="text"
               value={telegramChatId}
               onChange={(e) => setTelegramChatId(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        {/* 4. Cloudflare R2 Storage Settings */}
+        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+              <Bot className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm text-[#EDEDED]">Cloudflare R2 Object Storage (Product Images)</h3>
+              <p className="text-xs text-[#888]">
+                Central image CDN credentials for merchant commerce catalog image uploads.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Cloudflare Account ID</label>
+              <input
+                type="text"
+                value={cfAccountId}
+                onChange={(e) => setCfAccountId(e.target.value)}
+                placeholder="e.g. 9b8c7d6e5f4a3b2..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">R2 Bucket Name</label>
+              <input
+                type="text"
+                value={cfBucketName}
+                onChange={(e) => setCfBucketName(e.target.value)}
+                placeholder="e.g. mogent-assets"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">R2 Access Key ID</label>
+              <input
+                type="text"
+                value={cfAccessKeyId}
+                onChange={(e) => setCfAccessKeyId(e.target.value)}
+                placeholder="e.g. a1b2c3d4e5f6..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">R2 Secret Access Key</label>
+              <input
+                type="password"
+                value={cfSecretAccessKey}
+                onChange={(e) => setCfSecretAccessKey(e.target.value)}
+                placeholder="••••••••••••••••••••••••••••"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[#888]">Public CDN Domain / R2 Public URL</label>
+            <input
+              type="text"
+              value={cfPublicDomain}
+              onChange={(e) => setCfPublicDomain(e.target.value)}
+              placeholder="e.g. https://cdn.mogent.tech or https://pub-xxx.r2.dev"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        {/* 5. Manual Payment Gateways / Receiver Accounts */}
+        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-500 shrink-0">
+              <span className="font-bold text-sm">৳</span>
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm text-[#EDEDED]">Manual Payment Receiver Accounts (bKash, Nagad, Rocket)</h3>
+              <p className="text-xs text-[#888]">
+                These numbers and instructions are shown dynamically to merchants on their billing checkout modal.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-pink-400">bKash Receiver Number</label>
+              <input
+                type="text"
+                value={bkashNumber}
+                onChange={(e) => setBkashNumber(e.target.value)}
+                placeholder="017XXXXXXXX"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-pink-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">bKash Account Type</label>
+              <input
+                type="text"
+                value={bkashType}
+                onChange={(e) => setBkashType(e.target.value)}
+                placeholder="e.g. Personal (Send Money) / Merchant (Make Payment)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-orange-400">Nagad Receiver Number</label>
+              <input
+                type="text"
+                value={nagadNumber}
+                onChange={(e) => setNagadNumber(e.target.value)}
+                placeholder="017XXXXXXXX"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Nagad Account Type</label>
+              <input
+                type="text"
+                value={nagadType}
+                onChange={(e) => setNagadType(e.target.value)}
+                placeholder="e.g. Personal (Send Money)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-purple-400">Rocket Receiver Number</label>
+              <input
+                type="text"
+                value={rocketNumber}
+                onChange={(e) => setRocketNumber(e.target.value)}
+                placeholder="017XXXXXXXX-X"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Rocket Account Type</label>
+              <input
+                type="text"
+                value={rocketType}
+                onChange={(e) => setRocketType(e.target.value)}
+                placeholder="e.g. Personal (Send Money)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[#888]">Custom Payment Instructions Note</label>
+            <textarea
+              rows={2}
+              value={paymentInstructions}
+              onChange={(e) => setPaymentInstructions(e.target.value)}
+              placeholder="Instructions shown to merchant above the payment submit form..."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
             />
           </div>
         </div>

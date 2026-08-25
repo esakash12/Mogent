@@ -14,10 +14,11 @@ import {
   ArrowRight,
   Loader2,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Tag
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchBillingStatus, submitPayment } from "@/lib/api";
+import { fetchBillingStatus, submitPayment, fetchPaymentConfig, validateCouponCode } from "@/lib/api";
 
 const PLANS = [
   {
@@ -100,10 +101,48 @@ export default function BillingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Dynamic Payment Gateway Config from Super Admin
+  const [paymentConfig, setPaymentConfig] = useState<{
+    bkashNumber: string;
+    bkashType: string;
+    nagadNumber: string;
+    nagadType: string;
+    rocketNumber: string;
+    rocketType: string;
+    instructions: string;
+  }>({
+    bkashNumber: "01711998877",
+    bkashType: "Personal (Send Money)",
+    nagadNumber: "01711998877",
+    nagadType: "Personal (Send Money)",
+    rocketNumber: "01711998877-0",
+    rocketType: "Personal (Send Money)",
+    instructions: "Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) below for instant admin verification.",
+  });
+
+  // Coupon State
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountType: string;
+    discountValue: number;
+    discountAmount: number;
+    originalPrice: number;
+    finalAmount: number;
+  } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   const loadBilling = async () => {
     setLoading(true);
-    const data = await fetchBillingStatus();
+    const [data, payConfigRes] = await Promise.all([
+      fetchBillingStatus(),
+      fetchPaymentConfig(),
+    ]);
     setBillingData(data);
+    if (payConfigRes?.success && payConfigRes?.data) {
+      setPaymentConfig(payConfigRes.data);
+    }
     setLoading(false);
   };
 
@@ -114,9 +153,47 @@ export default function BillingPage() {
   const handleOpenUpgrade = (planId: string) => {
     setSelectedPlan(planId);
     setFeedback(null);
+    setCouponMsg(null);
+    setAppliedCoupon(null);
+    setCouponCodeInput("");
     setSenderNumber("");
     setTrxId("");
     setShowModal(true);
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponCodeInput.trim()) return;
+    setIsValidatingCoupon(true);
+    setCouponMsg(null);
+
+    const res = await validateCouponCode(couponCodeInput.trim(), selectedPlan);
+    if (res.success && res.data) {
+      setAppliedCoupon(res.data);
+      setCouponMsg({ type: "success", text: res.message || "Coupon applied successfully!" });
+    } else {
+      setAppliedCoupon(null);
+      setCouponMsg({ type: "error", text: res.error || "Invalid coupon code." });
+    }
+    setIsValidatingCoupon(false);
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput("");
+    setCouponMsg(null);
+  };
+
+  const getPlanPrice = () => {
+    if (selectedPlan === "STARTER") return 999;
+    if (selectedPlan === "PRO") return 2499;
+    if (selectedPlan === "ENTERPRISE") return 5999;
+    return 0;
+  };
+
+  const calculateFinalPrice = () => {
+    const base = getPlanPrice();
+    if (!appliedCoupon) return base;
+    return Math.max(0, base - appliedCoupon.discountAmount);
   };
 
   const handleSubmitTrx = async (e: React.FormEvent) => {
@@ -134,6 +211,7 @@ export default function BillingPage() {
       method: paymentMethod,
       senderNumber,
       trxId,
+      couponCode: appliedCoupon?.code,
       notes,
     });
 
@@ -346,22 +424,87 @@ export default function BillingPage() {
                 <h3 className="font-bold text-base text-[#EDEDED]">
                   Upgrade to {selectedPlan} Plan
                 </h3>
-                <p className="text-xs text-[#888] mt-0.5">
-                  Amount:{" "}
-                  <span className="text-amber-500 font-bold">
-                    {selectedPlan === "STARTER" ? "৳৯৯৯" : selectedPlan === "PRO" ? "৳২,৪৯৯" : "৳৫,৯৯৯"} BDT / month
-                  </span>
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs text-[#888]">Payable Amount:</span>
+                  {appliedCoupon ? (
+                    <div className="flex items-center gap-1.5 font-bold text-xs font-mono">
+                      <span className="text-[#666] line-through">৳{getPlanPrice().toLocaleString()}</span>
+                      <span className="text-emerald-400 text-sm">৳{calculateFinalPrice().toLocaleString()} BDT</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {appliedCoupon.code} (-৳{appliedCoupon.discountAmount})
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-amber-500 font-bold font-mono text-sm">
+                      ৳{getPlanPrice().toLocaleString()} BDT / month
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-[#888] hover:text-[#EDEDED] p-1"
+                className="text-[#888] hover:text-[#EDEDED] p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Bangladeshi Payment Instructions */}
+            {/* Promo Coupon Code Section */}
+            <div className="p-3.5 rounded-xl bg-[#0A0A0A] border border-[#222] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-[#888] flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Have a Promo Coupon Code?</span>
+                </label>
+                {appliedCoupon && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="text-[11px] text-red-400 hover:underline cursor-pointer"
+                  >
+                    Remove Coupon
+                  </button>
+                )}
+              </div>
+
+              {!appliedCoupon ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. MOGENT50"
+                    value={couponCodeInput}
+                    onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                    className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500 uppercase"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyCoupon}
+                    disabled={isValidatingCoupon || !couponCodeInput.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isValidatingCoupon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Apply"}
+                  </button>
+                </div>
+              ) : (
+                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center justify-between">
+                  <span>🎉 Coupon applied: You saved ৳{appliedCoupon.discountAmount.toLocaleString()}!</span>
+                  <span className="font-mono font-bold">{appliedCoupon.code}</span>
+                </div>
+              )}
+
+              {couponMsg && !appliedCoupon && (
+                <p
+                  className={cn(
+                    "text-[11px]",
+                    couponMsg.type === "success" ? "text-emerald-400" : "text-red-400"
+                  )}
+                >
+                  {couponMsg.text}
+                </p>
+              )}
+            </div>
+
+            {/* Bangladeshi Payment Instructions (Admin Configured) */}
             <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222] space-y-3">
               <span className="text-xs font-semibold text-[#EDEDED] flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5 text-amber-500" />
@@ -370,20 +513,21 @@ export default function BillingPage() {
 
               <div className="space-y-1.5 text-xs text-[#AAA] font-mono">
                 <div className="p-2 rounded bg-[#111] flex justify-between items-center">
-                  <span>bKash (Send Money / Personal):</span>
-                  <span className="font-bold text-pink-500">01711998877</span>
+                  <span>bKash ({paymentConfig.bkashType || "Send Money"}):</span>
+                  <span className="font-bold text-pink-500">{paymentConfig.bkashNumber}</span>
                 </div>
                 <div className="p-2 rounded bg-[#111] flex justify-between items-center">
-                  <span>Nagad (Send Money / Personal):</span>
-                  <span className="font-bold text-orange-500">01711998877</span>
+                  <span>Nagad ({paymentConfig.nagadType || "Send Money"}):</span>
+                  <span className="font-bold text-orange-500">{paymentConfig.nagadNumber}</span>
                 </div>
                 <div className="p-2 rounded bg-[#111] flex justify-between items-center">
-                  <span>Rocket (Send Money):</span>
-                  <span className="font-bold text-purple-400">01711998877-0</span>
+                  <span>Rocket ({paymentConfig.rocketType || "Send Money"}):</span>
+                  <span className="font-bold text-purple-400">{paymentConfig.rocketNumber}</span>
                 </div>
               </div>
               <p className="text-[11px] text-[#777] leading-relaxed">
-                Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) below for instant admin verification.
+                {paymentConfig.instructions ||
+                  "Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) below for instant admin verification."}
               </p>
             </div>
 
@@ -466,7 +610,7 @@ export default function BillingPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED] hover:bg-[#222] transition-colors"
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED] hover:bg-[#222] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>

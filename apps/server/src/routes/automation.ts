@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { verify } from "hono/jwt";
 import { prisma, EscalationReason } from "@mogent/database";
 import { redisConnection } from "../redis";
 import { telegramApi } from "../services/telegram-api";
@@ -117,19 +118,39 @@ automationRouter.delete("/rules/:id", async (c) => {
 // TELEGRAM 1-CLICK CONNECTION & STATUS (Plan-Gated)
 // -----------------------------------------------------------------------------
 
+// Helper function to resolve target workspace ID accurately from headers / JWT
+async function resolveWorkspaceId(c: any): Promise<string | null> {
+  const workspaceHeader = c.req.header("x-workspace-id");
+  if (workspaceHeader && workspaceHeader.trim()) {
+    return workspaceHeader.trim();
+  }
+
+  const authHeader = c.req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const payload = (await verify(authHeader.substring(7), config.jwtSecret, "HS256")) as any;
+      if (payload?.workspaceId) return payload.workspaceId;
+      if (payload?.userId) {
+        const mem = await prisma.workspaceMember.findFirst({
+          where: { userId: payload.userId },
+        });
+        if (mem) return mem.workspaceId;
+      }
+    } catch {}
+  }
+
+  const defaultWs = await prisma.workspace.findFirst({
+    orderBy: { updatedAt: "desc" },
+  });
+  return defaultWs?.id || null;
+}
+
 // GET /api/automation/telegram - Get workspace telegram config and connection key
 automationRouter.get("/telegram", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
-
   try {
-    let targetWorkspaceId = workspaceId;
+    const targetWorkspaceId = await resolveWorkspaceId(c);
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "No workspace found" }, 404);
+      return c.json({ success: false, error: "No active workspace found" }, 404);
     }
 
     const workspace = await prisma.workspace.findUnique({
@@ -150,7 +171,11 @@ automationRouter.get("/telegram", async (c) => {
       }
     } catch {}
 
-    const isPlanEligible = ["PRO", "ENTERPRISE"].includes(workspace.plan.toUpperCase());
+    const planUpper = (workspace.plan || "FREE").toUpperCase();
+    const isPlanEligible =
+      ["PRO", "ENTERPRISE", "BUSINESS", "GROWTH"].includes(planUpper) ||
+      Boolean(workspace.planExpiresAt && new Date(workspace.planExpiresAt) > new Date());
+
     const tgConfig = await prisma.telegramConfig.findFirst({
       where: { workspaceId: workspace.id },
     });
@@ -182,14 +207,8 @@ automationRouter.get("/telegram", async (c) => {
 
 // POST /api/automation/telegram/disconnect - Disconnect Telegram
 automationRouter.post("/telegram/disconnect", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
   try {
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
+    const targetWorkspaceId = await resolveWorkspaceId(c);
     if (!targetWorkspaceId) return c.json({ success: false, error: "No workspace found" }, 404);
 
     await prisma.telegramConfig.updateMany({
@@ -205,14 +224,8 @@ automationRouter.post("/telegram/disconnect", async (c) => {
 
 // POST /api/automation/telegram/test - Send Test Alert
 automationRouter.post("/telegram/test", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
   try {
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
+    const targetWorkspaceId = await resolveWorkspaceId(c);
     if (!targetWorkspaceId) return c.json({ success: false, error: "No workspace found" }, 404);
 
     const [workspace, tgConfig] = await Promise.all([

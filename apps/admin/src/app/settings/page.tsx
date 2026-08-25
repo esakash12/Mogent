@@ -44,6 +44,17 @@ export default function AdminSettingsPage() {
   const [cfBucketName, setCfBucketName] = useState("mogent-assets");
   const [cfPublicDomain, setCfPublicDomain] = useState("");
 
+  // Payment Gateway Settings (bKash, Nagad, Rocket)
+  const [bkashNumber, setBkashNumber] = useState("01711998877");
+  const [bkashType, setBkashType] = useState("Personal (Send Money)");
+  const [nagadNumber, setNagadNumber] = useState("01711998877");
+  const [nagadType, setNagadType] = useState("Personal (Send Money)");
+  const [rocketNumber, setRocketNumber] = useState("01711998877-0");
+  const [rocketType, setRocketType] = useState("Personal (Send Money)");
+  const [paymentInstructions, setPaymentInstructions] = useState(
+    "Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) for instant admin verification."
+  );
+
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const API_BASE =
@@ -60,8 +71,9 @@ export default function AdminSettingsPage() {
       fetch(`${API_BASE}/api/admin/meta-config`, { headers }).then((r) => r.json()),
       fetch(`${API_BASE}/api/admin/telegram-master-config`, { headers }).then((r) => r.json()),
       fetch(`${API_BASE}/api/admin/cloudflare-config`, { headers }).then((r) => r.json()),
+      fetch(`${API_BASE}/api/admin/payment-config`, { headers }).then((r) => r.json()),
     ])
-      .then(([metaJson, tgJson, cfJson]) => {
+      .then(([metaJson, tgJson, cfJson, payJson]) => {
         if (metaJson.success && metaJson.data) {
           setAppId(metaJson.data.appId || "");
           setAppSecret(metaJson.data.appSecret || "");
@@ -78,6 +90,15 @@ export default function AdminSettingsPage() {
           setCfSecretAccessKey(cfJson.data.secretAccessKey || "");
           setCfBucketName(cfJson.data.bucketName || "mogent-assets");
           setCfPublicDomain(cfJson.data.publicDomain || "");
+        }
+        if (payJson.success && payJson.data) {
+          setBkashNumber(payJson.data.bkashNumber || "01711998877");
+          setBkashType(payJson.data.bkashType || "Personal (Send Money)");
+          setNagadNumber(payJson.data.nagadNumber || "01711998877");
+          setNagadType(payJson.data.nagadType || "Personal (Send Money)");
+          setRocketNumber(payJson.data.rocketNumber || "01711998877-0");
+          setRocketType(payJson.data.rocketType || "Personal (Send Money)");
+          setPaymentInstructions(payJson.data.instructions || "");
         }
         setIsLoading(false);
       })
@@ -123,6 +144,19 @@ export default function AdminSettingsPage() {
             secretAccessKey: cfSecretAccessKey,
             bucketName: cfBucketName,
             publicDomain: cfPublicDomain,
+          }),
+        }),
+        fetch(`${API_BASE}/api/admin/payment-config`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            bkashNumber,
+            bkashType,
+            nagadNumber,
+            nagadType,
+            rocketNumber,
+            rocketType,
+            instructions: paymentInstructions,
           }),
         }),
       ]);
@@ -406,6 +440,104 @@ export default function AdminSettingsPage() {
               onChange={(e) => setCfPublicDomain(e.target.value)}
               placeholder="e.g. https://cdn.mogent.tech or https://pub-xxx.r2.dev"
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        {/* 5. Manual Payment Gateways / Receiver Accounts */}
+        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-500 shrink-0">
+              <span className="font-bold text-sm">৳</span>
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-[#EDEDED]">Manual Payment Receiver Accounts (bKash, Nagad, Rocket)</h3>
+              <p className="text-xs text-[#888]">
+                These numbers and instructions are shown dynamically to merchants on their billing checkout modal.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-pink-400">bKash Receiver Number</label>
+              <input
+                type="text"
+                value={bkashNumber}
+                onChange={(e) => setBkashNumber(e.target.value)}
+                placeholder="017XXXXXXXX"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-pink-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">bKash Account Type</label>
+              <input
+                type="text"
+                value={bkashType}
+                onChange={(e) => setBkashType(e.target.value)}
+                placeholder="e.g. Personal (Send Money) / Merchant (Make Payment)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-orange-400">Nagad Receiver Number</label>
+              <input
+                type="text"
+                value={nagadNumber}
+                onChange={(e) => setNagadNumber(e.target.value)}
+                placeholder="017XXXXXXXX"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Nagad Account Type</label>
+              <input
+                type="text"
+                value={nagadType}
+                onChange={(e) => setNagadType(e.target.value)}
+                placeholder="e.g. Personal (Send Money)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-purple-400">Rocket Receiver Number</label>
+              <input
+                type="text"
+                value={rocketNumber}
+                onChange={(e) => setRocketNumber(e.target.value)}
+                placeholder="017XXXXXXXX-X"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#888]">Rocket Account Type</label>
+              <input
+                type="text"
+                value={rocketType}
+                onChange={(e) => setRocketType(e.target.value)}
+                placeholder="e.g. Personal (Send Money)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[#888]">Custom Payment Instructions Note</label>
+            <textarea
+              rows={2}
+              value={paymentInstructions}
+              onChange={(e) => setPaymentInstructions(e.target.value)}
+              placeholder="Instructions shown to merchant above the payment submit form..."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
             />
           </div>
         </div>

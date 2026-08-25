@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { prisma, PaymentStatus, PaymentMethod } from "@mogent/database";
+import { redisConnection } from "../redis";
+import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
 
 export const billingRouter = new Hono();
+
+const REDIS_PAYMENT_CONFIG = "mogent:payment_gateway_config";
 
 // Plan Definitions
 export const PLANS: Record<string, { name: string; price: number; pageLimit: number; msgLimit: number; features: string[] }> = {
@@ -116,16 +120,126 @@ billingRouter.get("/", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
-// 2. SUBMIT PAYMENT TRANSACTION (bKash, Nagad, Rocket)
+// 2. GET PAYMENT GATEWAY RECEIVER ACCOUNTS (FOR MERCHANT CHECKOUT)
+// -----------------------------------------------------------------------------
+billingRouter.get("/payment-config", async (c) => {
+  try {
+    const redisVal = await redisConnection.get(REDIS_PAYMENT_CONFIG);
+    let parsed = redisVal ? JSON.parse(redisVal) : null;
+
+    const data = {
+      bkashNumber: parsed?.bkashNumber || "01711998877",
+      bkashType: parsed?.bkashType || "Personal (Send Money)",
+      nagadNumber: parsed?.nagadNumber || "01711998877",
+      nagadType: parsed?.nagadType || "Personal (Send Money)",
+      rocketNumber: parsed?.rocketNumber || "01711998877-0",
+      rocketType: parsed?.rocketType || "Personal (Send Money)",
+      instructions:
+        parsed?.instructions ||
+        "Send the exact plan amount to any number above, then submit your mobile number and Transaction ID (TrxID) for instant verification.",
+    };
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3. VALIDATE COUPON CODE (FOR MERCHANT CHECKOUT)
+// -----------------------------------------------------------------------------
+billingRouter.post("/coupons/validate", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { code, plan } = body;
+
+    const cleanCode = sanitizeText(code, 30).toUpperCase().trim();
+    if (!cleanCode) {
+      return c.json({ success: false, error: "Please enter a coupon code." }, 400);
+    }
+
+    const cleanPlan = (plan || "STARTER").toUpperCase();
+    const planInfo = PLANS[cleanPlan] || PLANS.STARTER;
+    const basePrice = planInfo.price;
+
+    const coupon = await prisma.coupon.findUnique({
+      where: { code: cleanCode },
+    });
+
+    if (!coupon || !coupon.isActive) {
+      return c.json({ success: false, error: "Invalid or inactive coupon code." }, 404);
+    }
+
+    if (coupon.expiresAt && new Date() > new Date(coupon.expiresAt)) {
+      return c.json({ success: false, error: "This coupon code has expired." }, 400);
+    }
+
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+      return c.json({ success: false, error: "This coupon code has reached its maximum usage limit." }, 400);
+    }
+
+    if (coupon.applicablePlan && coupon.applicablePlan !== "ALL" && coupon.applicablePlan !== cleanPlan) {
+      return c.json({
+        success: false,
+        error: `This coupon code is only valid for the ${coupon.applicablePlan} plan.`,
+      }, 400);
+    }
+
+    if (coupon.minOrderAmount && basePrice < coupon.minOrderAmount) {
+      return c.json({
+        success: false,
+        error: `Minimum order amount for this coupon is ৳${coupon.minOrderAmount}.`,
+      }, 400);
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === "PERCENTAGE") {
+      discountAmount = Math.round((basePrice * coupon.discountValue) / 100);
+      if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
+        discountAmount = coupon.maxDiscount;
+      }
+    } else {
+      discountAmount = Math.min(coupon.discountValue, basePrice);
+    }
+
+    const finalAmount = Math.max(0, basePrice - discountAmount);
+
+    return c.json({
+      success: true,
+      data: {
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        discountAmount,
+        originalPrice: basePrice,
+        finalAmount,
+      },
+      message: `Coupon applied! You saved ৳${discountAmount.toLocaleString()}`,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 4. SUBMIT PAYMENT TRANSACTION (bKash, Nagad, Rocket)
 // -----------------------------------------------------------------------------
 billingRouter.post("/submit-payment", async (c) => {
   try {
     const body = await c.req.json();
-    const { plan, method, senderNumber, trxId, notes } = body;
+    const { plan, method, senderNumber, trxId, couponCode, notes } = body;
     let workspaceId = c.req.header("x-workspace-id") || body.workspaceId;
 
     if (!plan || !senderNumber || !trxId) {
       return c.json({ success: false, error: "Plan, Sender Number, and TrxID are required" }, 400);
+    }
+
+    // Strict Bangladeshi Phone Validation
+    if (!isValidBdPhone(senderNumber)) {
+      return c.json({
+        success: false,
+        error: "Invalid Bangladeshi mobile number. Must be 11 digits (e.g. 017XXXXXXXX).",
+      }, 400);
     }
 
     if (!workspaceId) {
@@ -139,6 +253,41 @@ billingRouter.post("/submit-payment", async (c) => {
 
     const cleanPlan = plan.toUpperCase();
     const planInfo = PLANS[cleanPlan] || PLANS.STARTER;
+    let basePrice = planInfo.price;
+    let appliedDiscount = 0;
+    let validCouponCode: string | null = null;
+
+    // Validate Coupon if supplied
+    if (couponCode) {
+      const cleanCoupon = sanitizeText(couponCode, 30).toUpperCase().trim();
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: cleanCoupon },
+      });
+
+      if (coupon && coupon.isActive && (!coupon.expiresAt || new Date() <= new Date(coupon.expiresAt))) {
+        if (!coupon.usageLimit || coupon.usedCount < coupon.usageLimit) {
+          if (!coupon.applicablePlan || coupon.applicablePlan === "ALL" || coupon.applicablePlan === cleanPlan) {
+            validCouponCode = coupon.code;
+            if (coupon.discountType === "PERCENTAGE") {
+              appliedDiscount = Math.round((basePrice * coupon.discountValue) / 100);
+              if (coupon.maxDiscount && appliedDiscount > coupon.maxDiscount) {
+                appliedDiscount = coupon.maxDiscount;
+              }
+            } else {
+              appliedDiscount = Math.min(coupon.discountValue, basePrice);
+            }
+
+            // Increment coupon usage
+            await prisma.coupon.update({
+              where: { id: coupon.id },
+              data: { usedCount: { increment: 1 } },
+            });
+          }
+        }
+      }
+    }
+
+    const finalAmount = Math.max(0, basePrice - appliedDiscount);
 
     // Normalize Payment Method
     let paymentMethod: PaymentMethod = PaymentMethod.BKASH;
@@ -147,8 +296,9 @@ billingRouter.post("/submit-payment", async (c) => {
     if (method === "BANK_TRANSFER") paymentMethod = PaymentMethod.BANK_TRANSFER;
 
     // Check if TrxID was already submitted
+    const cleanTrx = sanitizeText(trxId, 50).trim().toUpperCase();
     const existingTx = await prisma.paymentTransaction.findUnique({
-      where: { trxId: trxId.trim() },
+      where: { trxId: cleanTrx },
     });
 
     if (existingTx) {
@@ -159,12 +309,14 @@ billingRouter.post("/submit-payment", async (c) => {
       data: {
         workspaceId,
         plan: cleanPlan,
-        amount: planInfo.price,
+        amount: finalAmount,
         currency: "BDT",
         method: paymentMethod,
-        senderNumber: senderNumber.trim(),
-        trxId: trxId.trim().toUpperCase(),
-        notes: notes?.trim() || undefined,
+        senderNumber: cleanBdPhone(senderNumber),
+        trxId: cleanTrx,
+        couponCode: validCouponCode,
+        discountAmount: appliedDiscount,
+        notes: sanitizeText(notes, 500) || undefined,
         status: PaymentStatus.PENDING,
       },
     });
