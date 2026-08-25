@@ -214,16 +214,26 @@ If information is not found in knowledge base, kindly inform the user or suggest
         const { thinking, replyText, sentimentScore, shouldEscalate, escalationReason, extractedLeadInfo } =
           aiResponse.data;
 
+        let finalReplyText = replyText;
+        if (typeof finalReplyText === "string" && finalReplyText.trim().startsWith("{")) {
+          try {
+            const parsedJson = JSON.parse(finalReplyText);
+            if (parsedJson.replyText) {
+              finalReplyText = parsedJson.replyText;
+            }
+          } catch {}
+        }
+
         // 10. Send Reply to Customer via Facebook Messenger Send API
-        if (replyText && page.aiMode !== "MANUAL") {
-          await facebookApi.sendTextMessage(pageAccessToken, senderPsid, replyText);
+        if (finalReplyText && page.aiMode !== "MANUAL") {
+          await facebookApi.sendTextMessage(pageAccessToken, senderPsid, finalReplyText);
 
           // Save AI Message to DB
           await prisma.message.create({
             data: {
               conversationId: conversation.id,
               sender: "AI",
-              content: replyText,
+              content: finalReplyText,
               mediaType: "TEXT",
               thinkingProcess: thinking,
               modelUsed: config.aiProxy.defaultModel,

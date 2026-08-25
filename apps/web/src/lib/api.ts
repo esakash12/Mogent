@@ -342,6 +342,20 @@ export async function saveWhatsAppProtocol(data: {
   }
 }
 
+export async function saveSystemPrompt(data: { systemPrompt: string; businessName?: string }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/knowledge/system-prompt`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    return json;
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to save system prompt" };
+  }
+}
+
 // --- BILLING & PAYMENTS ---
 export async function fetchBillingStatus() {
   try {

@@ -7,7 +7,7 @@ const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey)
 
 export const knowledgeRouter = new Hono();
 
-// GET /api/knowledge - List knowledge items and WhatsApp config for workspace
+// GET /api/knowledge - List knowledge items, system prompt, and WhatsApp config for workspace
 knowledgeRouter.get("/", async (c) => {
   const workspaceId = c.req.header("x-workspace-id");
 
@@ -24,14 +24,26 @@ knowledgeRouter.get("/", async (c) => {
       workspace = await prisma.workspace.findFirst();
     }
 
-    const items = await prisma.knowledgeBase.findMany({
-      where,
-      orderBy: { priority: "desc" },
-    });
+    const targetWsId = workspace?.id;
+
+    const [items, page] = await Promise.all([
+      prisma.knowledgeBase.findMany({
+        where: targetWsId ? { workspaceId: targetWsId } : where,
+        orderBy: { priority: "desc" },
+      }),
+      targetWsId
+        ? prisma.facebookPage.findFirst({
+            where: { workspaceId: targetWsId, isActive: true },
+            orderBy: { createdAt: "desc" },
+          })
+        : prisma.facebookPage.findFirst({ where: { isActive: true } }),
+    ]);
 
     return c.json({
       success: true,
       data: {
+        systemPrompt: page?.systemPrompt || "",
+        businessName: page?.businessName || page?.name || workspace?.name || "",
         items: items.map((i) => ({
           id: i.id,
           title: i.title,
@@ -48,6 +60,43 @@ knowledgeRouter.get("/", async (c) => {
           prefillText: workspace?.whatsAppPrefillText || "Hello! I saw your products on Facebook and want to place an order.",
         },
       },
+    });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// POST /api/knowledge/system-prompt - Save Custom System Prompt & Persona
+knowledgeRouter.post("/system-prompt", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { systemPrompt, businessName } = body;
+
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst();
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "No workspace found" }, 404);
+    }
+
+    // Update all Facebook Pages under this workspace
+    await prisma.facebookPage.updateMany({
+      where: { workspaceId: targetWorkspaceId },
+      data: {
+        systemPrompt: (systemPrompt || "").trim() || null,
+        businessName: (businessName || "").trim() || null,
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: "Custom System Prompt saved successfully!",
+      data: { systemPrompt, businessName },
     });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);

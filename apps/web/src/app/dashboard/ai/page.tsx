@@ -23,10 +23,16 @@ import {
   HelpCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol, testPlaygroundChat } from "@/lib/api";
+import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol, testPlaygroundChat, saveSystemPrompt } from "@/lib/api";
 
 export default function AIAutomationSectorPage() {
-  const [activeTab, setActiveTab] = useState<"KNOWLEDGE" | "WHATSAPP_CONTACT" | "RULES" | "PLAYGROUND">("KNOWLEDGE");
+  const [activeTab, setActiveTab] = useState<"KNOWLEDGE" | "PROMPT" | "WHATSAPP_CONTACT" | "RULES" | "PLAYGROUND">("KNOWLEDGE");
+
+  // --- 0. CUSTOM SYSTEM PROMPT & PERSONA STATE ---
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [promptSaved, setPromptSaved] = useState(false);
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
   // --- 1. KNOWLEDGE STATE ---
   const [knowledgeItems, setKnowledgeItems] = useState<any[]>([]);
@@ -48,6 +54,8 @@ export default function AIAutomationSectorPage() {
   useEffect(() => {
     fetchKnowledgeAndWhatsApp().then((data) => {
       if (data) {
+        if (data.systemPrompt) setSystemPrompt(data.systemPrompt);
+        if (data.businessName) setBusinessName(data.businessName);
         if (data.items && data.items.length > 0) {
           setKnowledgeItems(data.items);
         }
@@ -107,6 +115,19 @@ export default function AIAutomationSectorPage() {
       address: officeAddress,
       prefillText: whatsAppPrefillText,
     });
+  };
+
+  const handleSaveSystemPrompt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPrompt(true);
+    const res = await saveSystemPrompt({ systemPrompt, businessName });
+    setIsSavingPrompt(false);
+    if (res && (res.success || !res.error)) {
+      setPromptSaved(true);
+      setTimeout(() => setPromptSaved(false), 2500);
+    } else {
+      alert("Failed to save: " + (res?.error || "Unknown error"));
+    }
   };
 
   // --- 3. RULES STATE ---
@@ -200,6 +221,19 @@ export default function AIAutomationSectorPage() {
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span>Knowledge Base</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("PROMPT")}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all",
+              activeTab === "PROMPT"
+                ? "bg-white text-black shadow-sm font-bold"
+                : "text-[#888] hover:text-[#EDEDED]"
+            )}
+          >
+            <Bot className="w-3.5 h-3.5 text-purple-400" />
+            <span>Custom System Prompt</span>
           </button>
 
           <button
@@ -366,6 +400,112 @@ export default function AIAutomationSectorPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: CUSTOM SYSTEM PROMPT & PERSONA INSTRUCTIONS */}
+      {/* ========================================================================= */}
+      {activeTab === "PROMPT" && (
+        <form onSubmit={handleSaveSystemPrompt} className="space-y-6 max-w-4xl animate-in fade-in duration-200">
+          <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+            <div className="flex items-center justify-between border-b border-[#222] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-[#EDEDED]">Custom AI System Prompt & Persona</h3>
+                  <p className="text-xs text-[#888]">
+                    Provide detailed, multi-paragraph instructions to train Gemini on your exact tone, sales technique, and rules.
+                  </p>
+                </div>
+              </div>
+              {promptSaved && (
+                <span className="text-xs font-semibold text-[#10B981] flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved!
+                </span>
+              )}
+            </div>
+
+            {/* Brand / Store Name */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-[#EDEDED]">
+                Brand or Business Name
+              </label>
+              <input
+                type="text"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="e.g. Dream Fashion BD"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {/* Prompt Presets / Quick Inserts */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-[#888]">
+                Quick Templates / Inspiration:
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSystemPrompt(
+                      `আপনি "${businessName || "আমাদের শপ"}" এর একজন অভিজ্ঞ, ভদ্র এবং অত্যন্ত আন্তরিক AI সেলস এক্সিকিউটিভ।\n\nকাজের নিয়মাবলী:\n১. সবসময় বাংলায় মিষ্টি ভাষায় কথা বলবেন এবং কাস্টমারকে সম্মান দিয়ে "আপনি" সম্বোধন করবেন।\n২. কাস্টমার কোনো প্রোডাক্ট পছন্দ করলে তাকে সাইজ ও কালার সিলেক্ট করতে সহায়তা করবেন।\n৩. অর্ডার কনফার্ম করতে কাস্টমারের কাছে তার নাম, মোবাইল নাম্বার এবং সম্পূর্ণ ডেলিভারি ঠিকানা চাইবেন।\n৪. আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।\n৫. কোনো তথ্য অজানা থাকলে কাস্টমারকে বলবেন যে আমাদের ম্যানেজার শীঘ্রই তার সাথে যোগাযোগ করবেন।`
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                >
+                  🛍️ E-Commerce Sales Executive (Bangla)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSystemPrompt(
+                      `You are an elite customer support representative for "${businessName || "Our Brand"}".\n\nKey Directives:\n- Maintain a professional, polite, and empathetic tone at all times.\n- Answer customer inquiries concisely based strictly on provided knowledge base.\n- When a lead or inquiry is urgent, collect their phone number for instant manager callback.\n- Do not fabricate facts or pricing not present in the catalog.`
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                >
+                  👔 Professional Support (English)
+                </button>
+              </div>
+            </div>
+
+            {/* Main Detailed Prompt Textarea */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-[#EDEDED]">
+                  Full System Instructions (Multi-paragraph supported)
+                </label>
+                <span className="text-[11px] font-mono text-[#666]">
+                  {systemPrompt.length} characters
+                </span>
+              </div>
+              <textarea
+                rows={12}
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder={`এখানে আপনার AI এর জন্য বিস্তারিত প্রম্পট ও নিয়ম লিখুন...\n\nযেমন:\n- আপনি অমুক কোম্পানির সেলস এক্সিকিউটিভ\n- কাস্টমার নাম্বারের কথা বললে আমাদের হটলাইনে কল দিতে বলবেন\n- কাস্টমার প্রোডাক্ট অর্ডার করতে চাইলে ঠিকানা ও ফোন নাম্বার সংগ্রহ করবেন`}
+                className="w-full p-4 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-purple-500 font-sans leading-relaxed resize-y"
+              />
+              <p className="text-[11px] text-[#888]">
+                💡 <strong>Tip:</strong> You can include any special sales policies, discount limits, return policies, or Bengali conversational style instructions. Gemini will follow this prompt strictly on every message.
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-[#222]">
+              <button
+                type="submit"
+                disabled={isSavingPrompt}
+                className="px-6 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold transition-colors cursor-pointer shadow-lg shadow-purple-500/20 disabled:opacity-50"
+              >
+                {isSavingPrompt ? "Saving..." : "Save Custom System Prompt"}
+              </button>
+            </div>
+          </div>
+        </form>
       )}
 
       {/* ========================================================================= */}

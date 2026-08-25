@@ -93,15 +93,15 @@ export interface GeminiAiResponse {
 }
 
 export const GeminiAiResponseSchema = z.object({
-  thinking: z.string().describe("Internal analysis of customer intention, tone, and knowledge context"),
+  thinking: z.string().nullable().optional().default(""),
   replyText: z.string().describe("Polite, helpful, and natural response for the customer in their language"),
-  sentimentScore: z.number().min(-1).max(1).describe("-1 is angry/frustrated, 0 is neutral, +1 is happy/satisfied"),
-  shouldEscalate: z.boolean().describe("Whether a human manager must step in immediately"),
-  escalationReason: z.string().optional().describe("Why escalation is necessary"),
+  sentimentScore: z.number().nullable().optional().default(0),
+  shouldEscalate: z.boolean().nullable().optional().default(false),
+  escalationReason: z.string().nullable().optional(),
   extractedLeadInfo: z.object({
-    phone: z.string().optional(),
-    email: z.string().optional(),
-    deliveryAddress: z.string().optional(),
-    orderIntent: z.boolean().optional(),
-  }).optional(),
+    phone: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    deliveryAddress: z.string().nullable().optional(),
+    orderIntent: z.boolean().nullable().optional(),
+  }).nullable().optional(),
 });

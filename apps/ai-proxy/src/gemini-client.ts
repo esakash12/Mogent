@@ -204,12 +204,44 @@ You MUST ALWAYS respond with a valid JSON object strictly matching this schema:
     // Parse and validate with Zod
     try {
       const parsed = JSON.parse(candidateText);
-      return GeminiAiResponseSchema.parse(parsed);
+      const validated = GeminiAiResponseSchema.parse(parsed);
+      return {
+        thinking: validated.thinking || "",
+        replyText: validated.replyText || "হ্যালো! আমি কিভাবে আপনাকে সাহায্য করতে পারি?",
+        sentimentScore: validated.sentimentScore ?? 0.0,
+        shouldEscalate: validated.shouldEscalate ?? false,
+        escalationReason: validated.escalationReason || undefined,
+        extractedLeadInfo: validated.extractedLeadInfo ? {
+          phone: validated.extractedLeadInfo.phone || undefined,
+          email: validated.extractedLeadInfo.email || undefined,
+          deliveryAddress: validated.extractedLeadInfo.deliveryAddress || undefined,
+          orderIntent: validated.extractedLeadInfo.orderIntent || undefined,
+        } : undefined,
+      };
     } catch (parseErr) {
       console.warn("Failed to parse strictly structured JSON, fallback extracting:", candidateText);
+      
+      let cleanReplyText = candidateText;
+      let cleanThinking = "Direct response";
+      
+      try {
+        const rawObj = JSON.parse(candidateText);
+        if (rawObj.replyText) cleanReplyText = String(rawObj.replyText);
+        if (rawObj.thinking) cleanThinking = String(rawObj.thinking);
+      } catch {
+        const match = candidateText.match(/"replyText"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (match && match[1]) {
+          try {
+            cleanReplyText = JSON.parse(`"${match[1]}"`);
+          } catch {
+            cleanReplyText = match[1];
+          }
+        }
+      }
+
       return {
-        thinking: "Extracted without strict JSON",
-        replyText: candidateText,
+        thinking: cleanThinking,
+        replyText: cleanReplyText,
         sentimentScore: 0.0,
         shouldEscalate: false,
       };
