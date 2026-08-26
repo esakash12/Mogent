@@ -150,25 +150,23 @@ export class GeminiKeyRotator {
   }
 
   /**
-   * Retrieves the next available healthy API key based on Tier Priority:
-   * 1. PRIMARY -> 2. SECONDARY (1-2 min cooldown fallback) -> 3. BACKUP.
+   * Retrieves the next available healthy API key using Round-Robin across all keys in pool.
+   * Checks Redis TTL to ensure rate-limited keys are skipped during cooldown (1-2 mins).
    */
   public async getNextActiveKey(): Promise<KeyStatus | null> {
     await this.syncKeysFromRedis();
-    if (this.keys.length === 0) return null;
+    const enabledKeys = this.keys.filter((k) => k.isEnabled !== false);
+    if (enabledKeys.length === 0) return null;
 
-    // Separate keys into priority buckets
-    const primaryKeys = this.keys.filter((k) => k.role === "PRIMARY" && k.isEnabled);
-    const secondaryKeys = this.keys.filter((k) => k.role === "SECONDARY" && k.isEnabled);
-    const backupKeys = this.keys.filter((k) => k.role === "BACKUP" && k.isEnabled);
-    const otherKeys = this.keys.filter((k) => !["PRIMARY", "SECONDARY", "BACKUP"].includes(k.role) && k.isEnabled);
+    const totalKeys = enabledKeys.length;
 
-    const orderedPool = [...primaryKeys, ...secondaryKeys, ...backupKeys, ...otherKeys];
+    for (let i = 0; i < totalKeys; i++) {
+      const candidateIndex = (this.currentIndex + i) % totalKeys;
+      const candidate = enabledKeys[candidateIndex];
 
-    // Find the first available healthy key across tiers
-    for (const candidate of orderedPool) {
       const isUnavailable = await this.checkIfKeyIsUnavailable(candidate);
       if (!isUnavailable) {
+        this.currentIndex = (candidateIndex + 1) % totalKeys;
         candidate.totalRequests++;
         candidate.rpmUsed = (candidate.rpmUsed || 0) + 1;
         candidate.rpdUsed = (candidate.rpdUsed || 0) + 1;
@@ -177,9 +175,11 @@ export class GeminiKeyRotator {
       }
     }
 
-    // Fallback: If all are cooling down, return the first key to attempt execution
-    console.warn("⚠️ All API keys are currently in cooldown or daily quota reached. Attempting primary key.");
-    return orderedPool[0] || this.keys[0] || null;
+    // Fallback: If all are cooling down, return the first key
+    console.warn("⚠️ All API keys are currently in cooldown. Attempting round-robin key.");
+    const fallback = enabledKeys[this.currentIndex % totalKeys];
+    this.currentIndex = (this.currentIndex + 1) % totalKeys;
+    return fallback || null;
   }
 
   private async checkIfKeyIsUnavailable(keyObj: KeyStatus): Promise<boolean> {

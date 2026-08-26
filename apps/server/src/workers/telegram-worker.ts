@@ -11,7 +11,7 @@ export function startTelegramWorker() {
       const payload = job.data;
       console.log(`📣 Sending Telegram Alert for Workspace [${payload.workspaceId}]...`);
 
-      // 1. Fetch Telegram Config for Workspace
+      // 1. Fetch Telegram Config strictly for this Workspace
       const config = await prisma.telegramConfig.findFirst({
         where: {
           workspaceId: payload.workspaceId,
@@ -19,28 +19,28 @@ export function startTelegramWorker() {
         },
       });
 
-      let botToken = config?.botToken || "";
-      let targetChatId = config?.chatId || "";
-
-      // Fallback to Master Redis Telegram Config if token or chat ID is missing
-      try {
-        const redisVal = await redisConnection.get("mogent:telegram_master_config");
-        if (redisVal) {
-          const parsed = JSON.parse(redisVal);
-          if (!botToken && parsed.botToken) botToken = parsed.botToken;
-          if (!targetChatId && parsed.adminChatId) targetChatId = parsed.adminChatId;
-        }
-      } catch {}
-
-      if (!targetChatId) {
-        console.warn(`⚠️ No active TelegramConfig or fallback Admin Chat ID found for Workspace [${payload.workspaceId}].`);
+      if (!config || !config.chatId) {
+        console.warn(`⚠️ No active TelegramConfig found for Workspace [${payload.workspaceId}]. Alert isolated & skipped.`);
         return;
       }
 
-      // 2. Dispatch via Telegram Bot API
+      let botToken = config.botToken || "";
+
+      // Load master bot token if not set locally
+      if (!botToken) {
+        try {
+          const redisVal = await redisConnection.get("mogent:telegram_master_config");
+          if (redisVal) {
+            const parsed = JSON.parse(redisVal);
+            if (parsed.botToken) botToken = parsed.botToken;
+          }
+        } catch {}
+      }
+
+      // 2. Dispatch via Telegram Bot API strictly to this Workspace's chat ID
       const success = await telegramApi.sendEscalationAlert(
         botToken,
-        targetChatId,
+        config.chatId,
         payload
       );
 

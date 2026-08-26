@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { redisConnection } from "../redis";
 import { config } from "../config";
-import { prisma, EscalationReason } from "@mogent/database";
+import { prisma, EscalationReason, MessageSender } from "@mogent/database";
 import { decryptToken, ProcessMessageJobPayload, SendTelegramAlertPayload } from "@mogent/shared";
 import { facebookApi } from "../services/facebook-api";
 import { AiProxyClient } from "../ai-client";
@@ -173,18 +173,24 @@ export function startMessageWorker() {
       const recentMessages = await prisma.message.findMany({
         where: { conversationId: conversation.id },
         orderBy: { createdAt: "desc" },
-        take: 8,
+        take: 15,
       });
 
       const history = recentMessages
         .reverse()
         .filter((m) => m.mid !== mid) // Exclude the current message
-        .map((m) => ({
-          role: (m.sender === "CUSTOMER" ? "user" : "model") as "user" | "model",
-          content: m.content || "",
-          mediaUrl: m.mediaUrl || undefined,
-          mediaType: (m.mediaType?.toLowerCase() as any) || undefined,
-        }));
+        .map((m) => {
+          let content = m.content || "";
+          if (m.sender === MessageSender.HUMAN_AGENT || (m.sender as any) === "HUMAN") {
+            content = `[মানব প্রতিনিধি/মালিক]: ${content}`;
+          }
+          return {
+            role: (m.sender === MessageSender.CUSTOMER ? "user" : "model") as "user" | "model",
+            content,
+            mediaUrl: m.mediaUrl || undefined,
+            mediaType: (m.mediaType?.toLowerCase() as any) || undefined,
+          };
+        });
 
       // Fetch Knowledge Base
       const knowledgeItems = await prisma.knowledgeBase.findMany({

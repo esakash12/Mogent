@@ -10,16 +10,19 @@ export const conversationsRouter = new Hono();
 // GET /api/conversations - List conversations for active workspace
 conversationsRouter.get("/", async (c) => {
   const workspaceId = c.req.header("x-workspace-id");
+  const filterPageId = c.req.query("pageId");
 
   try {
     let pagesWhere: any = {};
-    if (workspaceId) {
+    if (filterPageId && filterPageId !== "ALL") {
+      pagesWhere = { id: filterPageId };
+    } else if (workspaceId) {
       pagesWhere = { workspaceId };
     }
 
     const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
-      select: { id: true },
+      select: { id: true, name: true, pageId: true },
     });
     const pageIds = pages.map((p) => p.id);
 
@@ -31,6 +34,7 @@ conversationsRouter.get("/", async (c) => {
       where: { facebookPageId: { in: pageIds } },
       include: {
         customer: true,
+        facebookPage: true,
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -41,20 +45,33 @@ conversationsRouter.get("/", async (c) => {
 
     return c.json({
       success: true,
-      data: list.map((conv) => ({
-        id: conv.id,
-        customerName: `${conv.customer.firstName || ""} ${conv.customer.lastName || ""}`.trim() || "Facebook Customer",
-        psid: conv.customer.psid,
-        avatar: (conv.customer.firstName?.[0] || "C") + (conv.customer.lastName?.[0] || "U"),
-        status: conv.status,
-        isHumanControl: conv.isHumanControl,
-        sentiment: conv.customer.sentimentScore ?? 0.8,
-        phone: conv.customer.phoneNumber,
-        address: conv.customer.deliveryAddress,
-        lastMessage: conv.messages[0]?.content || "No messages yet",
-        lastTime: conv.messages[0] ? new Date(conv.messages[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
-        tag: conv.customer.tags[0] || "General Inquiry",
-      })),
+      data: list.map((conv) => {
+        const fullName = `${conv.customer.firstName || ""} ${conv.customer.lastName || ""}`.trim();
+        const customerName = fullName && fullName.toLowerCase() !== "facebook customer"
+          ? fullName
+          : `Customer #${conv.customer.psid.slice(-4)}`;
+
+        return {
+          id: conv.id,
+          customerName,
+          psid: conv.customer.psid,
+          avatar: conv.customer.profilePic || (conv.customer.firstName?.[0] || conv.customer.psid.slice(-2).toUpperCase()),
+          profilePic: conv.customer.profilePic,
+          pageId: conv.facebookPageId,
+          pageName: conv.facebookPage?.name || "Connected Page",
+          fbPageId: conv.facebookPage?.pageId,
+          status: conv.status,
+          isHumanControl: conv.isHumanControl,
+          sentiment: conv.customer.sentimentScore ?? 0.8,
+          phone: conv.customer.phoneNumber,
+          address: conv.customer.deliveryAddress,
+          lastMessage: conv.messages[0]?.content || "No messages yet",
+          lastTime: conv.messages[0]
+            ? new Date(conv.messages[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "Just now",
+          tag: conv.customer.tags[0] || "General Inquiry",
+        };
+      }),
     });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);

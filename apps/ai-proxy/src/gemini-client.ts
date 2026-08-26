@@ -31,61 +31,72 @@ export class GeminiService {
   }
 
   /**
-   * Dispatches the prompt to Gemini with automatic failover across rotated keys.
+   * Dispatches the prompt to Gemini with automatic failover across rotated keys and models.
    */
   public async generateReply(options: GenerateAiReplyOptions): Promise<{
     result: GeminiAiResponse;
     usedKeyMasked: string;
     attempts: number;
   }> {
-    const model = options.model || this.defaultModel;
-    const maxRetries = 8;
+    const modelHierarchy = [
+      options.model || this.defaultModel || "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemma-4-31b"
+    ];
+    
+    // Deduplicate models preserving order
+    const orderedModels = Array.from(new Set(modelHierarchy));
+    const maxRetries = 9;
     let attempts = 0;
     const errors: string[] = [];
 
-    while (attempts < maxRetries) {
-      const activeKey = await this.rotator.getNextActiveKey();
-      if (!activeKey) {
-        throw new Error("❌ All Gemini API keys are exhausted or in cooldown. Please check your quota.");
-      }
-
-      attempts++;
-
-      try {
-        const response = await this.callGeminiApi(activeKey.key, model, options);
-        await this.rotator.markSuccess(activeKey.key);
-
-        return {
-          result: response,
-          usedKeyMasked: activeKey.maskedKey,
-          attempts,
-        };
-      } catch (err: any) {
-        const errorMessage = err?.message || String(err);
-        errors.push(`Key [${activeKey.maskedKey}]: ${errorMessage}`);
-
-        // Check for Rate Limit (HTTP 429) or Quota Exceeded
-        if (
-          errorMessage.includes("429") ||
-          errorMessage.includes("RESOURCE_EXHAUSTED") ||
-          errorMessage.includes("Quota exceeded")
-        ) {
-          await this.rotator.markRateLimited(activeKey.key);
-          console.warn(`🔄 Auto-switching to next key due to rate limit: ${errorMessage}`);
-          continue; // Try next key immediately
+    for (const currentModel of orderedModels) {
+      let modelAttempts = 0;
+      while (modelAttempts < 3 && attempts < maxRetries) {
+        const activeKey = await this.rotator.getNextActiveKey();
+        if (!activeKey) {
+          throw new Error("❌ All Gemini API keys are exhausted or in cooldown. Please check your quota.");
         }
 
-        // If daily limit permanent exhausted
-        if (errorMessage.includes("BILLING_DISABLED") || errorMessage.includes("API_KEY_INVALID")) {
-          await this.rotator.markExhausted(activeKey.key);
-          continue;
-        }
+        attempts++;
+        modelAttempts++;
 
-        console.error(`⚠️ API Error on key [${activeKey.maskedKey}]: ${errorMessage}`);
+        try {
+          const response = await this.callGeminiApi(activeKey.key, currentModel, options);
+          await this.rotator.markSuccess(activeKey.key);
+
+          return {
+            result: response,
+            usedKeyMasked: activeKey.maskedKey,
+            attempts,
+          };
+        } catch (err: any) {
+          const errorMessage = err?.message || String(err);
+          errors.push(`[${currentModel}] Key [${activeKey.maskedKey}]: ${errorMessage}`);
+
+          // Check for Rate Limit (HTTP 429) or Quota Exceeded
+          if (
+            errorMessage.includes("429") ||
+            errorMessage.includes("RESOURCE_EXHAUSTED") ||
+            errorMessage.includes("Quota exceeded")
+          ) {
+            await this.rotator.markRateLimited(activeKey.key);
+            console.warn(`🔄 Rate limit on model [${currentModel}]. Switching key/model.`);
+            continue;
+          }
+
+          // If daily limit permanent exhausted
+          if (errorMessage.includes("BILLING_DISABLED") || errorMessage.includes("API_KEY_INVALID")) {
+            await this.rotator.markExhausted(activeKey.key);
+            continue;
+          }
+
+          console.error(`⚠️ API Error on key [${activeKey.maskedKey}]: ${errorMessage}`);
+        }
       }
     }
 
-    throw new Error(`Failed to generate response after ${attempts} attempts across keys:\n${errors.join("\n")}`);
+    throw new Error(`Failed to generate response after ${attempts} attempts across models and keys:\n${errors.join("\n")}`);
   }
 
   private async callGeminiApi(
@@ -95,25 +106,28 @@ export class GeminiService {
   ): Promise<GeminiAiResponse> {
     
     // Map custom display names or deprecated models to actual valid Google API identifiers
-    let model = "gemini-3.5-flash-lite";
+    let model = "gemini-2.5-flash";
     if (rawModel) {
-      if (rawModel.includes("3.1") || rawModel.includes("backup")) {
-        model = "gemini-3.1-flash-lite";
-      } else if (rawModel.includes("3.5") || rawModel.includes("main")) {
-        model = "gemini-3.5-flash-lite";
-      } else if (rawModel === "gemini-3.1-flash-lite" || rawModel === "gemini-3.5-flash-lite") {
-        model = rawModel;
+      if (rawModel === "gemma-4-31b" || rawModel.includes("gemma")) {
+        model = "gemma-2-27b-it";
+      } else if (rawModel.includes("3.1") || rawModel === "gemini-3.1-flash-lite") {
+        model = "gemini-2.0-flash";
+      } else {
+        model = "gemini-2.5-flash";
       }
     }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     // Build Context & System Instructions
-    // Build Context & System Instructions
     let fullSystemInstruction = `You are an elite, highly empathetic Sales Executive and Messenger Moderator for an online business.
 
 [CRITICAL ROLE ADAPTATION]
 Analyze the [Knowledge Base] and [Owner's Custom Prompt] below. Instantly adapt your persona to match the business type (e.g., Digital Subscriptions, Physical Goods, Tech Services). Use vocabulary and examples relevant ONLY to this specific business.
+
+[HUMAN OPERATOR / STORE MANAGER OVERRIDE]
+CRITICAL: The chat history contains previous messages. Messages sent by human managers/moderators are marked as [মানব প্রতিনিধি/মালিক].
+If a human representative has previously offered a custom discount, specified a price (e.g. reduced or increased), promised delivery time, or made any commitment to the customer, you MUST STRICTLY ADHERE to and respect what the human manager stated. NEVER contradict the human manager's stated price or statement!
 
 [CORE SALES PSYCHOLOGY]
 1. Stop Selling, Start Solving: Never list features blindly. Ask 1 relevant open-ended question to understand their true need before pitching.
@@ -136,7 +150,7 @@ You MUST set "shouldEscalate": true and provide a specific "escalationReason" in
 - Anti-Robot Identity: NEVER reveal yourself as AI, robot, bot, or automated system. Always act as a real human moderator representing the business.
 
 [STRICT DATA GUARDRAILS]
-- You are strictly forbidden from offering products, prices, discounts, or policies not present in the [Knowledge Base].
+- You are strictly forbidden from offering products, prices, discounts, or policies not present in the [Knowledge Base], unless a human manager explicitly offered it in the chat history above.
 
 [PRIORITY OVERRIDE RULE - THE GOLDEN COMMAND]
 The instructions, rules, and data provided in the [Knowledge Base & Owner's Custom Prompt] below are your ULTIMATE AUTHORITY.

@@ -41,6 +41,9 @@ interface Conversation {
   customerName: string;
   psid: string;
   avatar: string;
+  profilePic?: string;
+  pageId?: string;
+  pageName?: string;
   status: "OPEN" | "HANDOFF_REQUIRED" | "RESOLVED";
   isHumanControl: boolean;
   sentiment: number;
@@ -59,6 +62,7 @@ export default function LiveInboxPage() {
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<"ALL" | "AI" | "HUMAN">("ALL");
+  const [selectedPageFilter, setSelectedPageFilter] = useState<string>("ALL");
   const [showThinkingId, setShowThinkingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -69,19 +73,20 @@ export default function LiveInboxPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, selectedId]);
 
-  // Fetch live conversations from DB
+  // Fetch live conversations from DB with optional pageId filter
   const loadConversations = async (isBackground = false) => {
     if (!isBackground) setLoading(true);
     
     try {
+      const pageQuery = selectedPageFilter !== "ALL" ? `?pageId=${selectedPageFilter}` : "";
       const [convsData, pagesData] = await Promise.all([
-        fetchConversations(),
+        fetchConversations(pageQuery),
         fetchPages()
       ]);
       
       if (Array.isArray(convsData)) {
         setConversations(convsData);
-        if (convsData.length > 0 && !selectedId) {
+        if (convsData.length > 0 && (!selectedId || !convsData.some(c => c.id === selectedId))) {
           setSelectedId(convsData[0].id);
         }
       } else {
@@ -239,15 +244,39 @@ export default function LiveInboxPage() {
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] rounded-2xl border border-[#222] bg-[#0A0A0A] overflow-hidden shadow-2xl animate-in fade-in duration-300">
       {/* 1. Left Conversation List Pane */}
-      <div className="w-full md:w-80 h-[35vh] md:h-auto border-b md:border-b-0 md:border-r border-[#222] flex flex-col shrink-0 bg-[#0A0A0A]">
-        {/* Header & Search */}
-        <div className="p-3 border-b border-[#222] space-y-2">
+      <div className="w-full md:w-84 h-[35vh] md:h-auto border-b md:border-b-0 md:border-r border-[#222] flex flex-col shrink-0 bg-[#0A0A0A]">
+        {/* Header & Page Switcher */}
+        <div className="p-3 border-b border-[#222] space-y-2.5 bg-[#0D0D0D]">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-sm text-[#EDEDED]">Live Inbox</h2>
+            <h2 className="font-bold text-sm text-[#EDEDED] flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-amber-500" />
+              <span>Live Inbox</span>
+            </h2>
             <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#111] text-[#10B981] border border-[#222]">
               {conversations.length} Active
             </span>
           </div>
+
+          {/* Connected Page Switcher / Filter */}
+          {connectedPages.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedPageFilter}
+                onChange={(e) => {
+                  setSelectedPageFilter(e.target.value);
+                  setTimeout(() => loadConversations(false), 50);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-[#141414] border border-[#333] text-xs font-semibold text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="ALL">🏢 All Connected Pages ({connectedPages.length})</option>
+                {connectedPages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
@@ -261,7 +290,7 @@ export default function LiveInboxPage() {
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center gap-1 pt-1">
+          <div className="flex items-center gap-1 pt-0.5">
             {[
               { id: "ALL", label: "All Chats" },
               { id: "AI", label: "AI Handled" },
@@ -271,9 +300,9 @@ export default function LiveInboxPage() {
                 key={f.id}
                 onClick={() => setFilterMode(f.id as any)}
                 className={cn(
-                  "px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors",
+                  "px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer",
                   filterMode === f.id
-                    ? "bg-white text-black font-semibold"
+                    ? "bg-white text-black font-semibold shadow-sm"
                     : "text-[#888] hover:text-[#EDEDED] bg-[#111]"
                 )}
               >
@@ -294,19 +323,23 @@ export default function LiveInboxPage() {
                 className={cn(
                   "w-full text-left p-3 rounded-xl transition-all flex items-start gap-3 cursor-pointer",
                   isSelected
-                    ? "bg-[#1C1C1C] border border-[#333]"
+                    ? "bg-[#181818] border border-[#383838] shadow-md"
                     : "hover:bg-[#111] border border-transparent"
                 )}
               >
                 <div
                   className={cn(
-                    "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border",
+                    "w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border overflow-hidden",
                     conv.isHumanControl
-                      ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                      : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                      ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
+                      : "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
                   )}
                 >
-                  {conv.avatar || "FB"}
+                  {conv.profilePic ? (
+                    <img src={conv.profilePic} alt={conv.customerName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{conv.avatar || "CU"}</span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center justify-between">
@@ -316,10 +349,21 @@ export default function LiveInboxPage() {
                     <span className="text-[10px] text-[#666]">{conv.lastTime}</span>
                   </div>
                   <p className="text-[11px] text-[#888] truncate">{conv.lastMessage}</p>
-                  <div className="flex items-center gap-1.5 pt-0.5">
+                  
+                  <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                    {conv.pageName && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-950/40 border border-blue-500/20 text-blue-300 font-mono">
+                        {conv.pageName}
+                      </span>
+                    )}
                     <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#111] border border-[#222] text-[#888]">
                       {conv.tag}
                     </span>
+                    {conv.isHumanControl && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">
+                        Human
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
@@ -335,7 +379,14 @@ export default function LiveInboxPage() {
           <div className="h-16 px-6 border-b border-[#222] flex items-center justify-between bg-[#0A0A0A] shrink-0">
             <div className="flex items-center gap-3">
               <div>
-                <h3 className="font-bold text-sm text-[#EDEDED]">{selectedConv.customerName}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm text-[#EDEDED]">{selectedConv.customerName}</h3>
+                  {selectedConv.pageName && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold">
+                      {selectedConv.pageName}
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-[#888] font-mono">PSID: {selectedConv.psid}</p>
               </div>
             </div>

@@ -150,9 +150,10 @@ export async function deletePage(pageId: string) {
 }
 
 // --- CONVERSATIONS ---
-export async function fetchConversations() {
+export async function fetchConversations(queryString: string = "") {
   try {
-    const res = await fetch(`${API_BASE}/api/conversations`, {
+    const url = `${API_BASE}/api/conversations${queryString}`;
+    const res = await fetch(url, {
       headers: getHeaders(),
       cache: "no-store",
     });

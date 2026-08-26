@@ -15,6 +15,7 @@ import { knowledgeRouter } from "./routes/knowledge";
 import { billingRouter } from "./routes/billing";
 import { ordersRouter } from "./routes/orders";
 import { automationRouter } from "./routes/automation";
+import { broadcastsRouter } from "./routes/broadcasts";
 import { uploadRouter } from "./routes/upload";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
@@ -126,6 +127,7 @@ app.route("/api/contacts", contactsRouter);
 app.route("/api/knowledge", knowledgeRouter);
 app.route("/api/orders", ordersRouter);
 app.route("/api/automation", automationRouter);
+app.route("/api/broadcasts", broadcastsRouter);
 app.route("/api/upload", uploadRouter);
 
 // Mount webhooks on both /webhook and /api/webhook for universal support
