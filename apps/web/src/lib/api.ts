@@ -326,9 +326,12 @@ export async function fetchContacts(filter?: string, pageId?: string) {
 }
 
 // --- KNOWLEDGE & WHATSAPP ---
-export async function fetchKnowledgeAndWhatsApp() {
+export async function fetchKnowledgeAndWhatsApp(pageId?: string) {
   try {
-    const res = await fetch(`${API_BASE}/api/knowledge`, {
+    const url = pageId && pageId !== "ALL"
+      ? `${API_BASE}/api/knowledge?pageId=${pageId}`
+      : `${API_BASE}/api/knowledge`;
+    const res = await fetch(url, {
       headers: getHeaders(),
       cache: "no-store",
     });
@@ -389,7 +392,7 @@ export async function saveWhatsAppProtocol(data: {
   }
 }
 
-export async function saveSystemPrompt(data: { systemPrompt: string; businessName?: string }) {
+export async function saveSystemPrompt(data: { systemPrompt: string; businessName?: string; pageId?: string }) {
   try {
     const res = await fetch(`${API_BASE}/api/knowledge/system-prompt`, {
       method: "POST",
@@ -440,12 +443,12 @@ export async function submitPayment(data: {
   }
 }
 
-export async function testPlaygroundChat(message: string, history: Array<{ role: string; content: string }>) {
+export async function testPlaygroundChat(message: string, history: Array<{ role: string; content: string }>, pageId?: string) {
   try {
     const res = await fetch(`${API_BASE}/api/knowledge/playground`, {
       method: "POST",
       headers: getHeaders(),
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history, pageId }),
     });
     const json = await res.json();
     return json;
@@ -523,9 +526,14 @@ export async function deleteTeamMember(id: string) {
 }
 
 // --- ORDERS ---
-export async function fetchOrders(status?: string) {
+export async function fetchOrders(status?: string, pageId?: string) {
   try {
-    const url = status && status !== "ALL" ? `${API_BASE}/api/orders?status=${status}` : `${API_BASE}/api/orders`;
+    const params = new URLSearchParams();
+    if (status && status !== "ALL") params.append("status", status);
+    if (pageId && pageId !== "ALL") params.append("pageId", pageId);
+
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+    const url = `${API_BASE}/api/orders${queryString}`;
     const res = await fetch(url, {
       headers: getHeaders(),
       cache: "no-store",

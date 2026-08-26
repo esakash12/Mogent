@@ -24,10 +24,12 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol, testPlaygroundChat, saveSystemPrompt } from "@/lib/api";
+import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, saveWhatsAppProtocol, testPlaygroundChat, saveSystemPrompt, fetchPages } from "@/lib/api";
 
 export default function AIAutomationSectorPage() {
   const [activeTab, setActiveTab] = useState<"KNOWLEDGE" | "PROMPT" | "WHATSAPP_CONTACT" | "RULES" | "PLAYGROUND">("KNOWLEDGE");
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
 
   // --- 0. CUSTOM SYSTEM PROMPT & PERSONA STATE ---
   const [systemPrompt, setSystemPrompt] = useState("");
@@ -53,13 +55,22 @@ export default function AIAutomationSectorPage() {
   const [contactSaved, setContactSaved] = useState(false);
   const [isSavingContact, setIsSavingContact] = useState(false);
 
-  // Load from DB
-  useEffect(() => {
-    fetchKnowledgeAndWhatsApp().then((data) => {
+  // Load from DB & Support Multi-Page Switch
+  const loadPageConfig = async (pageId = selectedPageId) => {
+    try {
+      const [data, pagesList] = await Promise.all([
+        fetchKnowledgeAndWhatsApp(pageId),
+        fetchPages(),
+      ]);
+
+      if (Array.isArray(pagesList)) {
+        setPages(pagesList);
+      }
+
       if (data) {
-        if (data.systemPrompt) setSystemPrompt(data.systemPrompt);
-        if (data.businessName) setBusinessName(data.businessName);
-        if (data.items && data.items.length > 0) {
+        if (data.systemPrompt !== undefined) setSystemPrompt(data.systemPrompt || "");
+        if (data.businessName !== undefined) setBusinessName(data.businessName || "");
+        if (data.items && Array.isArray(data.items)) {
           setKnowledgeItems(data.items);
         }
         if (data.whatsAppProtocol) {
@@ -70,8 +81,34 @@ export default function AIAutomationSectorPage() {
           if (data.whatsAppProtocol.prefillText) setWhatsAppPrefillText(data.whatsAppProtocol.prefillText);
         }
       }
-    });
+    } catch (err) {
+      console.error("Failed to load page AI config:", err);
+    }
+  };
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    const initialPage = saved || "ALL";
+    setSelectedPageId(initialPage);
+    loadPageConfig(initialPage);
+
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageId(newPageId);
+      loadPageConfig(newPageId);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
   }, []);
+
+  const handlePageChange = (newPageId: string) => {
+    setSelectedPageId(newPageId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", newPageId);
+    }
+    loadPageConfig(newPageId);
+  };
 
   const handleAddKnowledge = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +156,7 @@ export default function AIAutomationSectorPage() {
   const handleSaveSystemPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingPrompt(true);
-    const res = await saveSystemPrompt({ systemPrompt, businessName });
+    const res = await saveSystemPrompt({ systemPrompt, businessName, pageId: selectedPageId });
     setIsSavingPrompt(false);
     if (res && (res.success || !res.error)) {
       setPromptSaved(true);
@@ -156,7 +193,8 @@ export default function AIAutomationSectorPage() {
     try {
       const res = await testPlaygroundChat(
         q,
-        simMessages.map((m) => ({ role: m.role, content: m.content }))
+        simMessages.map((m) => ({ role: m.role, content: m.content })),
+        selectedPageId
       );
 
       if (res.success && res.data) {
@@ -195,83 +233,114 @@ export default function AIAutomationSectorPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Top Sector Tabs Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-4">
+      {/* Top Sector Tabs Bar & Page Switcher */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#222] pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            AI Automation Studio
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
+              AI Automation Studio
+            </h1>
+            {selectedPageId !== "ALL" && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
+                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Page"}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-[#888] mt-0.5">
             Train your AI agent, configure WhatsApp & Contact protocols, instant rules, and test responses.
           </p>
         </div>
 
-        {/* The Sector Top Navigation Tabs (No Scrollbar) */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111] border border-[#222]">
-          <button
-            onClick={() => setActiveTab("KNOWLEDGE")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all",
-              activeTab === "KNOWLEDGE"
-                ? "bg-white text-black shadow-sm font-bold"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Knowledge Base</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Page Switcher Dropdown */}
+          {pages.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] border border-[#333] shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span className="text-xs text-[#888] font-semibold hidden sm:inline">Page:</span>
+              <select
+                value={selectedPageId}
+                onChange={(e) => handlePageChange(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
+                  🏢 All Connected Pages ({pages.length})
+                </option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          <button
-            onClick={() => setActiveTab("PROMPT")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all",
-              activeTab === "PROMPT"
-                ? "bg-white text-black shadow-sm font-bold"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <Bot className="w-3.5 h-3.5 text-purple-400" />
-            <span>Custom System Prompt</span>
-          </button>
+          {/* The Sector Top Navigation Tabs (No Scrollbar) */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111] border border-[#222]">
+            <button
+              onClick={() => setActiveTab("KNOWLEDGE")}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                activeTab === "KNOWLEDGE"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Knowledge Base</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("WHATSAPP_CONTACT")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all",
-              activeTab === "WHATSAPP_CONTACT"
-                ? "bg-white text-black shadow-sm font-bold"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
-            <span>WhatsApp & Contact</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("PROMPT")}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                activeTab === "PROMPT"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <Bot className="w-3.5 h-3.5 text-purple-400" />
+              <span>Custom System Prompt</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("RULES")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all",
-              activeTab === "RULES"
-                ? "bg-white text-black shadow-sm font-bold"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
-            <span>Rules & Triggers</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("WHATSAPP_CONTACT")}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                activeTab === "WHATSAPP_CONTACT"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+              <span>WhatsApp & Contact</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("PLAYGROUND")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all",
-              activeTab === "PLAYGROUND"
-                ? "bg-white text-black shadow-sm font-bold"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <PlayCircle className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Playground</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("RULES")}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                activeTab === "RULES"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span>Rules & Triggers</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("PLAYGROUND")}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                activeTab === "PLAYGROUND"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <PlayCircle className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Playground</span>
+            </button>
+          </div>
         </div>
       </div>
 

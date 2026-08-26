@@ -1,4 +1,4 @@
-﻿import { Hono } from "hono";
+import { Hono } from "hono";
 import { prisma } from "@mogent/database";
 
 export const ordersRouter = new Hono();
@@ -7,6 +7,7 @@ export const ordersRouter = new Hono();
 ordersRouter.get("/", async (c) => {
   const workspaceId = c.req.header("x-workspace-id");
   const statusFilter = c.req.query("status");
+  const pageId = c.req.query("pageId");
 
   try {
     let targetWorkspaceId = workspaceId;
@@ -15,8 +16,15 @@ ordersRouter.get("/", async (c) => {
       targetWorkspaceId = defaultWs?.id;
     }
 
+    let pagesWhere: any = {};
+    if (pageId && pageId !== "ALL") {
+      pagesWhere = { id: pageId };
+    } else if (targetWorkspaceId) {
+      pagesWhere = { workspaceId: targetWorkspaceId };
+    }
+
     const pages = await prisma.facebookPage.findMany({
-      where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
+      where: pagesWhere,
       select: { id: true, name: true },
     });
     const pageIds = pages.map((p) => p.id);

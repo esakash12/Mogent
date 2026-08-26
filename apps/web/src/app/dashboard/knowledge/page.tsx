@@ -17,7 +17,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem } from "@/lib/api";
+import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem, fetchPages } from "@/lib/api";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 interface KnowledgeItem {
@@ -31,6 +31,8 @@ interface KnowledgeItem {
 
 export default function KnowledgeBasePage() {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("ALL");
   const [showModal, setShowModal] = useState(false);
@@ -44,20 +46,53 @@ export default function KnowledgeBasePage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadKnowledge = async () => {
+  const loadKnowledge = async (pageId = selectedPageId) => {
     setLoading(true);
-    const data = await fetchKnowledgeAndWhatsApp();
-    if (data && Array.isArray(data.items)) {
-      setItems(data.items);
-    } else {
-      setItems([]);
+    try {
+      const [data, pagesList] = await Promise.all([
+        fetchKnowledgeAndWhatsApp(pageId),
+        fetchPages(),
+      ]);
+
+      if (Array.isArray(pagesList)) {
+        setPages(pagesList);
+      }
+
+      if (data && Array.isArray(data.items)) {
+        setItems(data.items);
+      } else {
+        setItems([]);
+      }
+    } catch (err) {
+      console.error("Failed to load knowledge:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadKnowledge();
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    const initialPage = saved || "ALL";
+    setSelectedPageId(initialPage);
+    loadKnowledge(initialPage);
+
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageId(newPageId);
+      loadKnowledge(newPageId);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
   }, []);
+
+  const handlePageChange = (newPageId: string) => {
+    setSelectedPageId(newPageId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", newPageId);
+    }
+    loadKnowledge(newPageId);
+  };
 
   const filteredItems = items.filter((item) => {
     const matchesTab = activeTab === "ALL" || item.category === activeTab;
@@ -73,7 +108,7 @@ export default function KnowledgeBasePage() {
 
     setIsSubmitting(true);
     const res = await createKnowledgeItem(newItem);
-    if (res.success) {
+    if (res && (res.success || res.id)) {
       setShowModal(false);
       setNewItem({ title: "", category: "FAQ", content: "", priority: 5 });
       loadKnowledge();
@@ -92,29 +127,54 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Sector Tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-[#222] pb-3 text-xs">
-        <Link
-          href="/dashboard/knowledge"
-          className="px-3 py-1.5 rounded-lg bg-[#222] text-[#EDEDED] font-semibold flex items-center gap-2"
-        >
-          <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Knowledge Base</span>
-        </Link>
-        <Link
-          href="/dashboard/ai"
-          className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>AI Personality & Prompt</span>
-        </Link>
+      {/* Sector Tab Navigation & Page Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#222] pb-3 text-xs">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/knowledge"
+            className="px-3 py-1.5 rounded-lg bg-[#222] text-[#EDEDED] font-semibold flex items-center gap-2"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Knowledge Base</span>
+          </Link>
+          <Link
+            href="/dashboard/ai"
+            className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>AI Studio & Prompts</span>
+          </Link>
+        </div>
+
+        {/* Connected Page Switcher */}
+        {pages.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#141414] border border-[#333]">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+            <span className="text-xs text-[#888] font-semibold">Page:</span>
+            <select
+              value={selectedPageId}
+              onChange={(e) => handlePageChange(e.target.value)}
+              className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
+            >
+              <option value="ALL" className="bg-[#111] text-[#EDEDED]">
+                🏢 All Connected Pages ({pages.length})
+              </option>
+              {pages.map((p) => (
+                <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                  📄 {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            Knowledge Base & RAG Context
+          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+            <BookOpen className="w-6 h-6 text-indigo-400" />
+            <span>Knowledge Base & RAG Context</span>
           </h1>
           <p className="text-[14px] text-[#888] mt-1">
             Teach your Mogent AI agent your company policies, FAQs, delivery rules, and product specs.

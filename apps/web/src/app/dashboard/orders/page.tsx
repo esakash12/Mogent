@@ -17,7 +17,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchOrders, updateOrderStatus } from "@/lib/api";
+import { fetchOrders, updateOrderStatus, fetchPages } from "@/lib/api";
 
 interface Order {
   id: string;
@@ -36,22 +36,55 @@ interface Order {
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  const loadOrders = async () => {
+  const loadOrders = async (pageId = selectedPageId, stat = statusFilter) => {
     setLoading(true);
-    const data = await fetchOrders(statusFilter);
-    if (Array.isArray(data)) {
-      setOrders(data);
+    try {
+      const [ordersData, pagesData] = await Promise.all([
+        fetchOrders(stat, pageId),
+        fetchPages(),
+      ]);
+      if (Array.isArray(ordersData)) {
+        setOrders(ordersData);
+      }
+      if (Array.isArray(pagesData)) {
+        setPages(pagesData);
+      }
+    } catch (err) {
+      console.error("Failed to load orders:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadOrders();
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    const initialPage = saved || "ALL";
+    setSelectedPageId(initialPage);
+    loadOrders(initialPage, statusFilter);
+
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageId(newPageId);
+      loadOrders(newPageId, statusFilter);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
   }, [statusFilter]);
+
+  const handlePageChange = (newPageId: string) => {
+    setSelectedPageId(newPageId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", newPageId);
+    }
+    loadOrders(newPageId, statusFilter);
+  };
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     setOrders((prev) =>
@@ -101,21 +134,53 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            Orders & Commerce CRM
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+              <ShoppingBag className="w-6 h-6 text-amber-500" />
+              <span>Orders & Commerce CRM</span>
+            </h1>
+            {selectedPageId !== "ALL" && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
+                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Page"}
+              </span>
+            )}
+          </div>
           <p className="text-[#888] text-sm mt-1">
             Track and process orders automatically extracted by AI from Facebook Messenger conversations.
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#333] text-xs font-medium text-[#EDEDED] flex items-center gap-2 transition-colors w-fit cursor-pointer"
-        >
-          <Download className="w-4 h-4" />
-          <span>Export Orders (CSV)</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Page Switcher */}
+          {pages.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] border border-[#333] shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span className="text-xs text-[#888] font-semibold hidden sm:inline">Page:</span>
+              <select
+                value={selectedPageId}
+                onChange={(e) => handlePageChange(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
+                  🏢 All Connected Pages ({pages.length})
+                </option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={handleExportCSV}
+            className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#333] text-xs font-medium text-[#EDEDED] flex items-center gap-2 transition-colors w-fit cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Summary Bar */}

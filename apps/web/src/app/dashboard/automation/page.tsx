@@ -26,7 +26,8 @@ import {
   fetchAutomationRules,
   createAutomationRule,
   toggleAutomationRule,
-  deleteAutomationRule
+  deleteAutomationRule,
+  fetchPages
 } from "@/lib/api";
 import { ConfirmModal } from "@/components/confirm-modal";
 
@@ -42,6 +43,8 @@ interface TriggerRule {
 
 export default function AutomationPage() {
   const [rules, setRules] = useState<TriggerRule[]>([]);
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRuleName, setNewRuleName] = useState("");
@@ -49,18 +52,42 @@ export default function AutomationPage() {
   const [newReason, setNewReason] = useState("CUSTOM_KEYWORD");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadRules = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const data = await fetchAutomationRules();
-    if (Array.isArray(data)) {
-      setRules(data);
+    try {
+      const [rulesData, pagesData] = await Promise.all([
+        fetchAutomationRules(),
+        fetchPages(),
+      ]);
+      if (Array.isArray(rulesData)) setRules(rulesData);
+      if (Array.isArray(pagesData)) setPages(pagesData);
+    } catch (err) {
+      console.error("Failed to load automation data:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadRules();
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    if (saved) setSelectedPageId(saved);
+    loadData();
+
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageId(newPageId);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
   }, []);
+
+  const handlePageChange = (newPageId: string) => {
+    setSelectedPageId(newPageId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", newPageId);
+    }
+  };
 
   const [deleteRuleItem, setDeleteRuleItem] = useState<TriggerRule | null>(null);
 
@@ -118,24 +145,56 @@ export default function AutomationPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-300">
-      {/* Header */}
+      {/* Header & Page Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[#EDEDED]">
-            Automation & Instant Triggers
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+              <Zap className="w-6 h-6 text-amber-500" />
+              <span>Automation & Instant Triggers</span>
+            </h1>
+            {selectedPageId !== "ALL" && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
+                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Page"}
+              </span>
+            )}
+          </div>
           <p className="text-[14px] text-[#888] mt-1">
             Configure keyword-based human escalation rules, instant alert triggers, and manager handoff protocols.
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors w-fit cursor-pointer shadow-lg shadow-amber-500/10"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Escalation Rule</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Page Switcher */}
+          {pages.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] border border-[#333] shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span className="text-xs text-[#888] font-semibold hidden sm:inline">Page:</span>
+              <select
+                value={selectedPageId}
+                onChange={(e) => handlePageChange(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
+                  🏢 All Connected Pages ({pages.length})
+                </option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors w-fit cursor-pointer shadow-lg shadow-amber-500/10"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Escalation Rule</span>
+          </button>
+        </div>
       </div>
 
       {/* Quick Stats */}

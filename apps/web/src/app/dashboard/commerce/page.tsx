@@ -28,7 +28,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchProducts, createProduct, toggleProductStock, deleteProduct, uploadImageFile, fetchContacts } from "@/lib/api";
+import { fetchProducts, createProduct, toggleProductStock, deleteProduct, uploadImageFile, fetchContacts, fetchPages } from "@/lib/api";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 interface Product {
@@ -44,7 +44,9 @@ interface Product {
 }
 
 export default function CommerceSectorPage() {
-  const [activeTab, setActiveTab] = useState<"ORDERS" | "CATALOG" | "CONTACTS">("CATALOG");
+  const [activeTab, setActiveTab] = useState<"CATALOG" | "ORDERS" | "CONTACTS">("CATALOG");
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
 
   // Live Products State
   const [products, setProducts] = useState<Product[]>([]);
@@ -67,24 +69,47 @@ export default function CommerceSectorPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const loadProducts = async () => {
+  const loadData = async (pageId = selectedPageId) => {
     setLoadingProducts(true);
-    const data = await fetchProducts();
-    if (Array.isArray(data)) {
-      setProducts(data);
-    } else {
-      setProducts([]);
+    try {
+      const [prodsData, pagesData, contactsData] = await Promise.all([
+        fetchProducts(),
+        fetchPages(),
+        fetchContacts(undefined, pageId),
+      ]);
+      if (Array.isArray(prodsData)) setProducts(prodsData);
+      if (Array.isArray(pagesData)) setPages(pagesData);
+      if (Array.isArray(contactsData)) setContacts(contactsData);
+    } catch (err) {
+      console.error("Failed to load commerce data:", err);
+    } finally {
+      setLoadingProducts(false);
     }
-    setLoadingProducts(false);
   };
 
   useEffect(() => {
-    loadProducts();
-    fetchContacts().then((data) => {
-      if (Array.isArray(data)) setContacts(data);
-      else setContacts([]);
-    });
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    const initialPage = saved || "ALL";
+    setSelectedPageId(initialPage);
+    loadData(initialPage);
+
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageId(newPageId);
+      loadData(newPageId);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
   }, []);
+
+  const handlePageChange = (newPageId: string) => {
+    setSelectedPageId(newPageId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", newPageId);
+    }
+    loadData(newPageId);
+  };
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,7 +146,7 @@ export default function CommerceSectorPage() {
       setNewProdRegularPrice("");
       setNewProdDescription("");
       setNewProdImage("");
-      loadProducts();
+      loadData();
     }
     setIsSubmitting(false);
   };
@@ -146,57 +171,89 @@ export default function CommerceSectorPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Top Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-4">
+      {/* Top Header & Tabs & Page Switcher */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#222] pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            Orders & Product Catalog
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+              <ShoppingBag className="w-6 h-6 text-amber-500" />
+              <span>Orders & Product Catalog</span>
+            </h1>
+            {selectedPageId !== "ALL" && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
+                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Page"}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-[#888] mt-0.5">
             Manage your store items for Mogent AI sales recommendation, order capture, and inventory.
           </p>
         </div>
 
-        {/* Tab Controls */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111] border border-[#222]">
-          <button
-            onClick={() => setActiveTab("CATALOG")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
-              activeTab === "CATALOG"
-                ? "bg-white text-black shadow-sm"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Product Catalog ({products.length})</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Page Switcher */}
+          {pages.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] border border-[#333] shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span className="text-xs text-[#888] font-semibold hidden sm:inline">Page:</span>
+              <select
+                value={selectedPageId}
+                onChange={(e) => handlePageChange(e.target.value)}
+                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
+                  🏢 All Connected Pages ({pages.length})
+                </option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          <button
-            onClick={() => setActiveTab("ORDERS")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
-              activeTab === "ORDERS"
-                ? "bg-white text-black shadow-sm"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Captured Orders (0)</span>
-          </button>
+          {/* Tab Controls */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111] border border-[#222]">
+            <button
+              onClick={() => setActiveTab("CATALOG")}
+              className={cn(
+                "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
+                activeTab === "CATALOG"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>Product Catalog ({products.length})</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab("CONTACTS")}
-            className={cn(
-              "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
-              activeTab === "CONTACTS"
-                ? "bg-white text-black shadow-sm"
-                : "text-[#888] hover:text-[#EDEDED]"
-            )}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Customer Leads ({contacts.length})</span>
-          </button>
+            <button
+              onClick={() => setActiveTab("ORDERS")}
+              className={cn(
+                "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
+                activeTab === "ORDERS"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Captured Orders (0)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("CONTACTS")}
+              className={cn(
+                "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
+                activeTab === "CONTACTS"
+                  ? "bg-white text-black shadow-sm font-bold"
+                  : "text-[#888] hover:text-[#EDEDED]"
+              )}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Leads ({contacts.length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
