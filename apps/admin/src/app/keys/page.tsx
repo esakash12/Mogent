@@ -151,25 +151,25 @@ export default function ApiKeysPage() {
     }
   };
 
-  const handleSwitchRole = async (keyId: string, role: "PRIMARY" | "SECONDARY" | "BACKUP") => {
+  const handleSwitchModel = async (keyId: string, model: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/keys/${keyId}/role`, {
+      const res = await fetch(`${API_BASE}/api/admin/keys/${keyId}/model`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_admin_token") : ""}`,
         },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ model }),
       });
       const json = await res.json();
       if (json.success) {
-        showToast(`Switched role to ${role}!`);
-        setKeys((prev) =>
-          prev.map((k) => (k.id === keyId ? { ...k, role } : k))
-        );
+        showToast(json.message || "Model updated and live limits synced!");
+        fetchKeys();
+      } else {
+        showToast(json.error || "Failed to update model", "error");
       }
     } catch (err: any) {
-      showToast(err.message || "Failed to switch role", "error");
+      showToast(err.message || "Failed to switch model", "error");
     }
   };
 
@@ -493,19 +493,19 @@ export default function ApiKeysPage() {
                 key={k.id}
                 className="p-4.5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-[#111]/40 transition-colors group"
               >
-                {/* 1. Key Info & Tier Badge */}
+                {/* 1. Key Info & Model Badge */}
                 <div className="flex items-center gap-3.5 min-w-[280px]">
                   <div
                     className={cn(
                       "px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0",
-                      k.role === "PRIMARY"
+                      k.model === "gemini-3.5-flash-lite"
                         ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
-                        : k.role === "SECONDARY"
+                        : k.model === "gemini-3.1-flash-lite"
                         ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
                         : "bg-purple-500/10 text-purple-400 border-purple-500/30"
                     )}
                   >
-                    {k.role}
+                    {k.model.includes("3.5") ? "Gemini 3.5" : k.model.includes("3.1") ? "Gemini 3.1" : "Gemma 4"}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
@@ -513,9 +513,9 @@ export default function ApiKeysPage() {
                       <span className="text-[11px] text-[#888] font-medium font-sans">({k.name})</span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-mono text-[#888]">{k.model}</span>
+                      <span className="text-[10px] font-mono text-amber-400 font-semibold">{k.model}</span>
                       <span className="text-[#444]">•</span>
-                      <span className="text-[10px] text-[#666]">{k.lastUsed || "Active"}</span>
+                      <span className="text-[10px] text-[#666]">Round-Robin Pool</span>
                     </div>
                   </div>
                 </div>
@@ -558,17 +558,17 @@ export default function ApiKeysPage() {
                   )}
                 </div>
 
-                {/* 4. Tier Switcher & Actions */}
+                {/* 4. Model Switcher Dropdown & Actions */}
                 <div className="flex items-center gap-2 self-end lg:self-auto shrink-0">
-                  {/* Quick Role Switcher */}
+                  {/* Live Model Switcher (Select Model -> Auto sync limits) */}
                   <select
-                    value={k.role}
-                    onChange={(e) => handleSwitchRole(k.id, e.target.value as any)}
-                    className="px-2.5 py-1.5 rounded-lg bg-[#111] border border-[#333] text-[11px] font-mono text-[#EDEDED] focus:outline-none focus:border-amber-500 cursor-pointer"
+                    value={k.model}
+                    onChange={(e) => handleSwitchModel(k.id, e.target.value)}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#141414] border border-[#333] text-[11px] font-semibold text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
-                    <option value="PRIMARY">Make Primary</option>
-                    <option value="SECONDARY">Make Secondary</option>
-                    <option value="BACKUP">Make Backup</option>
+                    <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite</option>
+                    <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+                    <option value="gemma-4-31b">Gemma 4 31B</option>
                   </select>
 
                   {/* Edit Quota / Match Console Button */}

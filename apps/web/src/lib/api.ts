@@ -304,9 +304,14 @@ export async function uploadImageFile(file: File): Promise<{ success: boolean; u
 }
 
 // --- CONTACTS ---
-export async function fetchContacts(filter?: string) {
+export async function fetchContacts(filter?: string, pageId?: string) {
   try {
-    const url = filter ? `${API_BASE}/api/contacts?filter=${filter}` : `${API_BASE}/api/contacts`;
+    const params = new URLSearchParams();
+    if (filter) params.append("filter", filter);
+    if (pageId && pageId !== "ALL") params.append("pageId", pageId);
+
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+    const url = `${API_BASE}/api/contacts${queryString}`;
     const res = await fetch(url, {
       headers: getHeaders(),
       cache: "no-store",

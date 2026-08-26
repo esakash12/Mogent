@@ -33,19 +33,33 @@ const navigation = [
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [pagesCount, setPagesCount] = useState<number | null>(null);
+  const [pagesList, setPagesList] = useState<any[]>([]);
+  const [activePageId, setActivePageId] = useState<string>("ALL");
   const pathname = usePathname();
   const { workspace, user } = useAuth();
 
   useEffect(() => {
     fetchPages().then((pages) => {
       if (Array.isArray(pages)) {
-        setPagesCount(pages.length);
+        setPagesList(pages);
       } else {
-        setPagesCount(0);
+        setPagesList([]);
       }
     });
+
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    if (saved) {
+      setActivePageId(saved);
+    }
   }, [pathname]);
+
+  const handlePageSwitch = (pageId: string) => {
+    setActivePageId(pageId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", pageId);
+      window.dispatchEvent(new CustomEvent("mogent_page_changed", { detail: { pageId } }));
+    }
+  };
 
   return (
     <>
@@ -53,7 +67,7 @@ export function Header() {
         <div className="flex items-center gap-3">
           {/* Mobile Menu Toggle */}
           <button 
-            className="md:hidden text-[#888] hover:text-[#EDEDED] transition-colors p-1"
+            className="md:hidden text-[#888] hover:text-[#EDEDED] transition-colors p-1 cursor-pointer"
             onClick={() => setMobileMenuOpen(true)}
           >
             <Menu className="w-5 h-5" />
@@ -74,24 +88,36 @@ export function Header() {
           </div>
         </div>
 
-        {/* Right Controls */}
+        {/* Right Controls & Global Page Switcher */}
         <div className="flex items-center gap-3 md:gap-4">
-          <Link
-            href="/dashboard/pages"
-            className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#111] border border-[#222] text-[11px] text-[#888] hover:border-[#333] transition-colors"
-          >
-            <span className={cn(
-              "w-1.5 h-1.5 rounded-full",
-              pagesCount && pagesCount > 0 ? "bg-[#10B981] animate-pulse" : "bg-amber-500"
-            )}></span>
-            <span>
-              {pagesCount === null
-                ? "Checking Status..."
-                : pagesCount > 0
-                ? `${pagesCount} Page${pagesCount > 1 ? "s" : ""} Connected`
-                : "0 Pages Connected"}
-            </span>
-          </Link>
+          {/* Global Multi-Page Switcher Dropdown */}
+          {pagesList.length > 0 ? (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#141414] border border-[#333] shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <select
+                value={activePageId}
+                onChange={(e) => handlePageSwitch(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-amber-400 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
+                  🏢 All Connected Pages ({pagesList.length})
+                </option>
+                {pagesList.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <Link
+              href="/dashboard/pages"
+              className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#111] border border-[#222] text-[11px] text-[#888] hover:border-[#333] transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              <span>0 Pages Connected</span>
+            </Link>
+          )}
 
           <div className="w-[1px] h-4 bg-[#222]"></div>
 

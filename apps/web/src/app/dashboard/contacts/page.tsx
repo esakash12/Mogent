@@ -19,7 +19,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchContacts } from "@/lib/api";
+import { fetchContacts, fetchPages } from "@/lib/api";
 
 interface Contact {
   id: string;
@@ -32,30 +32,56 @@ interface Contact {
   sentiment: "HIGH_INTENT" | "PURCHASED" | "INQUIRY" | "COMPLAINT";
   lastActive: string;
   psid: string;
+  pageId?: string;
+  pageName?: string;
+  profilePic?: string | null;
 }
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageFilter, setSelectedPageFilter] = useState<string>("ALL");
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"ALL" | "PHONE" | "PURCHASED" | "COMPLAINT">("ALL");
 
-  useEffect(() => {
-    fetchContacts().then((data) => {
-      if (Array.isArray(data)) {
-        setContacts(data);
+  const loadData = async (pageFilter = selectedPageFilter) => {
+    try {
+      const [contactsData, pagesData] = await Promise.all([
+        fetchContacts(undefined, pageFilter),
+        fetchPages(),
+      ]);
+      if (Array.isArray(contactsData)) {
+        setContacts(contactsData);
       } else {
         setContacts([]);
       }
+      if (Array.isArray(pagesData)) {
+        setPages(pagesData);
+      }
+    } catch (err) {
+      console.error("Failed to load contacts:", err);
+    } finally {
       setLoading(false);
-    });
+    }
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
+
+  const handlePageFilterChange = (newPageId: string) => {
+    setSelectedPageFilter(newPageId);
+    setLoading(true);
+    loadData(newPageId);
+  };
 
   const filteredContacts = contacts.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.phone.includes(searchQuery) ||
-      c.address.toLowerCase().includes(searchQuery.toLowerCase());
+      c.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.pageName && c.pageName.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesFilter =
       filterType === "ALL"
@@ -83,21 +109,42 @@ export default function ContactsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            Contacts & Customer Directory
+          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+            <Users className="w-6 h-6 text-amber-500" />
+            <span>Contacts & Customer Directory</span>
           </h1>
           <p className="text-xs text-[#888] mt-0.5">
             All customer leads automatically captured from Facebook Messenger with 1-click WhatsApp outreach.
           </p>
         </div>
 
-        <button
-          disabled={contacts.length === 0}
-          className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] flex items-center gap-2 transition-colors w-fit disabled:opacity-50"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Export All Contacts (CSV)</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Page Switcher */}
+          {pages.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedPageFilter}
+                onChange={(e) => handlePageFilterChange(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-[#141414] border border-[#333] text-xs font-semibold text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="ALL">🏢 All Pages ({pages.length} Connected)</option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    📄 {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            disabled={contacts.length === 0}
+            className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] flex items-center gap-2 transition-colors w-fit disabled:opacity-50 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Summary Bar */}
@@ -128,7 +175,7 @@ export default function ContactsPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by customer name, phone, or area..."
+            placeholder="Search customer, phone, page..."
             className="w-full pl-9 pr-4 py-2 text-xs rounded-lg bg-[#111] border border-[#222] text-[#EDEDED] focus:outline-none focus:border-[#444] placeholder:text-[#555]"
           />
         </div>
@@ -145,7 +192,7 @@ export default function ContactsPage() {
               key={f.id}
               onClick={() => setFilterType(f.id as any)}
               className={cn(
-                "px-3 py-1 rounded-md font-medium transition-colors",
+                "px-3 py-1 rounded-md font-medium transition-colors cursor-pointer",
                 filterType === f.id
                   ? "bg-white text-black font-semibold shadow-sm"
                   : "text-[#888] hover:text-[#EDEDED]"
@@ -189,6 +236,7 @@ export default function ContactsPage() {
               <thead className="bg-[#111] border-b border-[#222] text-[#888] font-semibold">
                 <tr>
                   <th className="p-4">Customer</th>
+                  <th className="p-4">Facebook Page</th>
                   <th className="p-4">Phone Number</th>
                   <th className="p-4">Delivery Location</th>
                   <th className="p-4">Orders & Spend</th>
@@ -201,8 +249,12 @@ export default function ContactsPage() {
                   <tr key={c.id} className="hover:bg-[#111]/40 transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-[#222] flex items-center justify-center font-bold text-xs text-[#EDEDED] shrink-0 border border-[#333]">
-                          {c.name.substring(0, 2).toUpperCase()}
+                        <div className="w-8 h-8 rounded-full bg-[#222] flex items-center justify-center font-bold text-xs text-amber-400 shrink-0 border border-[#333] overflow-hidden">
+                          {c.profilePic ? (
+                            <img src={c.profilePic} alt={c.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{c.name.substring(0, 2).toUpperCase()}</span>
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-[#EDEDED]">{c.name}</p>
@@ -211,10 +263,20 @@ export default function ContactsPage() {
                       </div>
                     </td>
 
+                    <td className="p-4">
+                      {c.pageName ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-semibold">
+                          📄 {c.pageName}
+                        </span>
+                      ) : (
+                        <span className="text-[#666]">--</span>
+                      )}
+                    </td>
+
                     <td className="p-4 font-mono font-semibold text-[#EDEDED]">
                       {c.phone ? (
                         <span className="flex items-center gap-1.5">
-                          <Phone className="w-3.5 h-3.5 text-[#666]" />
+                          <Phone className="w-3.5 h-3.5 text-[#10B981]" />
                           {c.phone}
                         </span>
                       ) : (

@@ -7,16 +7,19 @@ export const contactsRouter = new Hono();
 contactsRouter.get("/", async (c) => {
   const workspaceId = c.req.header("x-workspace-id");
   const filter = c.req.query("filter"); // ALL, PHONE, PURCHASED, COMPLAINT
+  const pageId = c.req.query("pageId");
 
   try {
     let pagesWhere: any = {};
-    if (workspaceId) {
+    if (pageId && pageId !== "ALL") {
+      pagesWhere = { id: pageId };
+    } else if (workspaceId) {
       pagesWhere = { workspaceId };
     }
 
     const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
-      select: { id: true },
+      select: { id: true, name: true, pageId: true },
     });
     const pageIds = pages.map((p) => p.id);
 
@@ -32,26 +35,39 @@ contactsRouter.get("/", async (c) => {
 
     const customers = await prisma.customer.findMany({
       where: { facebookPageId: { in: pageIds } },
+      include: { facebookPage: true },
       orderBy: { updatedAt: "desc" },
     });
 
-    const mapped = customers.map((c) => {
+    const mapped = customers.map((cust) => {
       let sentimentTag: "HIGH_INTENT" | "PURCHASED" | "INQUIRY" | "COMPLAINT" = "INQUIRY";
-      if (c.totalOrders > 0) sentimentTag = "PURCHASED";
-      else if ((c.sentimentScore ?? 0) >= 0.7) sentimentTag = "HIGH_INTENT";
-      else if ((c.sentimentScore ?? 0) < 0) sentimentTag = "COMPLAINT";
+      if (cust.totalOrders > 0) sentimentTag = "PURCHASED";
+      else if ((cust.sentimentScore ?? 0) >= 0.7) sentimentTag = "HIGH_INTENT";
+      else if ((cust.sentimentScore ?? 0) < 0) sentimentTag = "COMPLAINT";
+
+      const fullName = `${cust.firstName || ""} ${cust.lastName || ""}`.trim();
+      const displayName = fullName && fullName.toLowerCase() !== "facebook customer"
+        ? fullName
+        : `Customer #${cust.psid.slice(-4)}`;
 
       return {
-        id: c.id,
-        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Facebook Customer",
-        phone: c.phoneNumber || "",
-        address: c.deliveryAddress || "",
-        ordersCount: c.totalOrders,
-        totalSpent: c.totalSpent,
-        score: c.sentimentScore ? (c.sentimentScore > 0 ? `+${c.sentimentScore.toFixed(2)}` : `${c.sentimentScore.toFixed(2)}`) : "+0.70",
+        id: cust.id,
+        name: displayName,
+        phone: cust.phoneNumber || "",
+        address: cust.deliveryAddress || "",
+        ordersCount: cust.totalOrders,
+        totalSpent: cust.totalSpent,
+        score: cust.sentimentScore
+          ? cust.sentimentScore > 0
+            ? `+${cust.sentimentScore.toFixed(2)}`
+            : `${cust.sentimentScore.toFixed(2)}`
+          : "+0.70",
         sentiment: sentimentTag,
-        lastActive: new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        psid: c.psid,
+        lastActive: new Date(cust.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        psid: cust.psid,
+        profilePic: cust.profilePic,
+        pageId: cust.facebookPageId,
+        pageName: cust.facebookPage?.name || "Connected Page",
       };
     });
 
@@ -66,8 +82,8 @@ contactsRouter.get("/", async (c) => {
       success: true,
       data: filtered,
       totalCount: customers.length,
-      verifiedPhonesCount: customers.filter((c) => Boolean(c.phoneNumber)).length,
-      confirmedBuyersCount: customers.filter((c) => c.totalOrders > 0).length,
+      verifiedPhonesCount: customers.filter((cust) => Boolean(cust.phoneNumber)).length,
+      confirmedBuyersCount: customers.filter((cust) => cust.totalOrders > 0).length,
     });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);

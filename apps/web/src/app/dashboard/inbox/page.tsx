@@ -242,11 +242,11 @@ export default function LiveInboxPage() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] rounded-2xl border border-[#222] bg-[#0A0A0A] overflow-hidden shadow-2xl animate-in fade-in duration-300">
-      {/* 1. Left Conversation List Pane */}
-      <div className="w-full md:w-84 h-[35vh] md:h-auto border-b md:border-b-0 md:border-r border-[#222] flex flex-col shrink-0 bg-[#0A0A0A]">
+    <div className="flex h-[calc(100vh-100px)] rounded-2xl border border-[#222] bg-[#0A0A0A] overflow-hidden shadow-2xl animate-in fade-in duration-300">
+      {/* 1. Left Conversation List Pane (Fixed width sidebar) */}
+      <div className="w-[320px] lg:w-[360px] shrink-0 border-r border-[#222] flex flex-col h-full bg-[#0A0A0A]">
         {/* Header & Page Switcher */}
-        <div className="p-3 border-b border-[#222] space-y-2.5 bg-[#0D0D0D]">
+        <div className="p-3.5 border-b border-[#222] space-y-2.5 bg-[#0D0D0D]">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-sm text-[#EDEDED] flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-amber-500" />
@@ -372,9 +372,9 @@ export default function LiveInboxPage() {
         </div>
       </div>
 
-      {/* 2. Middle Chat Stream Window */}
-      {selectedConv && (
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#0A0A0A] relative">
+      {/* 2. Right Chat Stream Window */}
+      {selectedConv ? (
+        <div className="flex-1 flex flex-col min-w-0 h-full bg-[#0A0A0A] relative">
           {/* Chat Header with Mode Toggle */}
           <div className="h-16 px-6 border-b border-[#222] flex items-center justify-between bg-[#0A0A0A] shrink-0">
             <div className="flex items-center gap-3">
@@ -443,8 +443,8 @@ export default function LiveInboxPage() {
                       </span>
                     )}
                     {isHuman && (
-                      <span className="text-amber-500 font-medium flex items-center gap-1">
-                        <User className="w-3 h-3" /> Human Agent
+                      <span className="text-amber-400 font-bold flex items-center gap-1">
+                        <User className="w-3 h-3 text-amber-400" /> Admin / Store Manager
                       </span>
                     )}
                     <span>• {msg.time}</span>
@@ -457,7 +457,7 @@ export default function LiveInboxPage() {
                         ? "bg-[#161616] text-[#EDEDED] border border-[#262626] rounded-tl-sm"
                         : isAI
                         ? "bg-gradient-to-r from-indigo-950/60 to-purple-950/60 text-[#EDEDED] border border-indigo-500/30 rounded-tr-sm shadow-md"
-                        : "bg-amber-500 text-black font-medium rounded-tr-sm shadow-md"
+                        : "bg-amber-500 text-black font-semibold rounded-tr-sm shadow-md"
                     )}
                   >
                     {msg.text}
@@ -470,7 +470,7 @@ export default function LiveInboxPage() {
                         onClick={() =>
                           setShowThinkingId(showThinkingId === msg.id ? null : msg.id)
                         }
-                        className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors font-mono"
+                        className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors font-mono cursor-pointer"
                       >
                         <Sparkles className="w-3 h-3" />
                         <span>{showThinkingId === msg.id ? "Hide Reasoning" : "View AI Reasoning"}</span>
@@ -506,6 +506,12 @@ export default function LiveInboxPage() {
               <Send className="w-4 h-4" />
             </button>
           </form>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-2 bg-[#0A0A0A]">
+          <MessageSquare className="w-10 h-10 text-[#444]" />
+          <h3 className="text-sm font-semibold text-[#EDEDED]">Select a conversation</h3>
+          <p className="text-xs text-[#777]">Choose a customer from the left list to view chat stream.</p>
         </div>
       )}
     </div>

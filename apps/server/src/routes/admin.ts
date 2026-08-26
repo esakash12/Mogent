@@ -261,16 +261,16 @@ adminRouter.put("/keys/:id", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
-// 5. 1-CLICK SWITCH ROLE (PRIMARY / SECONDARY / BACKUP)
+// 5. SWITCH ASSIGNED MODEL FOR KEY & AUTO-SYNC LIMITS
 // -----------------------------------------------------------------------------
-adminRouter.post("/keys/:id/role", async (c) => {
+adminRouter.post("/keys/:id/model", async (c) => {
   const { id } = c.req.param();
   try {
     const body = await c.req.json();
-    const { role } = body;
-
-    if (!["PRIMARY", "SECONDARY", "BACKUP"].includes(role)) {
-      return c.json({ success: false, error: "Invalid role. Must be PRIMARY, SECONDARY, or BACKUP." }, 400);
+    const { model } = body;
+    const template = MODEL_TEMPLATES[model];
+    if (!template) {
+      return c.json({ success: false, error: "Invalid model selected" }, 400);
     }
 
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
@@ -282,12 +282,15 @@ adminRouter.post("/keys/:id/role", async (c) => {
       return c.json({ success: false, error: "Key not found" }, 404);
     }
 
-    keyObj.role = role;
+    keyObj.model = model;
+    keyObj.rpmLimit = template.defaultRpm;
+    keyObj.tpmLimit = template.defaultTpm;
+    keyObj.rpdLimit = template.defaultRpd;
     await redisConnection.set(REDIS_KEYS_METADATA, JSON.stringify(keysList));
 
     return c.json({
       success: true,
-      message: `Key role switched to ${role} successfully!`,
+      message: `Model updated to ${template.name}! Live limits synced (${template.defaultRpm} RPM, ${template.defaultTpm >= 1000 ? (template.defaultTpm / 1000) + 'K' : template.defaultTpm} TPM, ${template.defaultRpd >= 1000 ? (template.defaultRpd / 1000).toFixed(1) + 'K' : template.defaultRpd} RPD).`,
       data: keyObj,
     });
   } catch (error: any) {
