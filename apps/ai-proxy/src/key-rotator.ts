@@ -2,22 +2,33 @@ import Redis from "ioredis";
 import crypto from "crypto";
 
 export interface KeyStatus {
+  id?: string;
   index: number;
   key: string;
   maskedKey: string;
   keyHash: string;
+  name?: string;
+  role: "PRIMARY" | "SECONDARY" | "BACKUP";
+  model: string;
+  rpmUsed: number;
+  rpmLimit: number;
+  tpmUsed: number;
+  tpmLimit: number;
+  rpdUsed: number;
+  rpdLimit: number;
   totalRequests: number;
   successfulRequests: number;
   failedRequests: number;
   cooldownUntil: number | null;
   isExhausted: boolean;
+  isEnabled: boolean;
 }
 
 export class GeminiKeyRotator {
   private keys: KeyStatus[] = [];
   private currentIndex: number = 0;
   private redis: Redis | null = null;
-  private readonly defaultCooldownSec: number = 60; // 60 seconds TTL
+  private readonly defaultCooldownSec: number = 120; // 2 minutes auto-switch cooldown
 
   constructor(apiKeys: string[], redisClient?: Redis | null) {
     const validKeys = apiKeys
@@ -32,16 +43,29 @@ export class GeminiKeyRotator {
 
     this.keys = validKeys.map((key, index) => {
       const keyHash = crypto.createHash("md5").update(key).digest("hex").substring(0, 10);
+      const role: "PRIMARY" | "SECONDARY" | "BACKUP" =
+        index === 0 ? "PRIMARY" : index === 1 ? "SECONDARY" : "BACKUP";
       return {
+        id: `k-${keyHash}`,
         index,
         key,
         keyHash,
         maskedKey: this.maskKey(key),
+        name: `Key #${index + 1} (${role})`,
+        role,
+        model: "gemini-3.5-flash-lite",
+        rpmUsed: 0,
+        rpmLimit: 15,
+        tpmUsed: 0,
+        tpmLimit: 250000,
+        rpdUsed: 0,
+        rpdLimit: 500,
         totalRequests: 0,
         successfulRequests: 0,
         failedRequests: 0,
         cooldownUntil: null,
         isExhausted: false,
+        isEnabled: true,
       };
     });
 
@@ -60,34 +84,65 @@ export class GeminiKeyRotator {
   public async syncKeysFromRedis() {
     if (!this.redis) return;
     try {
+      // 1. Fetch structured metadata if available
+      const rawMeta = await this.redis.get("mogent:gemini_keys_metadata");
+      if (rawMeta) {
+        try {
+          const parsed: KeyStatus[] = JSON.parse(rawMeta);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.keys = parsed.map((item, idx) => ({
+              ...item,
+              index: idx,
+              keyHash: item.keyHash || crypto.createHash("md5").update(item.key).digest("hex").substring(0, 10),
+              maskedKey: item.maskedKey || this.maskKey(item.key),
+              rpmLimit: item.rpmLimit || (item.model?.includes("gemma") ? 30 : 15),
+              tpmLimit: item.tpmLimit || (item.model?.includes("gemma") ? 16000 : 250000),
+              rpdLimit: item.rpdLimit || (item.model?.includes("gemma") ? 14400 : 500),
+              isEnabled: item.isEnabled !== false,
+            }));
+            return;
+          }
+        } catch {}
+      }
+
+      // 2. Fallback to set pool
       const [pool1, pool2] = await Promise.all([
         this.redis.smembers("mogent:gemini_keys_pool").catch(() => []),
         this.redis.smembers("mogent:gemini_pool_keys").catch(() => []),
       ]);
       const customKeys = Array.from(new Set([...(pool1 || []), ...(pool2 || [])]));
-      
-      for (const key of customKeys) {
+
+      for (let idx = 0; idx < customKeys.length; idx++) {
+        const key = customKeys[idx];
         if (!key || !key.trim()) continue;
         const cleanKey = key.trim();
         if (!this.keys.find((existing) => existing.key === cleanKey)) {
           const keyHash = crypto.createHash("md5").update(cleanKey).digest("hex").substring(0, 10);
+          const role: "PRIMARY" | "SECONDARY" | "BACKUP" =
+            idx === 0 ? "PRIMARY" : idx === 1 ? "SECONDARY" : "BACKUP";
           this.keys.push({
+            id: `k-${keyHash}`,
             index: this.keys.length,
             key: cleanKey,
             keyHash,
             maskedKey: this.maskKey(cleanKey),
+            name: `Key #${this.keys.length + 1} (${role})`,
+            role,
+            model: "gemini-3.5-flash-lite",
+            rpmUsed: 0,
+            rpmLimit: 15,
+            tpmUsed: 0,
+            tpmLimit: 250000,
+            rpdUsed: 0,
+            rpdLimit: 500,
             totalRequests: 0,
             successfulRequests: 0,
             failedRequests: 0,
             cooldownUntil: null,
             isExhausted: false,
+            isEnabled: true,
           });
         }
-      }
-      
-      if (customKeys.length > 0) {
-        // If Redis has keys, only keep keys that exist in Redis or initial config
-        this.keys = this.keys.filter((existing) => customKeys.includes(existing.key) || existing.index < 50);
       }
     } catch (e) {
       console.warn("⚠️ Failed to sync keys from Redis:", e);
@@ -95,33 +150,36 @@ export class GeminiKeyRotator {
   }
 
   /**
-   * Retrieves the next available healthy API key using Round-Robin.
-   * Checks Redis TTL to ensure rate-limited keys are skipped even after server restarts.
+   * Retrieves the next available healthy API key based on Tier Priority:
+   * 1. PRIMARY -> 2. SECONDARY (1-2 min cooldown fallback) -> 3. BACKUP.
    */
   public async getNextActiveKey(): Promise<KeyStatus | null> {
     await this.syncKeysFromRedis();
     if (this.keys.length === 0) return null;
 
-    const totalKeys = this.keys.length;
+    // Separate keys into priority buckets
+    const primaryKeys = this.keys.filter((k) => k.role === "PRIMARY" && k.isEnabled);
+    const secondaryKeys = this.keys.filter((k) => k.role === "SECONDARY" && k.isEnabled);
+    const backupKeys = this.keys.filter((k) => k.role === "BACKUP" && k.isEnabled);
+    const otherKeys = this.keys.filter((k) => !["PRIMARY", "SECONDARY", "BACKUP"].includes(k.role) && k.isEnabled);
 
-    for (let i = 0; i < totalKeys; i++) {
-      const candidateIndex = (this.currentIndex + i) % totalKeys;
-      const candidate = this.keys[candidateIndex];
+    const orderedPool = [...primaryKeys, ...secondaryKeys, ...backupKeys, ...otherKeys];
 
+    // Find the first available healthy key across tiers
+    for (const candidate of orderedPool) {
       const isUnavailable = await this.checkIfKeyIsUnavailable(candidate);
       if (!isUnavailable) {
-        this.currentIndex = (candidateIndex + 1) % totalKeys;
         candidate.totalRequests++;
+        candidate.rpmUsed = (candidate.rpmUsed || 0) + 1;
+        candidate.rpdUsed = (candidate.rpdUsed || 0) + 1;
         this.incrementRedisStat(candidate.keyHash, "totalRequests");
         return candidate;
       }
     }
 
-    // Fallback: If all are cooling down, return the first one
-    console.warn("⚠️ All Gemini API keys are currently cooling down. Attempting first key.");
-    const fallback = this.keys[this.currentIndex];
-    this.currentIndex = (this.currentIndex + 1) % totalKeys;
-    return fallback;
+    // Fallback: If all are cooling down, return the first key to attempt execution
+    console.warn("⚠️ All API keys are currently in cooldown or daily quota reached. Attempting primary key.");
+    return orderedPool[0] || this.keys[0] || null;
   }
 
   private async checkIfKeyIsUnavailable(keyObj: KeyStatus): Promise<boolean> {
