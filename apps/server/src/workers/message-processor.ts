@@ -236,8 +236,8 @@ export function startMessageWorker() {
           knowledgeBaseContext: knowledgeContext,
           history,
           latestMessage: {
-            text,
-            mediaUrl,
+            text: text || (mediaType === "IMAGE" ? "[কাস্টমার একটি ছবি পাঠিয়েছেন]" : "👍"),
+            mediaUrl: mediaType === "IMAGE" ? mediaUrl : undefined,
             mediaType: mediaType === "IMAGE" ? "image" : undefined,
           },
           temperature: page.aiTemperature,

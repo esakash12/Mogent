@@ -132,21 +132,40 @@ export class FacebookApiService {
 
     try {
       let res = await fetch(url);
+      let data: any = null;
 
-      // Fallback: If 400 error occurs due to profile_pic or field permissions, try minimal name fields
-      if (!res.ok) {
+      if (res.ok) {
+        data = await res.json();
+      } else {
+        // Fallback 1: Try minimal name fields directly on PSID
         const minimalUrl = `${this.baseUrl}/${psid}?fields=name,first_name,last_name&access_token=${pageAccessToken}`;
         const fallbackRes = await fetch(minimalUrl);
         if (fallbackRes.ok) {
-          res = fallbackRes;
+          data = await fallbackRes.json();
         } else {
-          const errorText = await res.text();
-          console.warn(`Facebook fetchCustomerProfile warning for PSID [${psid}]:`, errorText);
-          return null;
+          // Fallback 2: Page Conversation Thread Participants (ALWAYS accessible to Page Access Token)
+          try {
+            const convUrl = `${this.baseUrl}/me/conversations?fields=participants&limit=50&access_token=${pageAccessToken}`;
+            const convRes = await fetch(convUrl);
+            if (convRes.ok) {
+              const convData: any = await convRes.json();
+              for (const thread of convData.data || []) {
+                const match = (thread.participants?.data || []).find((p: any) => p.id === psid);
+                if (match && match.name) {
+                  data = { name: match.name, first_name: match.name.split(" ")[0], last_name: match.name.split(" ").slice(1).join(" ") };
+                  break;
+                }
+              }
+            }
+          } catch (convErr) {
+            console.warn(`Thread participant fallback error for PSID [${psid}]:`, convErr);
+          }
         }
       }
 
-      const data = await res.json();
+      if (!data) {
+        return null;
+      }
       
       let firstName = data.first_name;
       let lastName = data.last_name;

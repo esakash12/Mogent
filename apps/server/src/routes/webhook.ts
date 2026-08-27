@@ -105,24 +105,33 @@ const handleIngest = async (c: any) => {
           }
         }
 
-        // Determine media attachments
+        // Determine media attachments & check for Facebook stickers / likes
         let mediaType: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "FILE" = "TEXT";
         let mediaUrl: string | undefined = undefined;
+        let messageText = message.text || "";
 
         if (message.attachments && message.attachments.length > 0) {
           const firstAttachment = message.attachments[0];
-          const rawType = firstAttachment.type.toUpperCase();
-          if (["IMAGE", "AUDIO", "VIDEO", "FILE"].includes(rawType)) {
+          const rawType = (firstAttachment.type || "").toUpperCase();
+          const isSticker = Boolean((firstAttachment.payload as any)?.sticker_id) || rawType === "STICKER";
+
+          if (isSticker) {
+            mediaType = "TEXT";
+            mediaUrl = undefined;
+            if (!messageText) {
+              messageText = "👍";
+            }
+          } else if (["IMAGE", "AUDIO", "VIDEO", "FILE"].includes(rawType)) {
             mediaType = rawType as any;
+            mediaUrl = firstAttachment.payload?.url;
           }
-          mediaUrl = firstAttachment.payload?.url;
         }
 
         const jobPayload: ProcessMessageJobPayload = {
           pageId,
           senderPsid,
           mid: mid || `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          text: message.text || "",
+          text: messageText,
           timestamp: event.timestamp || Date.now(),
           mediaType,
           mediaUrl,
