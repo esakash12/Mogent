@@ -43,6 +43,37 @@ conversationsRouter.get("/", async (c) => {
       orderBy: { updatedAt: "desc" },
     });
 
+    // Background auto-healing: Fetch missing names from Facebook for past customers asynchronously
+    setTimeout(async () => {
+      for (const conv of list) {
+        if ((!conv.customer.firstName || conv.customer.firstName.startsWith("Customer #")) && conv.facebookPage) {
+          try {
+            const pageToken = decryptToken(
+              conv.facebookPage.encryptedAccessToken,
+              conv.facebookPage.tokenIv,
+              conv.facebookPage.tokenTag,
+              config.tokenEncryptionKey
+            );
+            if (pageToken) {
+              const profile = await facebookApi.fetchCustomerProfile(pageToken, conv.customer.psid);
+              if (profile?.first_name) {
+                await prisma.customer.update({
+                  where: { id: conv.customer.id },
+                  data: {
+                    firstName: profile.first_name,
+                    lastName: profile.last_name || null,
+                    profilePic: profile.profile_pic || conv.customer.profilePic,
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            // Ignore background sync errors
+          }
+        }
+      }
+    }, 100);
+
     return c.json({
       success: true,
       data: list.map((conv) => {

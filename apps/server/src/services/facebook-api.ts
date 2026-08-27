@@ -125,15 +125,27 @@ export class FacebookApiService {
     pageAccessToken: string,
     psid: string
   ): Promise<FbCustomerProfile | null> {
-    const url = `${this.baseUrl}/${psid}?fields=first_name,last_name,name,profile_pic,locale,timezone,gender&access_token=${pageAccessToken}`;
+    if (!pageAccessToken || !psid) return null;
+
+    // Safe, non-restricted standard profile fields for Facebook Graph API
+    const url = `${this.baseUrl}/${psid}?fields=first_name,last_name,name,profile_pic&access_token=${pageAccessToken}`;
 
     try {
-      const res = await fetch(url);
+      let res = await fetch(url);
+
+      // Fallback: If 400 error occurs due to profile_pic or field permissions, try minimal name fields
       if (!res.ok) {
-        const errorText = await res.text();
-        console.warn(`Facebook fetchCustomerProfile error for PSID [${psid}]:`, errorText);
-        return null;
+        const minimalUrl = `${this.baseUrl}/${psid}?fields=name,first_name,last_name&access_token=${pageAccessToken}`;
+        const fallbackRes = await fetch(minimalUrl);
+        if (fallbackRes.ok) {
+          res = fallbackRes;
+        } else {
+          const errorText = await res.text();
+          console.warn(`Facebook fetchCustomerProfile warning for PSID [${psid}]:`, errorText);
+          return null;
+        }
       }
+
       const data = await res.json();
       
       let firstName = data.first_name;
@@ -149,9 +161,6 @@ export class FacebookApiService {
         first_name: firstName || undefined,
         last_name: lastName || undefined,
         profile_pic: data.profile_pic || undefined,
-        locale: data.locale || undefined,
-        timezone: data.timezone || undefined,
-        gender: data.gender || undefined,
       };
     } catch (err) {
       console.warn(`Facebook fetchCustomerProfile network error for PSID [${psid}]:`, err);

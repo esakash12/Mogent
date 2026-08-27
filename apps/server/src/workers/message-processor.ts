@@ -78,16 +78,16 @@ export function startMessageWorker() {
             gender: profile?.gender || null,
           },
         });
-      } else if (!customer.firstName || customer.firstName === "Customer") {
-        // Re-fetch profile if name was previously missing
+      } else if (!customer.firstName || customer.firstName === "Customer" || customer.firstName.startsWith("Customer #") || !customer.profilePic) {
+        // Re-fetch profile if name was previously missing or defaulted to placeholder
         const profile = await facebookApi.fetchCustomerProfile(pageAccessToken, senderPsid);
-        if (profile?.first_name) {
+        if (profile?.first_name || profile?.profile_pic) {
           customer = await prisma.customer.update({
             where: { id: customer.id },
             data: {
-              firstName: profile.first_name,
-              lastName: profile.last_name || customer.lastName,
-              profilePic: profile.profile_pic || customer.profilePic,
+              firstName: profile?.first_name || customer.firstName,
+              lastName: profile?.last_name || customer.lastName,
+              profilePic: profile?.profile_pic || customer.profilePic,
             },
           });
         }
