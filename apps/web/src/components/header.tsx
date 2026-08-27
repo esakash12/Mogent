@@ -92,18 +92,19 @@ export function Header() {
         <div className="flex items-center gap-3 md:gap-4">
           {/* Global Multi-Page Switcher Dropdown */}
           {pagesList.length > 0 ? (
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#141414] border border-[#333] shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] hover:bg-[#1A1A1A] border border-[#2A2A2A] hover:border-[#383838] transition-all shadow-sm group">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shrink-0"></span>
+              <span className="text-[11px] font-semibold text-[#888] hidden lg:inline">Page:</span>
               <select
                 value={activePageId}
                 onChange={(e) => handlePageSwitch(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-amber-400 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer pr-1"
               >
-                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
-                  🏢 All Connected Pages ({pagesList.length})
+                <option value="ALL" className="bg-[#111] text-[#EDEDED] font-medium py-1">
+                  🏢 All Pages ({pagesList.length})
                 </option>
                 {pagesList.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
+                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED] font-medium py-1">
                     📄 {p.name}
                   </option>
                 ))}
@@ -112,10 +113,10 @@ export function Header() {
           ) : (
             <Link
               href="/dashboard/pages"
-              className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#111] border border-[#222] text-[11px] text-[#888] hover:border-[#333] transition-colors"
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#111] border border-[#222] text-[11px] text-[#888] hover:border-[#333] hover:text-[#EDEDED] transition-colors"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-              <span>0 Pages Connected</span>
+              <span>Connect Page</span>
             </Link>
           )}
 

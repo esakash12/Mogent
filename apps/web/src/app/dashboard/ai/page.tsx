@@ -252,28 +252,6 @@ export default function AIAutomationSectorPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Page Switcher Dropdown */}
-          {pages.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] border border-[#333] shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-              <span className="text-xs text-[#888] font-semibold hidden sm:inline">Page:</span>
-              <select
-                value={selectedPageId}
-                onChange={(e) => handlePageChange(e.target.value)}
-                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
-              >
-                <option value="ALL" className="bg-[#111] text-[#EDEDED]">
-                  🏢 All Connected Pages ({pages.length})
-                </option>
-                {pages.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
-                    📄 {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* The Sector Top Navigation Tabs (No Scrollbar) */}
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111] border border-[#222]">
             <button

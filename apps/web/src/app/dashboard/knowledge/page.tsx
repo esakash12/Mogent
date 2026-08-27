@@ -127,55 +127,20 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Sector Tab Navigation & Page Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#222] pb-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard/knowledge"
-            className="px-3 py-1.5 rounded-lg bg-[#222] text-[#EDEDED] font-semibold flex items-center gap-2"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Knowledge Base</span>
-          </Link>
-          <Link
-            href="/dashboard/ai"
-            className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span>AI Studio & Prompts</span>
-          </Link>
-        </div>
-
-        {/* Connected Page Switcher */}
-        {pages.length > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#141414] border border-[#333]">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-            <span className="text-xs text-[#888] font-semibold">Page:</span>
-            <select
-              value={selectedPageId}
-              onChange={(e) => handlePageChange(e.target.value)}
-              className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer"
-            >
-              <option value="ALL" className="bg-[#111] text-[#EDEDED]">
-                🏢 All Connected Pages ({pages.length})
-              </option>
-              {pages.map((p) => (
-                <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED]">
-                  📄 {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
-            <BookOpen className="w-6 h-6 text-indigo-400" />
-            <span>Knowledge Base & RAG Context</span>
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+              <BookOpen className="w-6 h-6 text-indigo-400" />
+              <span>Knowledge Base & RAG Context</span>
+            </h1>
+            {selectedPageId !== "ALL" && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
+                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Page"}
+              </span>
+            )}
+          </div>
           <p className="text-[14px] text-[#888] mt-1">
             Teach your Mogent AI agent your company policies, FAQs, delivery rules, and product specs.
           </p>

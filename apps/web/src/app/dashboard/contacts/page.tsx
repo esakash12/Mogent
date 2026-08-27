@@ -67,14 +67,20 @@ export default function ContactsPage() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    const initialPage = saved || "ALL";
+    setSelectedPageFilter(initialPage);
+    loadData(initialPage);
 
-  const handlePageFilterChange = (newPageId: string) => {
-    setSelectedPageFilter(newPageId);
-    setLoading(true);
-    loadData(newPageId);
-  };
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageFilter(newPageId);
+      loadData(newPageId);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
+  }, []);
 
   const filteredContacts = contacts.filter((c) => {
     const matchesSearch =
@@ -109,34 +115,23 @@ export default function ContactsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
-            <Users className="w-6 h-6 text-amber-500" />
-            <span>Contacts & Customer Directory</span>
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
+              <Users className="w-6 h-6 text-amber-500" />
+              <span>Contacts & Customer Directory</span>
+            </h1>
+            {selectedPageFilter !== "ALL" && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
+                📄 {pages.find((p) => p.id === selectedPageFilter)?.name || "Selected Page"}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-[#888] mt-0.5">
             All customer leads automatically captured from Facebook Messenger with 1-click WhatsApp outreach.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Page Switcher */}
-          {pages.length > 0 && (
-            <div className="relative">
-              <select
-                value={selectedPageFilter}
-                onChange={(e) => handlePageFilterChange(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-[#141414] border border-[#333] text-xs font-semibold text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
-              >
-                <option value="ALL">🏢 All Pages ({pages.length} Connected)</option>
-                {pages.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    📄 {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <button
             disabled={contacts.length === 0}
             className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] flex items-center gap-2 transition-colors w-fit disabled:opacity-50 cursor-pointer"

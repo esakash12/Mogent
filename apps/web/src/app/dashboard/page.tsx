@@ -40,7 +40,7 @@ export default function AnalyticsDashboardPage() {
     pagesConnected: 0,
   });
 
-  useEffect(() => {
+  const loadData = () => {
     Promise.all([
       fetchAnalytics(),
       fetchPages(),
@@ -73,6 +73,17 @@ export default function AnalyticsDashboardPage() {
       }
       setLoading(false);
     });
+  };
+
+  useEffect(() => {
+    loadData();
+
+    const handleGlobalPageChange = () => {
+      loadData();
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
   }, []);
 
   if (loading) {

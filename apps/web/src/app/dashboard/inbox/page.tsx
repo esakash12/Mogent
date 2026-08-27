@@ -74,11 +74,11 @@ export default function LiveInboxPage() {
   }, [messages, selectedId]);
 
   // Fetch live conversations from DB with optional pageId filter
-  const loadConversations = async (isBackground = false) => {
+  const loadConversations = async (pageFilter = selectedPageFilter, isBackground = false) => {
     if (!isBackground) setLoading(true);
     
     try {
-      const pageQuery = selectedPageFilter !== "ALL" ? `?pageId=${selectedPageFilter}` : "";
+      const pageQuery = pageFilter !== "ALL" ? `?pageId=${pageFilter}` : "";
       const [convsData, pagesData] = await Promise.all([
         fetchConversations(pageQuery),
         fetchPages()
@@ -114,18 +114,32 @@ export default function LiveInboxPage() {
   };
 
   useEffect(() => {
-    loadConversations();
-    
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    const initialPage = saved || "ALL";
+    setSelectedPageFilter(initialPage);
+    loadConversations(initialPage);
+
+    const handleGlobalPageChange = (e: any) => {
+      const newPageId = e.detail?.pageId || "ALL";
+      setSelectedPageFilter(newPageId);
+      loadConversations(newPageId);
+    };
+
+    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
+    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
+  }, []);
+
+  useEffect(() => {
     // Polling interval for live updates
     const interval = setInterval(() => {
-      loadConversations(true);
+      loadConversations(selectedPageFilter, true);
       if (selectedId) {
         loadMessages(selectedId);
       }
     }, 5000); // 5 seconds polling
     
     return () => clearInterval(interval);
-  }, [selectedId]); // depend on selectedId so the interval closure has the latest selectedId
+  }, [selectedId, selectedPageFilter]);
 
   useEffect(() => {
     if (selectedId) {
@@ -248,35 +262,21 @@ export default function LiveInboxPage() {
         {/* Header & Page Switcher */}
         <div className="p-3.5 border-b border-[#222] space-y-2.5 bg-[#0D0D0D]">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-sm text-[#EDEDED] flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-amber-500" />
-              <span>Live Inbox</span>
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-sm text-[#EDEDED] flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-amber-500" />
+                <span>Live Inbox</span>
+              </h2>
+              {selectedPageFilter !== "ALL" && (
+                <span className="text-[10px] font-mono text-amber-400/90 font-medium truncate max-w-[110px]" title={connectedPages.find(p => p.id === selectedPageFilter)?.name}>
+                  • {connectedPages.find(p => p.id === selectedPageFilter)?.name || "Page"}
+                </span>
+              )}
+            </div>
             <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#111] text-[#10B981] border border-[#222]">
               {conversations.length} Active
             </span>
           </div>
-
-          {/* Connected Page Switcher / Filter */}
-          {connectedPages.length > 0 && (
-            <div className="relative">
-              <select
-                value={selectedPageFilter}
-                onChange={(e) => {
-                  setSelectedPageFilter(e.target.value);
-                  setTimeout(() => loadConversations(false), 50);
-                }}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-[#141414] border border-[#333] text-xs font-semibold text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
-              >
-                <option value="ALL">🏢 All Connected Pages ({connectedPages.length})</option>
-                {connectedPages.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    📄 {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
