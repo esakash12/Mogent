@@ -4,6 +4,7 @@ import { facebookApi } from "../services/facebook-api";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
 import { telegramAlertsQueue } from "../queue/message-queue";
+import { redisConnection } from "../redis";
 
 export const conversationsRouter = new Hono();
 
@@ -22,7 +23,7 @@ conversationsRouter.get("/", async (c) => {
 
     const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
-      select: { id: true, name: true, pageId: true },
+      select: { id: true, name: true, pageId: true, encryptedAccessToken: true, tokenIv: true, tokenTag: true },
     });
     const pageIds = pages.map((p) => p.id);
 
@@ -43,10 +44,58 @@ conversationsRouter.get("/", async (c) => {
       orderBy: { updatedAt: "desc" },
     });
 
-    // Background auto-healing: Fetch missing names from Facebook for past customers asynchronously
+    // Background One-Time Auto-Healing with Redis Lock (Zero repeated overhead)
     setTimeout(async () => {
+      // 1. One-time deep history sync per connected page
+      for (const p of pages) {
+        const lockKey = `mogent:synced_all_past_profiles:${p.id}`;
+        try {
+          const isAlreadySynced = await redisConnection.get(lockKey);
+          if (!isAlreadySynced) {
+            // Set lock for 30 days so this never repeats
+            await redisConnection.set(lockKey, "1", "EX", 30 * 24 * 3600);
+
+            const pageToken = decryptToken(
+              p.encryptedAccessToken,
+              p.tokenIv,
+              p.tokenTag,
+              config.tokenEncryptionKey
+            );
+
+            if (pageToken) {
+              // Deep paginate up to 250 past threads to get all participants' full names
+              const participantMap = await facebookApi.fetchAllThreadParticipants(pageToken, 250);
+
+              for (const [psid, info] of participantMap.entries()) {
+                const existing = await prisma.customer.findFirst({
+                  where: { facebookPageId: p.id, psid },
+                });
+
+                if (existing && (!existing.firstName || existing.firstName.startsWith("Customer #") || !existing.profilePic)) {
+                  let picUrl = existing.profilePic;
+                  if (!picUrl) {
+                    picUrl = await facebookApi.fetchCustomerPicture(pageToken, psid);
+                  }
+                  await prisma.customer.update({
+                    where: { id: existing.id },
+                    data: {
+                      firstName: info.firstName || existing.firstName,
+                      lastName: info.lastName || existing.lastName,
+                      profilePic: picUrl || existing.profilePic,
+                    },
+                  });
+                }
+              }
+            }
+          }
+        } catch (syncErr) {
+          console.warn(`One-time history sync warning for page [${p.id}]:`, syncErr);
+        }
+      }
+
+      // 2. Immediate healing for visible list items with missing info
       for (const conv of list) {
-        if ((!conv.customer.firstName || conv.customer.firstName.startsWith("Customer #")) && conv.facebookPage) {
+        if ((!conv.customer.firstName || conv.customer.firstName.startsWith("Customer #") || !conv.customer.profilePic) && conv.facebookPage) {
           try {
             const pageToken = decryptToken(
               conv.facebookPage.encryptedAccessToken,
@@ -56,13 +105,13 @@ conversationsRouter.get("/", async (c) => {
             );
             if (pageToken) {
               const profile = await facebookApi.fetchCustomerProfile(pageToken, conv.customer.psid);
-              if (profile?.first_name) {
+              if (profile?.first_name || profile?.profile_pic) {
                 await prisma.customer.update({
                   where: { id: conv.customer.id },
                   data: {
-                    firstName: profile.first_name,
-                    lastName: profile.last_name || null,
-                    profilePic: profile.profile_pic || conv.customer.profilePic,
+                    firstName: profile?.first_name || conv.customer.firstName,
+                    lastName: profile?.last_name || conv.customer.lastName,
+                    profilePic: profile?.profile_pic || conv.customer.profilePic,
                   },
                 });
               }
