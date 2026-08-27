@@ -99,25 +99,49 @@ export class GeminiService {
     throw new Error(`Failed to generate response after ${attempts} attempts across models and keys:\n${errors.join("\n")}`);
   }
 
+  private getValidGoogleModels(rawModel: string): string[] {
+    const normalized = (rawModel || "").trim().toLowerCase();
+    
+    // Direct exact matches from Google API
+    if (normalized === "gemini-1.5-flash" || normalized === "gemini-1.5-flash-latest") {
+      return ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+    }
+    if (normalized === "gemini-1.5-flash-8b" || normalized === "gemini-1.5-flash-8b-latest") {
+      return ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"];
+    }
+    if (normalized === "gemini-1.5-pro" || normalized === "gemini-1.5-pro-latest") {
+      return ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+    }
+    if (normalized.includes("2.0-flash-lite") || normalized === "gemini-2.0-flash-lite") {
+      return ["gemini-2.0-flash-lite-preview-02-05", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+    }
+    if (normalized.includes("2.0-flash") || normalized === "gemini-2.0-flash") {
+      return ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
+    }
+
+    // Custom UI Tiers
+    if (normalized === "gemini-3.5-flash-lite" || normalized.includes("3.5")) {
+      return ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
+    }
+    if (normalized === "gemini-3.1-flash-lite" || normalized.includes("3.1")) {
+      return ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"];
+    }
+    if (normalized === "gemma-4-31b" || normalized.includes("gemma")) {
+      return ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"];
+    }
+
+    // Fallback order
+    const list = [rawModel, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"].filter(Boolean);
+    return Array.from(new Set(list));
+  }
+
   private async callGeminiApi(
     apiKey: string,
     rawModel: string,
     options: GenerateAiReplyOptions
   ): Promise<GeminiAiResponse> {
     
-    // Map custom display names or deprecated models to actual valid Google API identifiers
-    let model = "gemini-2.5-flash";
-    if (rawModel) {
-      if (rawModel === "gemma-4-31b" || rawModel.includes("gemma")) {
-        model = "gemma-2-27b-it";
-      } else if (rawModel.includes("3.1") || rawModel === "gemini-3.1-flash-lite") {
-        model = "gemini-2.0-flash";
-      } else {
-        model = "gemini-2.5-flash";
-      }
-    }
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const candidateModels = this.getValidGoogleModels(rawModel);
 
     // Build Context & System Instructions
     let fullSystemInstruction = `You are an elite, highly empathetic Sales Executive and Messenger Moderator for an online business.
@@ -178,49 +202,39 @@ You MUST ALWAYS respond with a valid JSON object strictly matching this schema:
     "phone": null,
     "email": null,
     "deliveryAddress": null,
-    "orderIntent": false
+    "orderIntent": null
   }
 }`;
 
-    // Build Multi-turn Chat Contents
+    // Format Multi-Turn Chat History
     const contents: any[] = [];
+    if (options.history && options.history.length > 0) {
+      for (const msg of options.history) {
+        contents.push({
+          role: msg.role === "user" ? "user" : "model",
+          parts: [{ text: msg.content }],
+        });
+      }
+    }
 
-    // Append History
-    for (const msg of options.history) {
-      contents.push({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }],
+    // Latest incoming message
+    const currentParts: any[] = [];
+    if (options.latestMessage.text) {
+      currentParts.push({ text: options.latestMessage.text });
+    }
+    if (options.latestMessage.mediaUrl) {
+      currentParts.push({
+        text: `[User attached a ${options.latestMessage.mediaType || "file"}: ${options.latestMessage.mediaUrl}]`,
       });
     }
 
-    // Append Latest Message
-    const latestParts: any[] = [];
-    if (options.latestMessage.text) {
-      latestParts.push({ text: options.latestMessage.text });
-    }
-
-    // Handle Image / Media if provided
-    if (options.latestMessage.mediaUrl && options.latestMessage.mediaType === "image") {
-      try {
-        const imageRes = await fetch(options.latestMessage.mediaUrl);
-        const imageBuffer = await imageRes.arrayBuffer();
-        const base64Image = Buffer.from(imageBuffer).toString("base64");
-        const contentType = imageRes.headers.get("content-type") || "image/jpeg";
-
-        latestParts.push({
-          inlineData: {
-            mimeType: contentType,
-            data: base64Image,
-          },
-        });
-      } catch (mediaErr) {
-        console.warn(`Failed to fetch media attachment: ${mediaErr}`);
-      }
+    if (currentParts.length === 0) {
+      currentParts.push({ text: "Hello" });
     }
 
     contents.push({
       role: "user",
-      parts: latestParts.length > 0 ? latestParts : [{ text: "Hello" }],
+      parts: currentParts,
     });
 
     const requestBody = {
@@ -234,68 +248,91 @@ You MUST ALWAYS respond with a valid JSON object strictly matching this schema:
       },
     };
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
+    let lastError: any = null;
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`HTTP ${res.status}: ${errorText}`);
-    }
-
-    const data: any = await res.json();
-    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!candidateText) {
-      throw new Error("Empty response received from Gemini API");
-    }
-
-    // Parse and validate with Zod
-    try {
-      const parsed = JSON.parse(candidateText);
-      const validated = GeminiAiResponseSchema.parse(parsed);
-      return {
-        thinking: validated.thinking || "",
-        replyText: validated.replyText || "হ্যালো! আমি কিভাবে আপনাকে সাহায্য করতে পারি?",
-        sentimentScore: validated.sentimentScore ?? 0.0,
-        shouldEscalate: validated.shouldEscalate ?? false,
-        escalationReason: validated.escalationReason || undefined,
-        extractedLeadInfo: validated.extractedLeadInfo ? {
-          phone: validated.extractedLeadInfo.phone || undefined,
-          email: validated.extractedLeadInfo.email || undefined,
-          deliveryAddress: validated.extractedLeadInfo.deliveryAddress || undefined,
-          orderIntent: validated.extractedLeadInfo.orderIntent || undefined,
-        } : undefined,
-      };
-    } catch (parseErr) {
-      console.warn("Failed to parse strictly structured JSON, fallback extracting:", candidateText);
-      
-      let cleanReplyText = candidateText;
-      let cleanThinking = "Direct response";
-      
+    for (const model of candidateModels) {
       try {
-        const rawObj = JSON.parse(candidateText);
-        if (rawObj.replyText) cleanReplyText = String(rawObj.replyText);
-        if (rawObj.thinking) cleanThinking = String(rawObj.thinking);
-      } catch {
-        const match = candidateText.match(/"replyText"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-        if (match && match[1]) {
-          try {
-            cleanReplyText = JSON.parse(`"${match[1]}"`);
-          } catch {
-            cleanReplyText = match[1];
-          }
-        }
-      }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-      return {
-        thinking: cleanThinking,
-        replyText: cleanReplyText,
-        sentimentScore: 0.0,
-        shouldEscalate: false,
-      };
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (res.status === 404) {
+          const errorText = await res.text();
+          console.warn(`⚠️ Model [${model}] returned 404, trying next fallback model...`);
+          lastError = new Error(`HTTP 404: ${errorText}`);
+          continue;
+        }
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errorText}`);
+        }
+
+        const data: any = await res.json();
+        const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!candidateText) {
+          throw new Error("Empty response received from Gemini API");
+        }
+
+        // Parse and validate with Zod
+        try {
+          const parsed = JSON.parse(candidateText);
+          const validated = GeminiAiResponseSchema.parse(parsed);
+          return {
+            thinking: validated.thinking || "",
+            replyText: validated.replyText || "হ্যালো! আমি কিভাবে আপনাকে সাহায্য করতে পারি?",
+            sentimentScore: validated.sentimentScore ?? 0.0,
+            shouldEscalate: validated.shouldEscalate ?? false,
+            escalationReason: validated.escalationReason || undefined,
+            extractedLeadInfo: validated.extractedLeadInfo ? {
+              phone: validated.extractedLeadInfo.phone || undefined,
+              email: validated.extractedLeadInfo.email || undefined,
+              deliveryAddress: validated.extractedLeadInfo.deliveryAddress || undefined,
+              orderIntent: validated.extractedLeadInfo.orderIntent || undefined,
+            } : undefined,
+          };
+        } catch (parseErr) {
+          console.warn("Failed to parse strictly structured JSON, fallback extracting:", candidateText);
+          
+          let cleanReplyText = candidateText;
+          let cleanThinking = "Direct response";
+          
+          try {
+            const rawObj = JSON.parse(candidateText);
+            if (rawObj.replyText) cleanReplyText = String(rawObj.replyText);
+            if (rawObj.thinking) cleanThinking = String(rawObj.thinking);
+          } catch {
+            const match = candidateText.match(/"replyText"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (match && match[1]) {
+              try {
+                cleanReplyText = JSON.parse(`"${match[1]}"`);
+              } catch {
+                cleanReplyText = match[1];
+              }
+            }
+          }
+
+          return {
+            thinking: cleanThinking,
+            replyText: cleanReplyText,
+            sentimentScore: 0.0,
+            shouldEscalate: false,
+          };
+        }
+      } catch (err: any) {
+        if (err.message && err.message.includes("404")) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
     }
+
+    throw lastError || new Error(`No valid working model found for key across candidates: ${candidateModels.join(", ")}`);
   }
 }
