@@ -99,49 +99,13 @@ export class GeminiService {
     throw new Error(`Failed to generate response after ${attempts} attempts across models and keys:\n${errors.join("\n")}`);
   }
 
-  private getValidGoogleModels(rawModel: string): string[] {
-    const normalized = (rawModel || "").trim().toLowerCase();
-    
-    // Direct exact matches from Google API
-    if (normalized === "gemini-1.5-flash" || normalized === "gemini-1.5-flash-latest") {
-      return ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
-    }
-    if (normalized === "gemini-1.5-flash-8b" || normalized === "gemini-1.5-flash-8b-latest") {
-      return ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"];
-    }
-    if (normalized === "gemini-1.5-pro" || normalized === "gemini-1.5-pro-latest") {
-      return ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
-    }
-    if (normalized.includes("2.0-flash-lite") || normalized === "gemini-2.0-flash-lite") {
-      return ["gemini-2.0-flash-lite-preview-02-05", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
-    }
-    if (normalized.includes("2.0-flash") || normalized === "gemini-2.0-flash") {
-      return ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"];
-    }
-
-    // Custom UI Tiers
-    if (normalized === "gemini-3.5-flash-lite" || normalized.includes("3.5")) {
-      return ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"];
-    }
-    if (normalized === "gemini-3.1-flash-lite" || normalized.includes("3.1")) {
-      return ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"];
-    }
-    if (normalized === "gemma-4-31b" || normalized.includes("gemma")) {
-      return ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"];
-    }
-
-    // Fallback order
-    const list = [rawModel, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"].filter(Boolean);
-    return Array.from(new Set(list));
-  }
-
   private async callGeminiApi(
     apiKey: string,
     rawModel: string,
     options: GenerateAiReplyOptions
   ): Promise<GeminiAiResponse> {
     
-    const candidateModels = this.getValidGoogleModels(rawModel);
+    const candidateModels = [rawModel];
 
     // Build Context & System Instructions
     let fullSystemInstruction = `You are an elite, highly empathetic Sales Executive and Messenger Moderator for an online business.
