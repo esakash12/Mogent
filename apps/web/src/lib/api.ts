@@ -283,6 +283,45 @@ export async function deleteProduct(productId: string) {
   }
 }
 
+export async function importProductFromUrl(url: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/products/import-url`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ url }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function importProductFromFacebook() {
+  try {
+    const res = await fetch(`${API_BASE}/api/products/import-facebook`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({}),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function importProductFromFeed(feedUrl: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/products/import-feed`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ feedUrl }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function uploadImageFile(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
     const formData = new FormData();
@@ -799,6 +838,50 @@ export async function testPlaygroundAI(data: { message: string; history?: any[] 
     return { success: false, error: err.message };
   }
 }
+
+export async function fetchFollowupConfig() {
+  try {
+    const res = await fetch(`${API_BASE}/api/broadcasts/followup-config`, {
+      headers: getHeaders(),
+    });
+    const json = await res.json();
+    return json.data;
+  } catch (err: any) {
+    return null;
+  }
+}
+
+export async function saveFollowupConfig(data: {
+  isEnabled: boolean;
+  delayHours: number;
+  messageText: string;
+  pageId?: string;
+}) {
+  try {
+    const res = await fetch(`${API_BASE}/api/broadcasts/followup-config`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function triggerFollowupScan() {
+  try {
+    const res = await fetch(`${API_BASE}/api/broadcasts/trigger-followup`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({}),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 
 
 

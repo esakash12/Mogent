@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Megaphone,
   Plus,
@@ -10,8 +10,18 @@ import {
   Send,
   Loader2,
   X,
+  Sparkles,
+  CheckCircle2,
+  Clock,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  fetchFollowupConfig,
+  saveFollowupConfig,
+  triggerFollowupScan,
+  fetchContacts,
+} from "@/lib/api";
 
 type MainTab = "CAMPAIGNS" | "CUSTOMERS" | "TEMPLATES" | "DND";
 type FilterStatus = "ALL" | "DRAFT" | "SENDING" | "COMPLETED";
@@ -19,63 +29,145 @@ type FilterStatus = "ALL" | "DRAFT" | "SENDING" | "COMPLETED";
 export default function CampaignsPage() {
   const [activeTab, setActiveTab] = useState<MainTab>("CAMPAIGNS");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("ALL");
-  const [showModal, setShowModal] = useState(false);
-  const [campaignName, setCampaignName] = useState("");
-  const [messageTemplate, setMessageTemplate] = useState("");
-  const [isSending, setIsSending] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  // Follow-up Config State
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [delayHours, setDelayHours] = useState(2);
+  const [messageText, setMessageText] = useState(
+    "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊"
+  );
+  const [sentCount, setSentCount] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTriggering, setIsTriggering] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const handleCreateCampaign = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!campaignName.trim()) return;
-    setIsSending(true);
-
-    setTimeout(() => {
-      setCampaigns([
-        {
-          id: Date.now().toString(),
-          name: campaignName,
-          sentCount: 146,
-          status: "COMPLETED",
-          createdAt: "Just now",
-        },
-        ...campaigns,
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [configData, contactsData] = await Promise.all([
+        fetchFollowupConfig(),
+        fetchContacts(),
       ]);
-      setCampaignName("");
-      setMessageTemplate("");
-      setIsSending(false);
-      setShowModal(false);
-    }, 800);
+
+      if (configData) {
+        setIsEnabled(configData.isEnabled !== false);
+        setDelayHours(configData.delayHours || 2);
+        if (configData.messageText) setMessageText(configData.messageText);
+        setSentCount(configData.sentCount || 0);
+      }
+
+      if (contactsData) {
+        setContacts(Array.isArray(contactsData) ? contactsData : (contactsData?.data || []));
+      }
+    } catch (err) {
+      console.error("Failed to load campaigns data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setStatusMsg(null);
+    try {
+      const res = await saveFollowupConfig({
+        isEnabled,
+        delayHours,
+        messageText,
+      });
+
+      if (res?.success) {
+        setStatusMsg({ type: "success", text: "Automated follow-up settings saved successfully!" });
+      } else {
+        setStatusMsg({ type: "error", text: res?.error || "Failed to save follow-up configuration." });
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: "error", text: err.message || "Network error." });
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setStatusMsg(null), 3500);
+    }
+  };
+
+  const handleTriggerFollowup = async () => {
+    setIsTriggering(true);
+    setStatusMsg(null);
+    try {
+      const res = await triggerFollowupScan();
+      if (res?.success) {
+        setStatusMsg({
+          type: "success",
+          text: `Scan complete! Dispatched follow-up to ${res.sentCount || 0} idle customer conversations.`,
+        });
+        loadData();
+      } else {
+        setStatusMsg({ type: "error", text: res?.error || "Failed to trigger scan." });
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: "error", text: err.message || "Network error triggering scan." });
+    } finally {
+      setIsTriggering(false);
+      setTimeout(() => setStatusMsg(null), 4000);
+    }
   };
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Toast Alert */}
+      {statusMsg && (
+        <div
+          className={cn(
+            "p-3.5 rounded-xl flex items-center justify-between text-xs font-bold shadow-sm animate-in fade-in",
+            statusMsg.type === "success"
+              ? "bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]"
+              : "bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626]"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{statusMsg.text}</span>
+          </div>
+          <button onClick={() => setStatusMsg(null)} className="cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header Description & Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-bold text-[#111827]">ক্যাম্পেইন</h2>
-          <p className="text-xs text-[#6B7280]">
-            আপনার নিজের কাস্টমারদের WhatsApp-এ অফার পাঠান।
+          <h2 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-[#F59E0B]" />
+            <span>ক্যাম্পেইন ও অটোমেটেড ফলো-আপ (Broadcasts & Follow-ups)</span>
+          </h2>
+          <p className="text-xs text-[#475569]">
+            মেসেঞ্জার ও হোয়াটসঅ্যাপে ড্রপ-অফ কাস্টমারদের স্বয়ংক্রিয় অফার ও রিমাইন্ডার পাঠান।
           </p>
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs transition-all shadow-sm cursor-pointer w-fit"
+          onClick={handleTriggerFollowup}
+          disabled={isTriggering}
+          className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs transition-all shadow-sm cursor-pointer w-fit disabled:opacity-50"
         >
-          <Plus className="w-4 h-4" />
-          <span>নতুন ক্যাম্পেইন</span>
+          {isTriggering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-current" />}
+          <span>{isTriggering ? "Scanning Conversations..." : "রান ফলো-আপ স্ক্যান (Instant Scan)"}</span>
         </button>
       </div>
 
       {/* 4 Sub Tabs */}
-      <div className="flex items-center gap-1 p-1 rounded-2xl bg-white border border-[#E5E7EB] shadow-sm w-fit overflow-x-auto scrollbar-none">
+      <div className="flex items-center gap-1 p-1 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm w-fit overflow-x-auto scrollbar-none">
         {[
-          { id: "CAMPAIGNS", label: "ক্যাম্পেইন" },
-          { id: "CUSTOMERS", label: "কাস্টমার" },
+          { id: "CAMPAIGNS", label: "অটো ফলো-আপ ক্যাম্পেইন" },
+          { id: "CUSTOMERS", label: `কাস্টমার অডিয়েন্স (${contacts.length})` },
           { id: "TEMPLATES", label: "টেমপ্লেট" },
-          { id: "DND", label: "মেসেজ পাঠাবেন না" },
         ].map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -83,10 +175,10 @@ export default function CampaignsPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id as MainTab)}
               className={cn(
-                "px-5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                "px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer",
                 active
-                  ? "bg-[#F59E0B] text-black font-bold shadow-sm"
-                  : "text-[#6B7280] hover:text-[#111827]"
+                  ? "bg-[#F59E0B] text-black shadow-xs font-black"
+                  : "text-[#64748B] hover:text-[#0F172A]"
               )}
             >
               {tab.label}
@@ -95,130 +187,160 @@ export default function CampaignsPage() {
         })}
       </div>
 
-      {/* Filter Status Pills (for Campaigns tab) */}
+      {/* Tab 1: Automated Follow-up Configuration */}
       {activeTab === "CAMPAIGNS" && (
-        <div className="flex items-center gap-2">
-          {[
-            { id: "ALL", label: "সব" },
-            { id: "DRAFT", label: "ড্রাফট" },
-            { id: "SENDING", label: "পাঠানো হচ্ছে" },
-            { id: "COMPLETED", label: "শেষ" },
-          ].map((pill) => {
-            const active = filterStatus === pill.id;
-            return (
-              <button
-                key={pill.id}
-                onClick={() => setFilterStatus(pill.id as FilterStatus)}
-                className={cn(
-                  "px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
-                  active
-                    ? "bg-[#F59E0B] text-black font-bold shadow-sm"
-                    : "bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827]"
-                )}
-              >
-                {pill.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Main Area / Empty State (Exact Match to Screenshot 11) */}
-      {activeTab === "CAMPAIGNS" && campaigns.length === 0 && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] p-20 shadow-sm flex flex-col items-center justify-center text-center space-y-4 min-h-[360px]">
-          <div className="w-16 h-16 rounded-full bg-[#F9FAFB] border border-[#E5E7EB] flex items-center justify-center text-[#9CA3AF]">
-            <Megaphone className="w-8 h-8 stroke-[1.5]" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-[#111827]">এখনো কোনো ক্যাম্পেইন নেই</h3>
-            <p className="text-xs text-[#6B7280]">
-              কাস্টমারদের একটি অফার পাঠান — যারা উত্তর দেবে, AI তাদের সামলাবে।
-            </p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all cursor-pointer"
-          >
-            নতুন ক্যাম্পেইন
-          </button>
-        </div>
-      )}
-
-      {/* Other Tabs content */}
-      {activeTab === "CUSTOMERS" && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] p-16 text-center space-y-2">
-          <Users className="w-8 h-8 text-[#9CA3AF] mx-auto" />
-          <p className="text-sm font-bold text-[#111827]">১৪৬ জন কাস্টমার প্রস্তুত</p>
-          <p className="text-xs text-[#6B7280]">পূর্বে মেসেজ পাঠানো সকল কাস্টমার ডাটাবেসে সেইভ আছে।</p>
-        </div>
-      )}
-
-      {activeTab === "TEMPLATES" && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] p-16 text-center space-y-2">
-          <FileText className="w-8 h-8 text-[#9CA3AF] mx-auto" />
-          <p className="text-sm font-bold text-[#111827]">মেসেজ টেমপ্লেট</p>
-          <p className="text-xs text-[#6B7280]">ডিসকাউন্ট বা প্রমোশনাল অফার টেমপ্লেট তৈরি করুন।</p>
-        </div>
-      )}
-
-      {activeTab === "DND" && (
-        <div className="bg-white rounded-2xl border border-[#E5E7EB] p-16 text-center space-y-2">
-          <Ban className="w-8 h-8 text-[#9CA3AF] mx-auto" />
-          <p className="text-sm font-bold text-[#111827]">DND তালিকা খালি</p>
-          <p className="text-xs text-[#6B7280]">অফার মেসেজ বন্ধ করতে চাওয়া কাস্টমারদের তালিকা।</p>
-        </div>
-      )}
-
-      {/* New Campaign Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in">
+        <div className="space-y-6">
+          {/* Main Automation Card */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-[#111827]">নতুন ব্রডকাস্ট ক্যাম্পেইন</h3>
-              <button onClick={() => setShowModal(false)} className="text-[#9CA3AF] hover:text-[#111827]">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateCampaign} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">ক্যাম্পেইনের নাম *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. উইকেন্ড স্পেশাল অফার"
-                  value={campaignName}
-                  onChange={(e) => setCampaignName(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
-                />
+                <h3 className="text-sm font-bold text-[#0F172A]">অটোনোমাস কাস্টমার রি-এনগেজমেন্ট রুল</h3>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  যেসব কাস্টমার চ্যাটে দাম জানার পর অর্ডার না দিয়ে নিষ্ক্রিয় হয়ে যান, এআই নির্দিষ্ট সময় পর তাদেরকে এই মেসেজটি পাঠাবে।
+                </p>
               </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#475569]">{isEnabled ? "সক্রিয় (Active)" : "নিষ্ক্রিয়"}</span>
+                <button
+                  onClick={() => setIsEnabled(!isEnabled)}
+                  className={cn(
+                    "w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer",
+                    isEnabled ? "bg-[#F59E0B]" : "bg-[#CBD5E1]"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "bg-white w-4 h-4 rounded-full shadow-md transform transition-transform",
+                      isEnabled ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveConfig} className="space-y-4 pt-2">
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">মেসেজ কন্টেন্ট *</label>
+                <label className="block text-xs font-bold text-[#334155] mb-1">
+                  কত ঘণ্টা পর ফলো-আপ পাঠানো হবে? (Delay Hours)
+                </label>
+                <div className="flex items-center gap-3">
+                  {[1, 2, 4, 12, 24].map((hours) => (
+                    <button
+                      type="button"
+                      key={hours}
+                      onClick={() => setDelayHours(hours)}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer",
+                        delayHours === hours
+                          ? "bg-[#FEF3C7] text-[#92400E] border-[#FDE68A] shadow-xs"
+                          : "bg-[#F8FAFC] text-[#475569] border-[#CBD5E1] hover:bg-white"
+                      )}
+                    >
+                      {hours} ঘণ্টা পর
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#334155] mb-1">
+                  স্বয়ংক্রিয় ফলো-আপ মেসেজ (Message Template) *
+                </label>
                 <textarea
                   rows={4}
                   required
-                  placeholder="আসসালামু আলাইকুম! আমাদের স্পেশাল অফার শুরু হয়েছে..."
-                  value={messageTemplate}
-                  onChange={(e) => setMessageTemplate(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  className="w-full p-3.5 rounded-xl border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] leading-relaxed font-medium"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#F3F4F6]">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-xl border text-xs font-semibold text-[#4B5563]"
-                >
-                  বাতিল
-                </button>
+
+              <div className="flex items-center justify-between pt-3 border-t border-[#F1F5F9]">
+                <div className="text-xs text-[#64748B] font-bold">
+                  মোট ডেলিভারকৃত ফলো-আপ: <strong className="text-[#059669]">{sentCount} টি</strong>
+                </div>
+
                 <button
                   type="submit"
-                  disabled={isSending}
-                  className="px-5 py-2 rounded-xl bg-[#F59E0B] text-black font-bold text-xs disabled:opacity-50"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  {isSending ? "পাঠানো হচ্ছে..." : "এখনই পাঠান"}
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span>{isSaving ? "Saving Settings..." : "Save Follow-up Rule"}</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 2: Customers Audience */}
+      {activeTab === "CUSTOMERS" && (
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-[#F1F5F9] text-xs font-bold text-[#475569]">
+            Audience List ({contacts.length} Customers)
+          </div>
+
+          {loading ? (
+            <div className="p-12 text-center flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-6 h-6 text-[#F59E0B] animate-spin" />
+              <span className="text-xs font-bold text-[#64748B]">Loading audience...</span>
+            </div>
+          ) : contacts.length > 0 ? (
+            <div className="divide-y divide-[#F1F5F9]">
+              {contacts.map((c, i) => (
+                <div key={c.id || i} className="p-4 flex items-center justify-between gap-4 hover:bg-[#F8FAFC]">
+                  <div>
+                    <h4 className="text-xs font-bold text-[#0F172A]">{c.firstName} {c.lastName || ""}</h4>
+                    <p className="text-[11px] text-[#64748B] font-mono">{c.phoneNumber || "Messenger User"}</p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-[#ECFDF5] text-[#059669] text-[10px] font-bold">
+                    Eligible for Broadcast
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center space-y-2">
+              <Users className="w-8 h-8 text-[#CBD5E1] mx-auto" />
+              <p className="text-xs font-bold text-[#0F172A]">No audience contacts yet</p>
+              <p className="text-[11px] text-[#64748B]">Contacts will automatically populate as customers interact with your Facebook Page.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 3: Templates */}
+      {activeTab === "TEMPLATES" && (
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-4">
+          <h3 className="text-xs font-bold text-[#0F172A]">Pre-built Promotional Templates</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div
+              onClick={() => {
+                setMessageText("ভাইয়া, আমাদের নতুন স্টক চলে এসেছে! সাথে থাকছে ফ্রি ডেলিভারি অফার। অর্ডার করতে রিপ্লাই দিন 😊");
+                setActiveTab("CAMPAIGNS");
+              }}
+              className="p-4 rounded-xl border border-[#E2E8F0] hover:border-[#F59E0B] hover:bg-[#FFFDF5] cursor-pointer transition-all space-y-1.5"
+            >
+              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-[#FEF3C7] text-[#92400E]">Free Delivery Offer</span>
+              <p className="text-xs text-[#334155] leading-relaxed">
+                ভাইয়া, আমাদের নতুন স্টক চলে এসেছে! সাথে থাকছে ফ্রি ডেলিভারি অফার। অর্ডার করতে রিপ্লাই দিন 😊
+              </p>
+            </div>
+
+            <div
+              onClick={() => {
+                setMessageText("প্রিয় কাস্টমার, আপনার পছন্দের প্রোডাক্টটির স্টক প্রায় শেষের দিকে। অর্ডারটি বুক করে রাখতে চান কি?");
+                setActiveTab("CAMPAIGNS");
+              }}
+              className="p-4 rounded-xl border border-[#E2E8F0] hover:border-[#F59E0B] hover:bg-[#FFFDF5] cursor-pointer transition-all space-y-1.5"
+            >
+              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-[#ECFDF5] text-[#059669]">Stock Urgency Reminder</span>
+              <p className="text-xs text-[#334155] leading-relaxed">
+                প্রিয় কাস্টমার, আপনার পছন্দের প্রোডাক্টটির স্টক প্রায় শেষের দিকে। অর্ডারটি বুক করে রাখতে চান কি?
+              </p>
+            </div>
           </div>
         </div>
       )}
