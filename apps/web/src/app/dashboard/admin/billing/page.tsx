@@ -382,8 +382,8 @@ export default function AdminBillingApprovalsPage() {
                 No payment requests found matching the current filter.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto scrollbar-thin">
+                <table className="w-full text-left text-xs min-w-[850px]">
                   <thead className="bg-[#111] text-[#888] border-b border-[#222]">
                     <tr>
                       <th className="p-3.5 font-medium">Workspace & Merchant</th>
@@ -516,8 +516,8 @@ export default function AdminBillingApprovalsPage() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto scrollbar-thin">
+                <table className="w-full text-left text-xs min-w-[700px]">
                   <thead className="bg-[#111] text-[#888] border-b border-[#222]">
                     <tr>
                       <th className="p-3.5 font-medium">Coupon Code</th>

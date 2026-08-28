@@ -129,8 +129,8 @@ export default function AdminClientsPage() {
             <p className="text-xs text-[#888]">No merchant workspaces found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full text-left text-xs min-w-[700px]">
               <thead className="bg-[#111] border-b border-[#222] text-[#888] font-semibold">
                 <tr>
                   <th className="p-4">Workspace</th>

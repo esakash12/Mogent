@@ -4,6 +4,8 @@
  * and Dynamic Multi-Tenant Workspace & Auth Token Injection.
  */
 
+import { toast } from "./toast";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export interface ApiResponse<T = any> {
@@ -70,7 +72,7 @@ export function getHeaders(customHeaders: Record<string, string> = {}): Record<s
 }
 
 /**
- * Central generic HTTP requester with centralized 401/403/500 error trapping
+ * Central generic HTTP requester with centralized 401/403/500 error trapping & auto-toasts
  */
 export async function apiRequest<T = any>(
   endpoint: string,
@@ -97,9 +99,24 @@ export async function apiRequest<T = any>(
     }
 
     if (res.status === 403) {
+      const msg = "Access denied. Insufficient permissions for this action.";
+      if (typeof window !== "undefined") {
+        toast.error("Permission Denied (403)", { description: msg });
+      }
       return {
         success: false,
-        error: "Access denied. Insufficient permissions for this action.",
+        error: msg,
+      };
+    }
+
+    if (res.status >= 500) {
+      const msg = `Server error (${res.status}). Please try again later.`;
+      if (typeof window !== "undefined") {
+        toast.error("Internal Server Error (500)", { description: msg });
+      }
+      return {
+        success: false,
+        error: msg,
       };
     }
 
@@ -111,9 +128,13 @@ export async function apiRequest<T = any>(
     return json;
   } catch (err: any) {
     console.error(`API Error [${endpoint}]:`, err);
+    const networkMsg = err?.message || "Network connection failed. Please check your internet.";
+    if (typeof window !== "undefined") {
+      toast.error("Network Error", { description: networkMsg });
+    }
     return {
       success: false,
-      error: err?.message || "Network connection failed. Please check your internet.",
+      error: networkMsg,
     };
   }
 }

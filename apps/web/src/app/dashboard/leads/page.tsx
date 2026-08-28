@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchContacts, createContactLead } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -53,6 +54,7 @@ export default function LeadsPage() {
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
+    toast.success("Copied to clipboard", { description: text });
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -84,9 +86,17 @@ export default function LeadsPage() {
         setLeads((prev) =>
           prev.map((l) => (l.id === optimisticId ? { ...l, id: res.data.id, ...res.data } : l))
         );
+        toast.success("Customer Lead Created! 👤", {
+          description: `${payload.name} added with phone ${payload.phone}`,
+        });
+      } else {
+        toast.error("Failed to save lead", {
+          description: res?.error || "Please try again.",
+        });
       }
     } catch (err) {
       console.error("Failed to persist lead:", err);
+      toast.error("Network error while creating lead");
       loadData();
     } finally {
       setIsSubmitting(false);
@@ -107,6 +117,7 @@ export default function LeadsPage() {
     document.body.appendChild(a);
     a.click();
     a.remove();
+    toast.success("CSV Export Ready", { description: `Exported ${leads.length} customer records` });
   };
 
   const filteredLeads = leads.filter((l) => {
@@ -196,8 +207,8 @@ export default function LeadsPage() {
         </div>
       ) : filteredLeads.length > 0 ? (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full text-left text-xs border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#475569] font-bold">
                   <th className="py-3 px-4">Customer Name</th>

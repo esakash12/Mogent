@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchOrders, updateOrderStatus, createOrderManual } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -57,9 +58,15 @@ export default function OrdersPage() {
       prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
     );
     try {
-      await updateOrderStatus(orderId, newStatus);
+      const res = await updateOrderStatus(orderId, newStatus);
+      if (res?.success) {
+        toast.success("Order status updated", {
+          description: `Order marked as ${newStatus}`,
+        });
+      }
     } catch (err) {
       console.error("Error updating order status:", err);
+      toast.error("Failed to update status");
       loadData();
     }
   };
@@ -102,9 +109,17 @@ export default function OrdersPage() {
         setOrders((prev) =>
           prev.map((o) => (o.id === optimisticId ? { ...o, id: res.data.id, ...res.data } : o))
         );
+        toast.success("Order Created Successfully! 🛍️", {
+          description: `Order #${res.data.id?.slice(-6)?.toUpperCase() || "ORD"} logged for ${payload.customerName}`,
+        });
+      } else {
+        toast.error("Failed to create order", {
+          description: res?.error || "Please check details and try again.",
+        });
       }
     } catch (err) {
       console.error("Order creation error:", err);
+      toast.error("Network error while creating order");
       loadData();
     } finally {
       setIsSubmitting(false);
@@ -180,8 +195,8 @@ export default function OrdersPage() {
         </div>
       ) : filteredOrders.length > 0 ? (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full text-left text-xs border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#475569] font-bold">
                   <th className="py-3 px-4">Order ID & Date</th>
