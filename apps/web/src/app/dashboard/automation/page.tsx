@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -35,27 +35,8 @@ interface TriggerRule {
 }
 
 export default function AutomationPage() {
-  const [rules, setRules] = useState<TriggerRule[]>([
-    {
-      id: "1",
-      name: "Angry / Escalation Keywords",
-      reason: "COMPLAINT",
-      keywords: ["বাটপার", "নষ্ট", "রিফান্ড", "refund", "scam", "ম্যানেজার"],
-      action: "Pause AI & Escalate to Human",
-      isActive: true,
-      hitsCount: 14,
-    },
-    {
-      id: "2",
-      name: "Immediate Purchase Trigger",
-      reason: "ORDER_INTENT",
-      keywords: ["কিনব", "অর্ডার কনফার্ম", "বিকাশ নাম্বার দেন", "bkash number"],
-      action: "Prioritize & Collect Delivery KYC",
-      isActive: true,
-      hitsCount: 38,
-    },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const [rules, setRules] = useState<TriggerRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newRuleName, setNewRuleName] = useState("");
   const [newKeywords, setNewKeywords] = useState("");
@@ -63,6 +44,34 @@ export default function AutomationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [deleteRuleItem, setDeleteRuleItem] = useState<TriggerRule | null>(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAutomationRules();
+      if (Array.isArray(data)) {
+        setRules(
+          data.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            reason: r.reason || "CUSTOM_KEYWORD",
+            keywords: Array.isArray(r.keywords) ? r.keywords : (r.keywords ? r.keywords.split(",") : []),
+            action: r.action || "Pause AI & Escalate to Human",
+            isActive: r.isActive !== false,
+            hitsCount: r.hitsCount || 0,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to load automation rules:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const handleToggleRule = async (id: string, currentActive: boolean) => {
     setRules((prev) =>
@@ -81,17 +90,18 @@ export default function AutomationPage() {
     setIsSubmitting(true);
     try {
       const keywordsArray = newKeywords.split(",").map((k) => k.trim()).filter(Boolean);
-      await createAutomationRule({
+      const res = await createAutomationRule({
         name: newRuleName,
         reason: newReason,
         keywords: keywordsArray,
       });
+
       setShowAddModal(false);
       setNewRuleName("");
       setNewKeywords("");
       setRules([
         {
-          id: Date.now().toString(),
+          id: res?.id || Date.now().toString(),
           name: newRuleName,
           reason: newReason,
           keywords: keywordsArray,
@@ -124,11 +134,11 @@ export default function AutomationPage() {
       {/* Top Description & Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-bold text-[#111827] flex items-center gap-2">
+          <h2 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
             <Zap className="w-5 h-5 text-[#F59E0B]" />
-            <span>অটোমেশন ও স্মার্ট রুলস (Automation)</span>
+            <span>অটোমেশন ও স্মার্ট রুলস (Automation Rules)</span>
           </h2>
-          <p className="text-xs text-[#6B7280]">
+          <p className="text-xs text-[#475569]">
             Configure trigger keywords, escalation behaviors, and working hour schedules.
           </p>
         </div>
@@ -143,110 +153,125 @@ export default function AutomationPage() {
       </div>
 
       {/* Rules List Container */}
-      <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-[#F3F4F6] text-xs font-bold text-[#6B7280]">
+      <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-[#F1F5F9] text-xs font-bold text-[#475569]">
           Active Automation Rules ({rules.length})
         </div>
 
-        <div className="divide-y divide-[#F3F4F6]">
-          {rules.map((rule) => (
-            <div key={rule.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#F9FAFB] transition-colors">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xs font-bold text-[#111827]">{rule.name}</span>
-                  <span className="px-2 py-0.5 rounded-md bg-[#FFFBEB] text-[#D97706] font-semibold text-[10px] border border-[#FDE68A]">
-                    {rule.action}
-                  </span>
-                  <span className="text-[10px] text-[#9CA3AF]">
-                    • Triggered {rule.hitsCount} times
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] text-[#6B7280] font-medium">Keywords:</span>
-                  {rule.keywords.map((kw, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded-lg bg-[#F3F4F6] text-[#374151] font-mono text-[10px] border border-[#E5E7EB]"
-                    >
-                      {kw}
+        {loading ? (
+          <div className="p-12 text-center flex flex-col items-center justify-center gap-2">
+            <Loader2 className="w-6 h-6 text-[#F59E0B] animate-spin" />
+            <span className="text-xs font-bold text-[#64748B]">Loading automation rules...</span>
+          </div>
+        ) : rules.length > 0 ? (
+          <div className="divide-y divide-[#F1F5F9]">
+            {rules.map((rule) => (
+              <div key={rule.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#F8FAFC] transition-colors">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold text-[#0F172A]">{rule.name}</span>
+                    <span className="px-2 py-0.5 rounded-md bg-[#FFFBEB] text-[#92400E] font-bold text-[10px] border border-[#FDE68A]">
+                      {rule.action}
                     </span>
-                  ))}
+                    <span className="text-[10px] text-[#64748B]">
+                      • Triggered {rule.hitsCount} times
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-[#475569] font-semibold">Keywords:</span>
+                    {rule.keywords.map((kw, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-lg bg-[#F1F5F9] text-[#0F172A] font-mono text-[10px] border border-[#CBD5E1]"
+                      >
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => handleToggleRule(rule.id, rule.isActive)}
+                    className={cn(
+                      "w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer",
+                      rule.isActive ? "bg-[#F59E0B]" : "bg-[#CBD5E1]"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "bg-white w-4 h-4 rounded-full shadow-md transform transition-transform",
+                        rule.isActive ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+
+                  <button
+                    onClick={() => setDeleteRuleItem(rule)}
+                    className="p-2 rounded-xl text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  onClick={() => handleToggleRule(rule.id, rule.isActive)}
-                  className={cn(
-                    "w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer",
-                    rule.isActive ? "bg-[#F59E0B]" : "bg-[#D1D5DB]"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "bg-white w-4 h-4 rounded-full shadow-md transform transition-transform",
-                      rule.isActive ? "translate-x-5" : "translate-x-0"
-                    )}
-                  />
-                </button>
-
-                <button
-                  onClick={() => setDeleteRuleItem(rule)}
-                  className="p-2 rounded-xl text-[#9CA3AF] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-12 text-center space-y-2">
+            <Zap className="w-8 h-8 text-[#CBD5E1] mx-auto" />
+            <p className="text-xs font-bold text-[#0F172A]">No automation rules created yet</p>
+            <p className="text-[11px] text-[#64748B]">
+              Add custom keyword escalation rules (e.g. for refund, complaint, manager) to automatically handoff to human agents.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Add Rule Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-[#111827]">New Automation Rule</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-[#9CA3AF] hover:text-[#111827]">
+              <h3 className="text-sm font-bold text-[#0F172A]">New Automation Rule</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-[#94A3B8] hover:text-[#0F172A]">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleCreateRule} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">Rule Name *</label>
+                <label className="block text-xs font-bold text-[#334155] mb-1">Rule Name *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Complaint Escalation"
                   value={newRuleName}
                   onChange={(e) => setNewRuleName(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">Trigger Keywords (comma separated) *</label>
+                <label className="block text-xs font-bold text-[#334155] mb-1">Trigger Keywords (comma separated) *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. বাটপার, নষ্ট, refund, scam, ম্যানেজার"
                   value={newKeywords}
                   onChange={(e) => setNewKeywords(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B]"
                 />
-                <span className="text-[10px] text-[#6B7280] mt-1 block">
+                <span className="text-[10px] text-[#64748B] mt-1 block">
                   When a customer types any of these words in chat, AI will execute the handoff.
                 </span>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#F3F4F6]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#F1F5F9]">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl border text-xs font-semibold text-[#4B5563]"
+                  className="px-4 py-2 rounded-xl border text-xs font-bold text-[#475569]"
                 >
                   Cancel
                 </button>

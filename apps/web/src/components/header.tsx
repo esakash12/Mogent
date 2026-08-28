@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { fetchBillingStatus } from "@/lib/api";
 
 interface PageMeta {
   title: string;
@@ -41,7 +42,7 @@ const pageMetaMap: Record<string, PageMeta> = {
     hasBack: true,
   },
   "/dashboard/services": {
-    title: "সার্ভিস",
+    title: "Services",
     subtitle: "List each service you offer — your AI agent uses them to answer customers.",
     hasBack: true,
   },
@@ -51,7 +52,7 @@ const pageMetaMap: Record<string, PageMeta> = {
     hasBack: true,
   },
   "/dashboard/playground": {
-    title: "Chat",
+    title: "Chat Simulator",
     subtitle: "Test how your AI responds before connecting to real customers",
     hasBack: true,
   },
@@ -71,18 +72,18 @@ const pageMetaMap: Record<string, PageMeta> = {
     hasBack: true,
   },
   "/dashboard/broadcasts": {
-    title: "ক্যাম্পেইন",
-    subtitle: "আপনার নিজের কাস্টমারদের WhatsApp ও Messenger-এ অফার পাঠান।",
+    title: "Campaigns",
+    subtitle: "Send promotional follow-ups and broadcast offers to customers.",
     hasBack: true,
   },
   "/dashboard/leads": {
-    title: "Leads",
-    subtitle: "People who showed interest in your products",
+    title: "Leads CRM",
+    subtitle: "Real-time capture of customer names, phone numbers, and addresses",
     hasBack: true,
   },
   "/dashboard/orders": {
-    title: "Orders",
-    subtitle: "Track and manage customer orders",
+    title: "Orders CRM",
+    subtitle: "Track and manage customer orders logged by AI",
     hasBack: true,
   },
   "/dashboard/automation": {
@@ -100,9 +101,22 @@ const pageMetaMap: Record<string, PageMeta> = {
 export function Header() {
   const [lang, setLang] = useState<"en" | "bn">("bn");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [billingPlanName, setBillingPlanName] = useState<string>("PRO GROWTH");
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+
+  useEffect(() => {
+    fetchBillingStatus()
+      .then((b) => {
+        if (b?.currentPlanDetails?.name) {
+          setBillingPlanName(b.currentPlanDetails.name);
+        } else if (b?.currentPlan) {
+          setBillingPlanName(`${b.currentPlan} PLAN`);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const currentMeta = pageMetaMap[pathname] || {
     title: pathname.split("/")[2] ? pathname.split("/")[2].charAt(0).toUpperCase() + pathname.split("/")[2].slice(1) : "Dashboard",
@@ -110,23 +124,23 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 border-b border-[#E5E7EB] bg-[#FFFFFF] px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+    <header className="h-16 border-b border-[#E2E8F0] bg-[#FFFFFF] px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
       {/* Left: Page Title & Subtitle */}
       <div className="flex items-center gap-3 min-w-0">
         {currentMeta.hasBack && (
           <button
             onClick={() => router.back()}
-            className="w-8 h-8 rounded-full border border-[#E5E7EB] hover:bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 cursor-pointer"
+            className="w-8 h-8 rounded-full border border-[#CBD5E1] hover:bg-[#F1F5F9] flex items-center justify-center text-[#475569] hover:text-[#0F172A] transition-colors shrink-0 cursor-pointer"
             title="Go back"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
         )}
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-[#111827] leading-tight truncate">
+          <h1 className="text-lg font-bold text-[#0F172A] leading-tight truncate">
             {currentMeta.title}
           </h1>
-          <p className="text-xs text-[#6B7280] truncate hidden sm:block">
+          <p className="text-xs text-[#475569] truncate hidden sm:block">
             {currentMeta.subtitle}
           </p>
         </div>
@@ -143,13 +157,13 @@ export function Header() {
           <span>✨ অটোমেশন</span>
         </Link>
 
-        {/* Conversations / Credits Badge */}
+        {/* Live Plan / Credits Badge */}
         <Link
           href="/dashboard/billing"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-sm"
         >
           <Coins className="w-3.5 h-3.5 text-[#D97706]" />
-          <span>🪙 98 কথোপকথন</span>
+          <span>🪙 {billingPlanName}</span>
         </Link>
 
         {/* Language Switcher Toggle */}
@@ -182,23 +196,23 @@ export function Header() {
         <div className="relative">
           <button
             onClick={() => setProfileOpen(!profileOpen)}
-            className="w-8 h-8 rounded-full border-2 border-[#FDE68A] bg-[#FEF3C7] text-[#D97706] flex items-center justify-center font-bold text-xs hover:ring-2 hover:ring-[#F59E0B]/20 transition-all cursor-pointer"
+            className="w-8 h-8 rounded-full border-2 border-[#FDE68A] bg-[#FEF3C7] text-[#92400E] flex items-center justify-center font-bold text-xs hover:ring-2 hover:ring-[#F59E0B]/20 transition-all cursor-pointer"
           >
             {user?.name?.[0]?.toUpperCase() || <User className="w-4 h-4" />}
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-[#E5E7EB] shadow-xl py-1 z-50">
-              <div className="px-3 py-2 border-b border-[#F3F4F6]">
-                <p className="text-xs font-bold text-[#111827] truncate">{user?.name || "User"}</p>
-                <p className="text-[10px] text-[#6B7280] truncate">{user?.email}</p>
+            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-[#E2E8F0] shadow-xl py-1 z-50">
+              <div className="px-3 py-2 border-b border-[#F1F5F9]">
+                <p className="text-xs font-bold text-[#0F172A] truncate">{user?.name || "User"}</p>
+                <p className="text-[10px] text-[#64748B] truncate">{user?.email}</p>
               </div>
               <Link
                 href="/dashboard/settings"
                 onClick={() => setProfileOpen(false)}
-                className="flex items-center gap-2 px-3 py-2 text-xs text-[#374151] hover:bg-[#F9FAFB] transition-colors"
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#334155] hover:bg-[#F8FAFC] transition-colors"
               >
-                <Settings className="w-3.5 h-3.5 text-[#6B7280]" />
+                <Settings className="w-3.5 h-3.5 text-[#64748B]" />
                 <span>Settings</span>
               </Link>
               <button
@@ -206,7 +220,7 @@ export function Header() {
                   setProfileOpen(false);
                   logout();
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#DC2626] hover:bg-[#FEF2F2] transition-colors text-left cursor-pointer"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2] transition-colors text-left cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Logout</span>

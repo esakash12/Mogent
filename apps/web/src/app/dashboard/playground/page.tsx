@@ -6,11 +6,13 @@ import {
   RotateCcw,
   Send,
   Loader2,
-  Image as ImageIcon,
-  CheckCircle2,
+  Sparkles,
+  Bot,
+  User,
   MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { testPlaygroundAI } from "@/lib/api";
 
 interface ChatMessage {
   id: string;
@@ -19,47 +21,14 @@ interface ChatMessage {
   time: string;
 }
 
-interface TestChatSession {
-  id: string;
-  title: string;
-  lastMessage: string;
-  timeAgo: string;
-  msgCount: number;
-}
-
 export default function TryYourAIPage() {
-  const [sessions, setSessions] = useState<TestChatSession[]>([
-    {
-      id: "1",
-      title: "hi",
-      lastMessage: "হ্যালো! আপনি কেমন আছেন?",
-      timeAgo: "4h ago",
-      msgCount: 2,
-    },
-  ]);
-  const [activeSessionId, setActiveSessionId] = useState("1");
-
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "m1",
-      role: "user",
-      text: "hi",
-      time: "11:24 AM",
-    },
-    {
-      id: "m2",
-      role: "model",
-      text: "হ্যালো! আপনি কেমন আছেন? আপনাকে কীভাবে সাহায্য করতে পারি?",
-      time: "11:24 AM",
-    },
-  ]);
-
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isTyping) return;
 
     const userText = inputText;
     setInputText("");
@@ -72,187 +41,151 @@ export default function TryYourAIPage() {
       time: now,
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const newHistory = [...messages, userMsg];
+    setMessages(newHistory);
     setIsTyping(true);
 
-    setTimeout(() => {
-      let reply = "";
-      if (userText.includes("দাম") || userText.toLowerCase().includes("price")) {
-        reply = "আমাদের টি-শার্টের প্রাইস ৩৫০ টাকা থেকে শুরু এবং পোলো শার্ট ৫৫০ টাকা। আপনি কোন সাইজ নিতে চান?";
-      } else if (userText.includes("অর্ডার") || userText.toLowerCase().includes("order")) {
-        reply = "অর্ডার কনফার্ম করার জন্য আপনার নাম, সম্পূর্ণ ঠিকানা এবং মোবাইল নাম্বারটি লিখে পাঠিয়ে দিন।";
-      } else if (userText.includes("ডেলিভারি") || userText.toLowerCase().includes("delivery")) {
-        reply = "ঢাকার ভেতরে ডেলিভারি চার্জ ৮০ টাকা (১-২ দিন) এবং ঢাকার বাইরে ১৫০ টাকা (২-৪ দিন)।";
-      } else {
-        reply = "ধন্যবাদ মেসেজের জন্য! আমাদের কাছে প্রিমিয়াম কোয়ালিটি প্রোডাক্ট স্টক আছে। আপনি কি নির্দিষ্ট কিছু দেখতে চান?";
-      }
+    try {
+      const historyPayload = newHistory.map((m) => ({
+        role: m.role,
+        content: m.text,
+      }));
 
-      setMessages((prev) => [
-        ...prev,
+      const res = await testPlaygroundAI({
+        message: userText,
+        history: historyPayload,
+      });
+
+      const replyText =
+        res?.data?.reply ||
+        res?.reply ||
+        (res?.success === false ? `Error: ${res?.error || "AI could not generate response"}` : "আপনার প্রশ্নটি পেয়েছি। আমি শপের সেলস এজেন্ট হিসেবে আপনাকে সহায়তা করছি।");
+
+      setMessages([
+        ...newHistory,
         {
           id: (Date.now() + 1).toString(),
           role: "model",
-          text: reply,
+          text: replyText,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
+    } catch (err: any) {
+      setMessages([
+        ...newHistory,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "model",
+          text: "দুঃখিত, সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } finally {
       setIsTyping(false);
-    }, 600);
+    }
   };
 
-  const handleNewChat = () => {
-    const newSession: TestChatSession = {
-      id: Date.now().toString(),
-      title: "New chat",
-      lastMessage: "Started new conversation",
-      timeAgo: "Just now",
-      msgCount: 0,
-    };
-    setSessions([newSession, ...sessions]);
-    setActiveSessionId(newSession.id);
-    setMessages([]);
-  };
-
-  const handleClear = () => {
+  const handleClearChat = () => {
     setMessages([]);
   };
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-2xl border border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
-      {/* Left Panel: Test Chats */}
-      <div className="w-full md:w-72 border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col p-3 space-y-3 shrink-0">
-        <span className="text-xs font-bold text-[#111827] px-1">Test chats</span>
-
-        <button
-          onClick={handleNewChat}
-          className="w-full py-2 px-3 rounded-xl bg-white hover:bg-[#F3F4F6] border border-[#E5E7EB] text-xs font-semibold text-[#374151] flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>New chat</span>
-        </button>
-
-        <div className="space-y-1 overflow-y-auto flex-1">
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              onClick={() => setActiveSessionId(s.id)}
-              className={cn(
-                "p-3 rounded-xl cursor-pointer transition-all text-left",
-                activeSessionId === s.id
-                  ? "bg-white border border-[#E5E7EB] shadow-sm text-[#111827]"
-                  : "hover:bg-[#F3F4F6] text-[#6B7280]"
-              )}
-            >
-              <p className="text-xs font-semibold truncate">{s.title}</p>
-              <p className="text-[10px] text-[#9CA3AF] mt-0.5">
-                {s.timeAgo} • {s.msgCount} msgs
-              </p>
-            </div>
-          ))}
+    <div className="h-[calc(100vh-6rem)] flex flex-col bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden max-w-4xl mx-auto">
+      {/* Top Header */}
+      <div className="p-4 border-b border-[#E2E8F0] bg-white flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-[#FEF3C7] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+            <Bot className="w-4 h-4 text-[#D97706]" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold text-[#0F172A] flex items-center gap-2">
+              <span>Try Your AI (Live Simulator)</span>
+              <span className="w-2 h-2 rounded-full bg-[#059669] animate-pulse"></span>
+            </h2>
+            <p className="text-[11px] text-[#64748B]">
+              Real-time test sandbox connected to your live system prompt and product catalog
+            </p>
+          </div>
         </div>
+
+        {messages.length > 0 && (
+          <button
+            onClick={handleClearChat}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#475569] text-xs font-bold transition-all cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Clear Chat</span>
+          </button>
+        )}
       </div>
 
-      {/* Right Panel: Chat Simulator */}
-      <div className="flex-1 flex flex-col justify-between bg-white">
-        {/* Top Header */}
-        <div className="p-3 px-6 border-b border-[#E5E7EB] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-[#FFFDF5] border border-[#FDE68A] flex items-center justify-center text-[#D97706]">
-              <MessageSquare className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-[#111827]">Test chat</p>
-              <p className="text-[10px] text-[#059669] flex items-center gap-1 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
-                <span>Connected</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleClear}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[#E5E7EB] text-xs font-semibold text-[#4B5563] hover:bg-[#F9FAFB] transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Clear</span>
-            </button>
-            <button
-              onClick={handleNewChat}
-              className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs transition-all shadow-sm cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New chat</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Messages Body */}
-        <div className="flex-1 p-6 overflow-y-auto space-y-4">
-          {/* Today Date Pill */}
-          <div className="flex justify-center">
-            <span className="px-3 py-1 rounded-full bg-[#F3F4F6] text-[10px] font-semibold text-[#6B7280]">
-              Today
-            </span>
-          </div>
-
-          {messages.map((m) => {
+      {/* Messages Scroll Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F8FAFC]">
+        {messages.length > 0 ? (
+          messages.map((m) => {
             const isUser = m.role === "user";
             return (
               <div
                 key={m.id}
-                className={cn("flex flex-col", isUser ? "items-end" : "items-start")}
+                className={cn(
+                  "flex flex-col max-w-[80%]",
+                  isUser ? "ml-auto items-end" : "mr-auto items-start"
+                )}
               >
                 <div
                   className={cn(
-                    "max-w-[70%] p-3.5 rounded-2xl text-xs leading-relaxed shadow-sm",
+                    "p-3.5 rounded-2xl text-xs font-medium leading-relaxed shadow-xs",
                     isUser
-                      ? "bg-[#F59E0B] text-black font-medium rounded-tr-sm"
-                      : "bg-white text-[#111827] border border-[#E5E7EB] rounded-tl-sm"
+                      ? "bg-[#F59E0B] text-black font-bold rounded-tr-xs"
+                      : "bg-white text-[#0F172A] border border-[#E2E8F0] rounded-tl-xs"
                   )}
                 >
-                  <p className="whitespace-pre-wrap">{m.text}</p>
+                  {m.text}
                 </div>
-                <span className="text-[10px] text-[#9CA3AF] mt-1 px-1">{m.time}</span>
+                <span className="text-[10px] text-[#64748B] mt-1 px-1">{m.time}</span>
               </div>
             );
-          })}
-
-          {isTyping && (
-            <div className="flex items-center gap-2 text-xs text-[#9CA3AF]">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F59E0B]" />
-              <span>AI is typing...</span>
+          })
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[#64748B] space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-[#FEF3C7] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+              <Sparkles className="w-6 h-6 text-[#D97706]" />
             </div>
-          )}
-        </div>
-
-        {/* Bottom Input Area */}
-        <form onSubmit={handleSendMessage} className="p-4 border-t border-[#E5E7EB] bg-white">
-          <div className="relative flex items-center rounded-2xl bg-[#F9FAFB] border border-[#E5E7EB] focus-within:border-[#F59E0B] focus-within:ring-2 focus-within:ring-[#F59E0B]/10 transition-all">
-            <button
-              type="button"
-              className="pl-3.5 text-[#9CA3AF] hover:text-[#4B5563] cursor-pointer"
-              title="Attach media"
-            >
-              <ImageIcon className="w-4 h-4" />
-            </button>
-            <input
-              type="text"
-              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              className="w-full pl-3 pr-12 py-3 bg-transparent text-xs text-[#111827] placeholder-[#9CA3AF] focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isTyping}
-              className="absolute right-2.5 p-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black transition-all disabled:opacity-30 cursor-pointer shadow-sm"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-[#0F172A]">AI Simulator Ready</h3>
+              <p className="text-xs text-[#64748B] max-w-sm">
+                Type any query (e.g. asking for products, prices, delivery info) to test how your AI will reply to customers.
+              </p>
+            </div>
           </div>
-        </form>
+        )}
+
+        {isTyping && (
+          <div className="flex items-center gap-2 mr-auto bg-white border border-[#E2E8F0] px-3.5 py-2.5 rounded-2xl text-xs text-[#64748B] rounded-tl-xs shadow-xs">
+            <Loader2 className="w-3.5 h-3.5 text-[#F59E0B] animate-spin" />
+            <span>AI is generating response...</span>
+          </div>
+        )}
       </div>
+
+      {/* Chat Input Bar */}
+      <form onSubmit={handleSendMessage} className="p-3 border-t border-[#E2E8F0] bg-white flex items-center gap-2">
+        <input
+          type="text"
+          placeholder="Ask a question as a customer (e.g. দাম কত?, ডেলিভারি চার্জ কত?)..."
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          className="flex-1 px-4 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#F59E0B]"
+        />
+        <button
+          type="submit"
+          disabled={!inputText.trim() || isTyping}
+          className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+        >
+          {isTyping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          <span>Send</span>
+        </button>
+      </form>
     </div>
   );
 }

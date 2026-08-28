@@ -787,6 +787,20 @@ export async function toggleAdminCoupon(id: string) {
   }
 }
 
+export async function testPlaygroundAI(data: { message: string; history?: any[] }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/knowledge/playground`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+
 
 
 
