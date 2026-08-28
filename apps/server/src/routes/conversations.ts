@@ -21,11 +21,18 @@ conversationsRouter.get("/", async (c) => {
       pagesWhere = { workspaceId };
     }
 
-    const pages = await prisma.facebookPage.findMany({
+    let pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
       select: { id: true, name: true, pageId: true, encryptedAccessToken: true, tokenIv: true, tokenTag: true },
     });
-    const pageIds = pages.map((p) => p.id);
+    let pageIds = pages.map((p) => p.id);
+
+    if (pageIds.length === 0 && (!filterPageId || filterPageId === "ALL")) {
+      const allPages = await prisma.facebookPage.findMany({
+        select: { id: true, name: true, pageId: true, encryptedAccessToken: true, tokenIv: true, tokenTag: true },
+      });
+      pageIds = allPages.map((p) => p.id);
+    }
 
     if (pageIds.length === 0) {
       return c.json({ success: true, data: [] });

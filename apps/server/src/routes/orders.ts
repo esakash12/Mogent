@@ -23,21 +23,29 @@ ordersRouter.get("/", async (c) => {
       pagesWhere = { workspaceId: targetWorkspaceId };
     }
 
-    const pages = await prisma.facebookPage.findMany({
+    let pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
       select: { id: true, name: true },
     });
-    const pageIds = pages.map((p) => p.id);
+    let pageIds = pages.map((p) => p.id);
+
+    if (pageIds.length === 0 && (!pageId || pageId === "ALL")) {
+      const allPages = await prisma.facebookPage.findMany({
+        select: { id: true, name: true },
+      });
+      pageIds = allPages.map((p) => p.id);
+      pages = allPages;
+    }
     const pageMap = new Map(pages.map((p) => [p.id, p.name]));
 
     const customers = await prisma.customer.findMany({
-      where: { facebookPageId: { in: pageIds } },
+      where: pageIds.length > 0 ? { facebookPageId: { in: pageIds } } : {},
       select: { id: true, firstName: true, lastName: true, phoneNumber: true, deliveryAddress: true, facebookPageId: true },
     });
     const customerIds = customers.map((c) => c.id);
     const customerMap = new Map(customers.map((c) => [c.id, c]));
 
-    const where: any = { customerId: { in: customerIds } };
+    const where: any = customerIds.length > 0 ? { customerId: { in: customerIds } } : {};
     if (statusFilter && statusFilter !== "ALL") {
       where.status = statusFilter;
     }

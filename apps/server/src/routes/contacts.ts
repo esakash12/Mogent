@@ -17,24 +17,21 @@ contactsRouter.get("/", async (c) => {
       pagesWhere = { workspaceId };
     }
 
-    const pages = await prisma.facebookPage.findMany({
+    let pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
       select: { id: true, name: true, pageId: true },
     });
-    const pageIds = pages.map((p) => p.id);
+    let pageIds = pages.map((p) => p.id);
 
-    if (pageIds.length === 0) {
-      return c.json({
-        success: true,
-        data: [],
-        totalCount: 0,
-        verifiedPhonesCount: 0,
-        confirmedBuyersCount: 0,
+    if (pageIds.length === 0 && (!pageId || pageId === "ALL")) {
+      const allPages = await prisma.facebookPage.findMany({
+        select: { id: true, name: true, pageId: true },
       });
+      pageIds = allPages.map((p) => p.id);
     }
 
     const customers = await prisma.customer.findMany({
-      where: { facebookPageId: { in: pageIds } },
+      where: pageIds.length > 0 ? { facebookPageId: { in: pageIds } } : {},
       include: { facebookPage: true },
       orderBy: { updatedAt: "desc" },
     });

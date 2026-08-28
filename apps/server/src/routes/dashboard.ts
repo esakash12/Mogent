@@ -22,26 +22,33 @@ dashboardRouter.get("/analytics", async (c) => {
       });
     }
 
-    const pages = await prisma.facebookPage.findMany({
+    let pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
       select: { id: true },
     });
-    const pageIds = pages.map((p) => p.id);
+    let pageIds = pages.map((p) => p.id);
+
+    if (pageIds.length === 0) {
+      const allPages = await prisma.facebookPage.findMany({
+        select: { id: true },
+      });
+      pageIds = allPages.map((p) => p.id);
+    }
 
     const [totalConversations, totalContacts, productsCount, aiResolvedCount] =
       await Promise.all([
         pageIds.length > 0
           ? prisma.conversation.count({ where: { facebookPageId: { in: pageIds } } })
-          : 0,
+          : prisma.conversation.count(),
         pageIds.length > 0
           ? prisma.customer.count({ where: { facebookPageId: { in: pageIds } } })
-          : 0,
-        prisma.product.count({ where: productsWhere }),
+          : prisma.customer.count(),
+        prisma.product.count(),
         pageIds.length > 0
           ? prisma.conversation.count({
               where: { facebookPageId: { in: pageIds }, isHumanControl: false },
             })
-          : 0,
+          : prisma.conversation.count({ where: { isHumanControl: false } }),
       ]);
 
     // Customer sentiments for this workspace

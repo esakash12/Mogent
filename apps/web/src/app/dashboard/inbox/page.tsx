@@ -15,6 +15,10 @@ import {
   Facebook,
   Loader2,
   CheckCircle2,
+  Phone,
+  MapPin,
+  Bot,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchConversations, fetchMessages, sendMessage, toggleConversationMode } from "@/lib/api";
@@ -39,6 +43,7 @@ interface Conversation {
   lastMessage: string;
   lastTime: string;
   tag?: string;
+  pageName?: string;
   unresolvedReason?: string | null;
   unresolvedQuestion?: string | null;
 }
@@ -54,53 +59,15 @@ const filterTabsList: { id: FilterTab; label: string }[] = [
 ];
 
 export default function LiveInboxPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: "1",
-      customerName: "MD Shohag",
-      psid: "psid_101",
-      status: "HANDOFF_REQUIRED",
-      isHumanControl: false,
-      lastMessage: "আপনার প্রশ্নটি পেয়েছি, আমরা শীঘ্রই উত্তর দিচ্ছি। 😃",
-      lastTime: "04:10 PM",
-      tag: "PRODUCT NOT IN CATALOG",
-      unresolvedReason: "PRODUCT NOT IN CATALOG",
-      unresolvedQuestion: "তোমার কি কি পন্য আছে?",
-    },
-  ]);
-  const [selectedId, setSelectedId] = useState<string | null>("1");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "m1",
-      sender: "CUSTOMER",
-      text: "ok thak lagbe na",
-      time: "04:10 PM",
-    },
-    {
-      id: "m2",
-      sender: "AI",
-      text: "ঠিক আছে! পরবর্তীতে কোনো প্রয়োজন হলে জানাবেন। ভালো থাকবেন!",
-      time: "04:10 PM",
-    },
-    {
-      id: "m3",
-      sender: "CUSTOMER",
-      text: "তোমার কি কি পন্য আছে?",
-      time: "04:10 PM",
-    },
-    {
-      id: "m4",
-      sender: "AI",
-      text: "আপনার প্রশ্নটি পেয়েছি, আমরা শীঘ্রই উত্তর দিচ্ছি। 😃",
-      time: "04:10 PM",
-    },
-  ]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isNotActionable, setIsNotActionable] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -108,32 +75,34 @@ export default function LiveInboxPage() {
     if (!isBackground) setLoading(true);
     try {
       const data = await fetchConversations();
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         setConversations(data);
-        if (!selectedId || !data.some((c) => c.id === selectedId)) {
-          setSelectedId(data[0].id);
+        if (data.length > 0) {
+          setSelectedId((prev) => (prev && data.some((c) => c.id === prev) ? prev : data[0].id));
         }
       }
     } catch (err) {
-      console.error("Failed to load inbox:", err);
+      console.error("Failed to load live inbox:", err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(true), 5000);
+    const interval = setInterval(() => loadData(true), 6000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     if (!selectedId) return;
+    setMessagesLoading(true);
     fetchMessages(selectedId)
       .then((msgs) => {
-        if (Array.isArray(msgs) && msgs.length > 0) setMessages(msgs);
+        if (Array.isArray(msgs)) setMessages(msgs);
       })
-      .catch((err) => console.error("Failed to load messages:", err));
+      .catch((err) => console.error("Failed to load messages:", err))
+      .finally(() => setMessagesLoading(false));
   }, [selectedId]);
 
   useEffect(() => {
@@ -188,35 +157,32 @@ export default function LiveInboxPage() {
       c.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
 
-    if (!matchesSearch) return false;
-
-    if (activeTab === "PENDING") return c.status === "HANDOFF_REQUIRED";
-    if (activeTab === "AI") return !c.isHumanControl;
-    if (activeTab === "AGENT") return c.isHumanControl;
-    if (activeTab === "RESOLVED") return c.status === "RESOLVED";
-    return true;
+    if (activeTab === "ALL") return matchesSearch;
+    if (activeTab === "PENDING") return matchesSearch && (c.status === "HANDOFF_REQUIRED" || c.isHumanControl);
+    if (activeTab === "AI") return matchesSearch && !c.isHumanControl && c.status !== "RESOLVED";
+    if (activeTab === "AGENT") return matchesSearch && c.isHumanControl;
+    if (activeTab === "RESOLVED") return matchesSearch && c.status === "RESOLVED";
+    return matchesSearch;
   });
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-2xl border border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
+    <div className="h-[calc(100vh-6rem)] flex flex-col md:flex-row bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
       {/* Left Sidebar: Conversations List */}
-      <div className="w-full md:w-80 border-r border-[#E5E7EB] bg-white flex flex-col justify-between shrink-0">
-        <div className="p-4 border-b border-[#F3F4F6] space-y-3">
-          <h2 className="text-sm font-bold text-[#111827]">ইনবক্স</h2>
-
-          {/* Search bar */}
+      <div className="w-full md:w-80 lg:w-96 border-r border-[#E2E8F0] flex flex-col shrink-0 bg-[#FFFFFF]">
+        {/* Search Header */}
+        <div className="p-3.5 border-b border-[#F1F5F9] space-y-2.5">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="কথোপকথন খুঁজুন"
+              placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] placeholder-[#9CA3AF] focus:outline-none focus:border-[#F59E0B]"
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#F59E0B]"
             />
           </div>
 
-          {/* Filter Tabs */}
+          {/* 5 Filter Tabs */}
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
             {filterTabsList.map((tab) => {
               const active = activeTab === tab.id;
@@ -225,10 +191,10 @@ export default function LiveInboxPage() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                    "px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer",
                     active
-                      ? "bg-[#F59E0B] text-black font-bold shadow-sm"
-                      : "text-[#6B7280] hover:text-[#111827] hover:bg-[#F3F4F6]"
+                      ? "bg-[#F59E0B] text-black shadow-sm"
+                      : "text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
                   )}
                 >
                   {tab.label}
@@ -238,219 +204,186 @@ export default function LiveInboxPage() {
           </div>
         </div>
 
-        {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {loading && conversations.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#9CA3AF]">
-              <Loader2 className="w-5 h-5 text-[#F59E0B] animate-spin mx-auto mb-2" />
-              <span>Loading messages...</span>
+        {/* Conversations Scrollable List */}
+        <div className="flex-1 overflow-y-auto divide-y divide-[#F1F5F9]">
+          {loading ? (
+            <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 text-[#F59E0B] animate-spin" />
+              <span className="text-xs font-semibold text-[#64748B]">Loading live chats...</span>
             </div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#9CA3AF]">
-              কোনো কথোপকথন পাওয়া যায়নি
-            </div>
-          ) : (
-            filteredConversations.map((c) => {
-              const isSelected = selectedId === c.id;
+          ) : filteredConversations.length > 0 ? (
+            filteredConversations.map((conv) => {
+              const isSelected = conv.id === selectedId;
               return (
                 <div
-                  key={c.id}
-                  onClick={() => setSelectedId(c.id)}
+                  key={conv.id}
+                  onClick={() => setSelectedId(conv.id)}
                   className={cn(
-                    "p-3 rounded-2xl cursor-pointer transition-all flex items-start gap-3 relative",
-                    isSelected
-                      ? "bg-[#FFFDF5] border border-[#FEF3C7] shadow-sm"
-                      : "hover:bg-[#F9FAFB]"
+                    "p-3.5 flex items-start gap-3 cursor-pointer transition-colors text-left relative",
+                    isSelected ? "bg-[#FFFDF5] border-l-4 border-[#F59E0B]" : "hover:bg-[#F8FAFC]"
                   )}
                 >
-                  {/* Avatar with Messenger Icon Overlay */}
-                  <div className="relative w-10 h-10 shrink-0">
-                    <div className="w-full h-full rounded-full bg-[#E11D48] text-white flex items-center justify-center font-bold text-xs shadow-sm overflow-hidden">
-                      {c.profilePic ? (
-                        <img src={c.profilePic} alt={c.customerName} className="w-full h-full object-cover" />
-                      ) : (
-                        c.customerName[0]?.toUpperCase() || <User className="w-4 h-4" />
-                      )}
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-[#FEF3C7] text-[#92400E] font-bold text-xs flex items-center justify-center border border-[#FDE68A]">
+                      {conv.avatar && conv.avatar.length <= 2 ? conv.avatar : conv.customerName?.[0] || "C"}
                     </div>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm">
-                      <div className="w-3.5 h-3.5 rounded-full bg-[#0084FF] flex items-center justify-center">
-                        <MessageSquare className="w-2 h-2 text-white fill-white" />
-                      </div>
-                    </div>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#1877F2] text-white flex items-center justify-center border-2 border-white shadow-xs">
+                      <Facebook className="w-2 h-2 fill-current" />
+                    </span>
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-[#111827] truncate">
-                        {c.customerName}
+                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                      <p className="text-xs font-bold text-[#0F172A] truncate">
+                        {conv.customerName}
                       </p>
-                      <span className="text-[10px] text-[#9CA3AF] shrink-0">
-                        {c.lastTime}
+                      <span className="text-[10px] text-[#64748B] shrink-0 font-medium">
+                        {conv.lastTime}
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-[#6B7280] truncate mt-0.5">
-                      {c.lastMessage}
+                    <p className="text-xs text-[#475569] truncate mb-1">
+                      {conv.lastMessage}
                     </p>
 
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
-                        অপেক্ষমাণ
-                      </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {conv.isHumanControl ? (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]">
+                          👤 Agent Control
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+                          ⚡ AI Active
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             })
+          ) : (
+            <div className="p-8 text-center text-xs text-[#64748B]">
+              No conversations found.
+            </div>
           )}
         </div>
       </div>
 
-      {/* Right Area: Conversation Messages & Reply Box */}
+      {/* Right Chat Area */}
       {activeConv ? (
-        <div className="flex-1 flex flex-col justify-between bg-[#F8FAFC]">
-          {/* Header */}
-          <div className="p-3.5 px-6 border-b border-[#E5E7EB] bg-white flex items-center justify-between">
+        <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+          {/* Chat Header */}
+          <div className="p-3.5 border-b border-[#E2E8F0] bg-white flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="relative w-9 h-9 shrink-0">
-                <div className="w-full h-full rounded-full bg-[#E11D48] text-white flex items-center justify-center font-bold text-xs">
-                  {activeConv.profilePic ? (
-                    <img src={activeConv.profilePic} alt={activeConv.customerName} className="w-full h-full object-cover" />
-                  ) : (
-                    activeConv.customerName[0]?.toUpperCase() || <User className="w-4 h-4" />
-                  )}
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center shadow-sm">
-                  <div className="w-3 h-3 rounded-full bg-[#0084FF] flex items-center justify-center">
-                    <MessageSquare className="w-1.5 h-1.5 text-white fill-white" />
-                  </div>
-                </div>
+              <div className="w-9 h-9 rounded-full bg-[#FEF3C7] text-[#92400E] font-bold text-xs flex items-center justify-center border border-[#FDE68A]">
+                {activeConv.customerName?.[0] || "C"}
               </div>
-
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-[#111827]">
+              <div>
+                <h3 className="text-xs font-bold text-[#0F172A]">
                   {activeConv.customerName}
                 </h3>
-                <span className="px-2 py-0.5 rounded-md bg-[#FFFBEB] text-[#D97706] text-[10px] font-bold border border-[#FDE68A]">
-                  {activeConv.tag || "PRODUCT NOT IN CATALOG"}
-                </span>
+                <div className="flex items-center gap-2 text-[11px] text-[#64748B]">
+                  {activeConv.phone && (
+                    <span className="flex items-center gap-1 text-[#059669] font-mono font-semibold">
+                      <Phone className="w-3 h-3" /> {activeConv.phone}
+                    </span>
+                  )}
+                  <span>• {activeConv.pageName || "Facebook Page"}</span>
+                </div>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]">
-                অপেক্ষমাণ
-              </span>
-              <button
-                onClick={handleToggleHumanControl}
-                className="px-3.5 py-1.5 rounded-xl border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-xs font-bold text-[#374151] transition-all cursor-pointer shadow-sm"
-              >
-                {activeConv.isHumanControl ? "এআই সক্রিয় করুন" : "চ্যাটটি নিন"}
-              </button>
-            </div>
+            <button
+              onClick={handleToggleHumanControl}
+              className={cn(
+                "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border",
+                activeConv.isHumanControl
+                  ? "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0] hover:bg-[#D1FAE5]"
+                  : "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA] hover:bg-[#FEE2E2]"
+              )}
+            >
+              {activeConv.isHumanControl ? (
+                <>
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Resume AI Mode</span>
+                </>
+              ) : (
+                <>
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Human Takeover</span>
+                </>
+              )}
+            </button>
           </div>
 
-          {/* UNRESOLVED AI WARNING CARD (Exact Match to Screenshot 9) */}
-          {!isNotActionable && activeConv.status === "HANDOFF_REQUIRED" && (
-            <div className="mx-6 my-4 p-5 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] space-y-3 shadow-sm animate-in fade-in">
-              <div className="flex items-center gap-2 text-[#92400E]">
-                <AlertTriangle className="w-4 h-4 text-[#D97706] shrink-0" />
-                <span className="text-xs font-bold">AI couldn&apos;t answer this question</span>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-[#78350F]">Reason:</span>
-                <span className="px-2 py-0.5 rounded-md bg-[#FEF3C7] text-[#92400E] text-[11px] font-bold border border-[#FDE68A] flex items-center gap-1">
-                  <ShoppingBag className="w-3 h-3 text-[#D97706]" />
-                  <span>{activeConv.unresolvedReason || "PRODUCT NOT IN CATALOG"}</span>
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-[11px] text-[#78350F]">Customer asked:</p>
-                <div className="p-3 rounded-xl bg-white border border-[#FDE68A] text-xs text-[#111827] font-medium">
-                  &ldquo;{activeConv.unresolvedQuestion || "তোমার কি কি পন্য আছে?"}&rdquo;
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 pt-1">
-                <Link
-                  href="/dashboard/commerce"
-                  className="px-4 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1.5"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5" />
-                  <span>Add product</span>
-                </Link>
-
-                <Link
-                  href="/dashboard/knowledge"
-                  className="px-4 py-2 rounded-xl bg-white hover:bg-[#F9FAFB] border border-[#E5E7EB] text-[#374151] text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1.5"
-                >
-                  <FileText className="w-3.5 h-3.5 text-[#F59E0B]" />
-                  <span>Add to knowledge</span>
-                </Link>
-
-                <button
-                  type="button"
-                  onClick={() => setIsNotActionable(true)}
-                  className="px-3 py-2 text-xs font-semibold text-[#6B7280] hover:text-[#111827] cursor-pointer"
-                >
-                  Not actionable
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Messages Feed */}
-          <div className="p-6 overflow-y-auto space-y-4 flex-1">
-            {messages.map((m) => {
-              const isCustomer = m.sender === "CUSTOMER";
-              return (
-                <div
-                  key={m.id}
-                  className={cn("flex flex-col", isCustomer ? "items-start" : "items-end")}
-                >
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messagesLoading ? (
+              <div className="py-12 flex justify-center">
+                <Loader2 className="w-6 h-6 text-[#F59E0B] animate-spin" />
+              </div>
+            ) : messages.length > 0 ? (
+              messages.map((m) => {
+                const isCustomer = m.sender === "CUSTOMER";
+                return (
                   <div
+                    key={m.id}
                     className={cn(
-                      "max-w-[70%] p-3.5 rounded-2xl text-xs leading-relaxed shadow-sm",
-                      isCustomer
-                        ? "bg-white text-[#111827] border border-[#E5E7EB] rounded-tl-sm"
-                        : "bg-[#F59E0B] text-black font-medium rounded-tr-sm"
+                      "flex flex-col max-w-[75%]",
+                      isCustomer ? "mr-auto items-start" : "ml-auto items-end"
                     )}
                   >
-                    <p className="whitespace-pre-wrap">{m.text}</p>
+                    <div
+                      className={cn(
+                        "p-3.5 rounded-2xl text-xs font-medium leading-relaxed shadow-xs",
+                        isCustomer
+                          ? "bg-white text-[#0F172A] border border-[#E2E8F0] rounded-tl-xs"
+                          : m.sender === "HUMAN"
+                          ? "bg-[#1E293B] text-white rounded-tr-xs"
+                          : "bg-[#F59E0B] text-black font-semibold rounded-tr-xs"
+                      )}
+                    >
+                      {m.text}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-[#64748B]">
+                      <span>{m.sender === "AI" ? "⚡ AI" : m.sender === "HUMAN" ? "👤 Agent" : "Customer"}</span>
+                      <span>•</span>
+                      <span>{m.time}</span>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-[#9CA3AF] mt-1 px-1">{m.time}</span>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <div className="py-12 text-center text-xs text-[#64748B]">
+                No messages in this chat yet.
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Reply Form */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t border-[#E5E7EB] bg-white">
-            <div className="relative flex items-center rounded-2xl bg-[#F9FAFB] border border-[#E5E7EB] focus-within:border-[#F59E0B] focus-within:ring-2 focus-within:ring-[#F59E0B]/10 transition-all">
-              <input
-                type="text"
-                placeholder="একটি বার্তা লিখুন... (পাঠাতে Enter চাপুন)"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                className="w-full pl-4 pr-12 py-3 bg-transparent text-xs text-[#111827] placeholder-[#9CA3AF] focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!inputText.trim() || isSending}
-                className="absolute right-2.5 p-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black transition-all disabled:opacity-30 cursor-pointer shadow-sm"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </div>
+          {/* Chat Input */}
+          <form onSubmit={handleSendMessage} className="p-3 border-t border-[#E2E8F0] bg-white flex items-center gap-2">
+            <input
+              type="text"
+              placeholder={activeConv.isHumanControl ? "Type a reply to customer..." : "Takeover to reply manually, or type here..."}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#F59E0B]"
+            />
+            <button
+              type="submit"
+              disabled={isSending || !inputText.trim()}
+              className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              <span>Send</span>
+            </button>
           </form>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center p-8 text-center text-xs text-[#9CA3AF]">
-          Select a conversation from the left to view messages.
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[#64748B] gap-2">
+          <MessageSquare className="w-10 h-10 text-[#CBD5E1]" />
+          <p className="text-xs font-bold text-[#0F172A]">Select a conversation to start chatting</p>
         </div>
       )}
     </div>
