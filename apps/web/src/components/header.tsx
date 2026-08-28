@@ -137,27 +137,30 @@ export function Header() {
         {/* Automation Quick Button */}
         <Link
           href="/dashboard/automation"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] text-xs font-semibold transition-all shadow-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-sm"
         >
-          <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
-          <span>অটোমেশন</span>
+          <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
+          <span>✨ অটোমেশন</span>
         </Link>
 
         {/* Conversations / Credits Badge */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] border border-[#FEF3C7] text-[#92400E] text-xs font-semibold">
-          <Coins className="w-3.5 h-3.5 text-[#F59E0B]" />
-          <span>98 কথোপকথন</span>
-        </div>
+        <Link
+          href="/dashboard/billing"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-sm"
+        >
+          <Coins className="w-3.5 h-3.5 text-[#D97706]" />
+          <span>🪙 98 কথোপকথন</span>
+        </Link>
 
         {/* Language Switcher Toggle */}
-        <div className="flex items-center p-0.5 rounded-full bg-[#F3F4F6] border border-[#E5E7EB] text-xs font-semibold">
+        <div className="flex items-center p-0.5 rounded-full bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-bold">
           <button
             onClick={() => setLang("en")}
             className={cn(
-              "px-2 py-0.5 rounded-full transition-all cursor-pointer",
+              "px-2.5 py-0.5 rounded-full transition-all cursor-pointer",
               lang === "en"
-                ? "bg-[#F59E0B] text-white shadow-sm font-bold"
-                : "text-[#6B7280] hover:text-[#111827]"
+                ? "bg-[#F59E0B] text-black shadow-sm font-black"
+                : "text-[#475569] hover:text-[#0F172A]"
             )}
           >
             EN
@@ -165,10 +168,10 @@ export function Header() {
           <button
             onClick={() => setLang("bn")}
             className={cn(
-              "px-2 py-0.5 rounded-full transition-all cursor-pointer",
+              "px-2.5 py-0.5 rounded-full transition-all cursor-pointer",
               lang === "bn"
-                ? "bg-[#F59E0B] text-white shadow-sm font-bold"
-                : "text-[#6B7280] hover:text-[#111827]"
+                ? "bg-[#F59E0B] text-black shadow-sm font-black"
+                : "text-[#475569] hover:text-[#0F172A]"
             )}
           >
             বাংলা

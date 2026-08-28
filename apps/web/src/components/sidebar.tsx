@@ -203,9 +203,9 @@ export function Sidebar() {
 
   const renderNavGroup = (title: string, items: NavItem[]) => (
     <div className="space-y-1">
-      <div className="px-3 py-1.5 text-[11px] font-bold text-[#8E8E93] tracking-wider uppercase">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] px-3 mb-1.5">
         {title}
-      </div>
+      </p>
       {items.map((item) => {
         const active = isNavActive(item);
         const Icon = item.icon;
@@ -214,23 +214,23 @@ export function Sidebar() {
             key={item.href}
             href={item.href}
             className={cn(
-              "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group",
+              "flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all group",
               active
-                ? "bg-[#FEF9EE] text-[#D97706] font-semibold shadow-sm"
-                : "text-[#4B5563] hover:bg-[#F3F4F6] hover:text-[#111827]"
+                ? "bg-[#FEF3C7] text-[#92400E] font-bold border border-[#FDE68A] shadow-sm"
+                : "text-[#334155] font-semibold hover:bg-[#F1F5F9] hover:text-[#0F172A]"
             )}
           >
             <div className="flex items-center gap-3">
               <Icon
                 className={cn(
                   "w-4 h-4 transition-colors",
-                  active ? "text-[#D97706]" : "text-[#6B7280] group-hover:text-[#111827]"
+                  active ? "text-[#D97706]" : "text-[#64748B] group-hover:text-[#0F172A]"
                 )}
               />
               <span>{item.nameBn || item.name}</span>
             </div>
             {item.badge && (
-              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
+              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
                 {item.badge}
               </span>
             )}
@@ -310,8 +310,8 @@ export function Sidebar() {
           {renderNavGroup("GO LIVE", goLiveNav)}
           {renderNavGroup("ACTIVITY", activityNav)}
 
-          {/* Admin Navigation (if Owner/Admin) */}
-          {(user?.isAdmin || workspace?.role === "OWNER" || workspace?.role === "ADMIN") && (
+          {/* Admin Navigation (Only for Super Admins, never for normal workspace users/owners) */}
+          {user?.isAdmin === true && (
             renderNavGroup("ENTERPRISE ADMIN", adminNavigation)
           )}
         </nav>
