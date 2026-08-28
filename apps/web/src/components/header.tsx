@@ -1,186 +1,217 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Bell,
-  Menu,
-  X,
-  BarChart3,
-  MessageSquare,
-  Users,
-  ShoppingBag,
-  Bot,
-  Share2,
+  Sparkles,
+  Coins,
+  User,
+  LogOut,
   Settings,
-  CreditCard
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { fetchPages } from "@/lib/api";
 
-const navigation = [
-  { name: "Analytics", href: "/dashboard", icon: BarChart3 },
-  { name: "Live Inbox", href: "/dashboard/inbox", icon: MessageSquare, badge: "Live" },
-  { name: "Contacts", href: "/dashboard/contacts", icon: Users },
-  { name: "Orders & Catalog", href: "/dashboard/commerce", icon: ShoppingBag, badge: "New" },
-  { name: "AI Studio", href: "/dashboard/ai", icon: Bot },
-  { name: "Integrations", href: "/dashboard/integrations", icon: Share2 },
-  { name: "Billing & Plans", href: "/dashboard/billing", icon: CreditCard },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings },
-];
+interface PageMeta {
+  title: string;
+  subtitle: string;
+  hasBack?: boolean;
+}
+
+const pageMetaMap: Record<string, PageMeta> = {
+  "/dashboard": {
+    title: "Dashboard",
+    subtitle: "Overview of your AI performance, conversations, and leads",
+  },
+  "/dashboard/commerce": {
+    title: "Products",
+    subtitle: "Add your product catalog so AI can answer customer questions",
+    hasBack: true,
+  },
+  "/dashboard/products": {
+    title: "Products",
+    subtitle: "Add your product catalog so AI can answer customer questions",
+    hasBack: true,
+  },
+  "/dashboard/knowledge": {
+    title: "Knowledge",
+    subtitle: "Add FAQs, policies, and business info to train your AI",
+    hasBack: true,
+  },
+  "/dashboard/services": {
+    title: "সার্ভিস",
+    subtitle: "List each service you offer — your AI agent uses them to answer customers.",
+    hasBack: true,
+  },
+  "/dashboard/website": {
+    title: "Website",
+    subtitle: "Train your AI agent directly from your website URLs.",
+    hasBack: true,
+  },
+  "/dashboard/playground": {
+    title: "Chat",
+    subtitle: "Test how your AI responds before connecting to real customers",
+    hasBack: true,
+  },
+  "/dashboard/integrations": {
+    title: "Integrations",
+    subtitle: "Connect your social media accounts to go live",
+    hasBack: true,
+  },
+  "/dashboard/inbox": {
+    title: "Inbox",
+    subtitle: "Messages between your AI and customers",
+    hasBack: true,
+  },
+  "/dashboard/comments": {
+    title: "Comments",
+    subtitle: "Facebook post comments and AI auto-replies",
+    hasBack: true,
+  },
+  "/dashboard/broadcasts": {
+    title: "ক্যাম্পেইন",
+    subtitle: "আপনার নিজের কাস্টমারদের WhatsApp ও Messenger-এ অফার পাঠান।",
+    hasBack: true,
+  },
+  "/dashboard/leads": {
+    title: "Leads",
+    subtitle: "People who showed interest in your products",
+    hasBack: true,
+  },
+  "/dashboard/orders": {
+    title: "Orders",
+    subtitle: "Track and manage customer orders",
+    hasBack: true,
+  },
+  "/dashboard/automation": {
+    title: "Automation",
+    subtitle: "Configure autonomous AI rules, auto-followups, and triggers",
+    hasBack: true,
+  },
+  "/dashboard/settings": {
+    title: "Settings",
+    subtitle: "Manage your business workspace and notification preferences",
+    hasBack: true,
+  },
+};
 
 export function Header() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [pagesList, setPagesList] = useState<any[]>([]);
-  const [activePageId, setActivePageId] = useState<string>("ALL");
+  const [lang, setLang] = useState<"en" | "bn">("bn");
+  const [profileOpen, setProfileOpen] = useState(false);
   const pathname = usePathname();
-  const { workspace, user } = useAuth();
+  const router = useRouter();
+  const { user, logout } = useAuth();
 
-  useEffect(() => {
-    fetchPages().then((pages) => {
-      if (Array.isArray(pages)) {
-        setPagesList(pages);
-      } else {
-        setPagesList([]);
-      }
-    });
-
-    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
-    if (saved) {
-      setActivePageId(saved);
-    }
-  }, [pathname]);
-
-  const handlePageSwitch = (pageId: string) => {
-    setActivePageId(pageId);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mogent_active_page_id", pageId);
-      window.dispatchEvent(new CustomEvent("mogent_page_changed", { detail: { pageId } }));
-    }
+  const currentMeta = pageMetaMap[pathname] || {
+    title: pathname.split("/")[2] ? pathname.split("/")[2].charAt(0).toUpperCase() + pathname.split("/")[2].slice(1) : "Dashboard",
+    subtitle: "Mogent AI Autonomous Customer Platform",
   };
 
   return (
-    <>
-      <header className="h-14 border-b border-[#222] bg-[#0A0A0A]/90 backdrop-blur-md px-4 md:px-8 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          {/* Mobile Menu Toggle */}
-          <button 
-            className="md:hidden text-[#888] hover:text-[#EDEDED] transition-colors p-1 cursor-pointer"
-            onClick={() => setMobileMenuOpen(true)}
+    <header className="h-16 border-b border-[#E5E7EB] bg-[#FFFFFF] px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+      {/* Left: Page Title & Subtitle */}
+      <div className="flex items-center gap-3 min-w-0">
+        {currentMeta.hasBack && (
+          <button
+            onClick={() => router.back()}
+            className="w-8 h-8 rounded-full border border-[#E5E7EB] hover:bg-[#F3F4F6] flex items-center justify-center text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 cursor-pointer"
+            title="Go back"
           >
-            <Menu className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-[13px] font-medium text-[#EDEDED]">
-            <div className="flex items-center gap-1.5 text-[#888]">
-              <span className="hidden sm:inline">{workspace?.name || user?.name || "Workspace"}</span>
-              <span className="hidden sm:inline text-[#333]">/</span>
-              <span className="text-[#EDEDED] capitalize">
-                {pathname === "/dashboard" ? "Analytics" : pathname.split("/")[2] || "Overview"}
-              </span>
-            </div>
-            <span className="ml-2 px-1.5 py-0.5 rounded bg-[#1C1C1C] text-[#888] text-[10px] font-mono border border-[#333]">
-              {workspace?.role || "OWNER"}
-            </span>
-          </div>
+        )}
+        <div className="min-w-0">
+          <h1 className="text-lg font-bold text-[#111827] leading-tight truncate">
+            {currentMeta.title}
+          </h1>
+          <p className="text-xs text-[#6B7280] truncate hidden sm:block">
+            {currentMeta.subtitle}
+          </p>
+        </div>
+      </div>
+
+      {/* Right Controls */}
+      <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
+        {/* Automation Quick Button */}
+        <Link
+          href="/dashboard/automation"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#D97706] text-xs font-semibold transition-all shadow-sm"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
+          <span>অটোমেশন</span>
+        </Link>
+
+        {/* Conversations / Credits Badge */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] border border-[#FEF3C7] text-[#92400E] text-xs font-semibold">
+          <Coins className="w-3.5 h-3.5 text-[#F59E0B]" />
+          <span>98 কথোপকথন</span>
         </div>
 
-        {/* Right Controls & Global Page Switcher */}
-        <div className="flex items-center gap-3 md:gap-4">
-          {/* Global Multi-Page Switcher Dropdown */}
-          {pagesList.length > 0 ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#141414] hover:bg-[#1A1A1A] border border-[#2A2A2A] hover:border-[#383838] transition-all shadow-sm group">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse shrink-0"></span>
-              <span className="text-[11px] font-semibold text-[#888] hidden lg:inline">Page:</span>
-              <select
-                value={activePageId}
-                onChange={(e) => handlePageSwitch(e.target.value)}
-                className="bg-transparent text-xs font-bold text-amber-400 focus:outline-none cursor-pointer pr-1"
-              >
-                <option value="ALL" className="bg-[#111] text-[#EDEDED] font-medium py-1">
-                  🏢 All Pages ({pagesList.length})
-                </option>
-                {pagesList.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#111] text-[#EDEDED] font-medium py-1">
-                    📄 {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <Link
-              href="/dashboard/pages"
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#111] border border-[#222] text-[11px] text-[#888] hover:border-[#333] hover:text-[#EDEDED] transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-              <span>Connect Page</span>
-            </Link>
-          )}
-
-          <div className="w-[1px] h-4 bg-[#222]"></div>
-
-          <Link
-            href="/dashboard/settings"
-            className="text-[#888] hover:text-[#EDEDED] transition-colors p-1.5 rounded-md hover:bg-[#111]"
+        {/* Language Switcher Toggle */}
+        <div className="flex items-center p-0.5 rounded-full bg-[#F3F4F6] border border-[#E5E7EB] text-xs font-semibold">
+          <button
+            onClick={() => setLang("en")}
+            className={cn(
+              "px-2 py-0.5 rounded-full transition-all cursor-pointer",
+              lang === "en"
+                ? "bg-[#F59E0B] text-white shadow-sm font-bold"
+                : "text-[#6B7280] hover:text-[#111827]"
+            )}
           >
-            <Bell className="w-4 h-4" />
-          </Link>
+            EN
+          </button>
+          <button
+            onClick={() => setLang("bn")}
+            className={cn(
+              "px-2 py-0.5 rounded-full transition-all cursor-pointer",
+              lang === "bn"
+                ? "bg-[#F59E0B] text-white shadow-sm font-bold"
+                : "text-[#6B7280] hover:text-[#111827]"
+            )}
+          >
+            বাংলা
+          </button>
         </div>
-      </header>
 
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden">
-          <div 
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <div className="relative w-[260px] h-full bg-[#0A0A0A] border-r border-[#222] flex flex-col p-4 animate-in slide-in-from-left-full duration-200">
-            <div className="flex items-center justify-between mb-6">
-              <span className="font-bold text-sm text-[#EDEDED]">Mogent Menu</span>
-              <button 
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-[#888] hover:text-[#EDEDED] p-1"
+        {/* User Profile Avatar Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setProfileOpen(!profileOpen)}
+            className="w-8 h-8 rounded-full border-2 border-[#FDE68A] bg-[#FEF3C7] text-[#D97706] flex items-center justify-center font-bold text-xs hover:ring-2 hover:ring-[#F59E0B]/20 transition-all cursor-pointer"
+          >
+            {user?.name?.[0]?.toUpperCase() || <User className="w-4 h-4" />}
+          </button>
+
+          {profileOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-[#E5E7EB] shadow-xl py-1 z-50">
+              <div className="px-3 py-2 border-b border-[#F3F4F6]">
+                <p className="text-xs font-bold text-[#111827] truncate">{user?.name || "User"}</p>
+                <p className="text-[10px] text-[#6B7280] truncate">{user?.email}</p>
+              </div>
+              <Link
+                href="/dashboard/settings"
+                onClick={() => setProfileOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-xs text-[#374151] hover:bg-[#F9FAFB] transition-colors"
               >
-                <X className="w-5 h-5" />
+                <Settings className="w-3.5 h-3.5 text-[#6B7280]" />
+                <span>Settings</span>
+              </Link>
+              <button
+                onClick={() => {
+                  setProfileOpen(false);
+                  logout();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#DC2626] hover:bg-[#FEF2F2] transition-colors text-left cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Logout</span>
               </button>
             </div>
-            
-            <nav className="space-y-1">
-              {navigation.map((item) => {
-                const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={cn(
-                      "flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all",
-                      isActive
-                        ? "bg-[#222] text-[#EDEDED] font-semibold"
-                        : "text-[#888] hover:text-[#EDEDED] hover:bg-[#111]"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <item.icon className={cn("w-4 h-4", isActive ? "text-white" : "text-[#888]")} />
-                      <span>{item.name}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-white text-black">
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
+          )}
         </div>
-      )}
-    </>
+      </div>
+    </header>
   );
 }

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -6,7 +6,6 @@ import {
   Check,
   Zap,
   ShieldCheck,
-  Clock,
   CheckCircle2,
   AlertCircle,
   Building2,
@@ -15,27 +14,12 @@ import {
   Loader2,
   Sparkles,
   RefreshCw,
-  Tag
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchBillingStatus, submitPayment, fetchPaymentConfig, validateCouponCode } from "@/lib/api";
 
 const PLANS = [
-  {
-    id: "FREE",
-    name: "Free Forever",
-    price: "৳০",
-    period: "/month",
-    description: "Start exploring AI automation without any upfront cost.",
-    features: [
-      "1 Facebook Page Connection",
-      "100 AI Automated Messages / mo",
-      "Mogent Engine Turbo (v3.1)",
-      "Basic FAQ Knowledge Base",
-      "Standard Community Support",
-    ],
-    highlight: false,
-  },
   {
     id: "STARTER",
     name: "Starter Plan",
@@ -97,53 +81,19 @@ export default function BillingPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>("BKASH");
   const [senderNumber, setSenderNumber] = useState("");
   const [trxId, setTrxId] = useState("");
-  const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // Dynamic Payment Gateway Config from Super Admin
-  const [paymentConfig, setPaymentConfig] = useState<{
-    bkashNumber: string;
-    bkashType: string;
-    nagadNumber: string;
-    nagadType: string;
-    rocketNumber: string;
-    rocketType: string;
-    instructions: string;
-  }>({
-    bkashNumber: "01711998877",
-    bkashType: "Personal (Send Money)",
-    nagadNumber: "01711998877",
-    nagadType: "Personal (Send Money)",
-    rocketNumber: "01711998877-0",
-    rocketType: "Personal (Send Money)",
-    instructions: "Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) below for instant admin verification.",
-  });
-
-  // Coupon State
-  const [couponCodeInput, setCouponCodeInput] = useState("");
-  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    discountType: string;
-    discountValue: number;
-    discountAmount: number;
-    originalPrice: number;
-    finalAmount: number;
-  } | null>(null);
-  const [couponMsg, setCouponMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
   const loadBilling = async () => {
     setLoading(true);
-    const [data, payConfigRes] = await Promise.all([
-      fetchBillingStatus(),
-      fetchPaymentConfig(),
-    ]);
-    setBillingData(data);
-    if (payConfigRes?.success && payConfigRes?.data) {
-      setPaymentConfig(payConfigRes.data);
+    try {
+      const data = await fetchBillingStatus();
+      if (data) setBillingData(data);
+    } catch (err) {
+      console.error("Failed to load billing:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -153,47 +103,9 @@ export default function BillingPage() {
   const handleOpenUpgrade = (planId: string) => {
     setSelectedPlan(planId);
     setFeedback(null);
-    setCouponMsg(null);
-    setAppliedCoupon(null);
-    setCouponCodeInput("");
     setSenderNumber("");
     setTrxId("");
     setShowModal(true);
-  };
-
-  const handleApplyCoupon = async () => {
-    if (!couponCodeInput.trim()) return;
-    setIsValidatingCoupon(true);
-    setCouponMsg(null);
-
-    const res = await validateCouponCode(couponCodeInput.trim(), selectedPlan);
-    if (res.success && res.data) {
-      setAppliedCoupon(res.data);
-      setCouponMsg({ type: "success", text: res.message || "Coupon applied successfully!" });
-    } else {
-      setAppliedCoupon(null);
-      setCouponMsg({ type: "error", text: res.error || "Invalid coupon code." });
-    }
-    setIsValidatingCoupon(false);
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponCodeInput("");
-    setCouponMsg(null);
-  };
-
-  const getPlanPrice = () => {
-    if (selectedPlan === "STARTER") return 999;
-    if (selectedPlan === "PRO") return 2499;
-    if (selectedPlan === "ENTERPRISE") return 5999;
-    return 0;
-  };
-
-  const calculateFinalPrice = () => {
-    const base = getPlanPrice();
-    if (!appliedCoupon) return base;
-    return Math.max(0, base - appliedCoupon.discountAmount);
   };
 
   const handleSubmitTrx = async (e: React.FormEvent) => {
@@ -206,143 +118,139 @@ export default function BillingPage() {
     setSubmitting(true);
     setFeedback(null);
 
-    const res = await submitPayment({
-      plan: selectedPlan,
-      method: paymentMethod,
-      senderNumber,
-      trxId,
-      couponCode: appliedCoupon?.code,
-      notes,
-    });
-
-    if (res.success) {
-      setFeedback({
-        type: "success",
-        message: "Payment submitted successfully! Admin will verify TrxID and activate your plan within 15-30 minutes.",
+    try {
+      const res = await submitPayment({
+        plan: selectedPlan,
+        method: paymentMethod,
+        senderNumber,
+        trxId,
       });
-      loadBilling();
-      setTimeout(() => {
-        setShowModal(false);
-      }, 2500);
-    } else {
-      setFeedback({ type: "error", message: res.error || "Failed to submit transaction." });
+
+      if (res?.success) {
+        setFeedback({
+          type: "success",
+          message: "Payment submitted! Admin will verify TrxID and activate your plan shortly.",
+        });
+        loadBilling();
+        setTimeout(() => setShowModal(false), 2500);
+      } else {
+        setFeedback({ type: "error", message: res?.error || "Failed to submit transaction." });
+      }
+    } catch (err) {
+      setFeedback({ type: "error", message: "Network error submitting payment." });
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   return (
-    <div className="space-y-10 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
+    <div className="space-y-8 max-w-6xl mx-auto">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            Subscription & Billing
-          </h1>
-          <p className="text-[14px] text-[#888] mt-1">
-            Manage your store's AI message quota, connected pages limits, and payment subscriptions.
+          <h2 className="text-base font-bold text-[#111827] flex items-center gap-2">
+            <Coins className="w-5 h-5 text-[#F59E0B]" />
+            <span>Subscription & AI Credits</span>
+          </h2>
+          <p className="text-xs text-[#6B7280]">
+            Manage your store&apos;s AI message quota, connected page limits, and payment subscriptions.
           </p>
         </div>
 
         <button
           onClick={loadBilling}
-          className="px-3.5 py-2 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-mono text-[#888] hover:text-[#EDEDED] flex items-center gap-2 transition-colors cursor-pointer w-fit"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-[#F9FAFB] border border-[#E5E7EB] text-xs font-semibold text-[#374151] shadow-sm transition-all cursor-pointer w-fit"
         >
-          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-          <span>Refresh Plan Status</span>
+          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin text-[#F59E0B]")} />
+          <span>Refresh Status</span>
         </button>
       </div>
 
       {/* Current Active Plan Card */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-[#111] to-[#0A0A0A] border border-[#333] flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl relative overflow-hidden">
+      <div className="p-6 rounded-2xl bg-white border border-[#E5E7EB] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="space-y-2">
           <div className="flex items-center gap-2.5">
-            <span className="text-xs font-medium text-[#888]">Current Subscription Plan</span>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500 text-black">
-              {billingData?.currentPlan || "STARTER"} ACTIVE
+            <span className="text-xs font-semibold text-[#6B7280]">Current Subscription Plan</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+              {billingData?.currentPlan || "PRO GROWTH"} ACTIVE
             </span>
           </div>
-          <h2 className="text-2xl font-bold text-[#EDEDED]">
-            {billingData?.currentPlanDetails?.name || "Starter Plan"}
-          </h2>
-          <p className="text-xs text-[#888]">
-            Connected Facebook Pages: <span className="text-[#EDEDED] font-semibold">{billingData?.connectedPagesCount || 0}</span> / {billingData?.pageLimit || 1} Allowed
+          <h3 className="text-xl font-black text-[#111827]">
+            {billingData?.currentPlanDetails?.name || "Pro Growth Plan (25,000 Messages)"}
+          </h3>
+          <p className="text-xs text-[#6B7280]">
+            Remaining AI Conversations: <span className="text-[#111827] font-bold">98 / 100</span>
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <button
-            onClick={() => handleOpenUpgrade("PRO")}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-amber-500/10"
-          >
-            <Zap className="w-4 h-4" />
-            <span>Upgrade to Pro / Enterprise</span>
-          </button>
-        </div>
+        <button
+          onClick={() => handleOpenUpgrade("PRO")}
+          className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer w-fit"
+        >
+          <Zap className="w-4 h-4" />
+          <span>Top-Up / Upgrade Plan</span>
+        </button>
       </div>
 
       {/* Pricing Cards Grid */}
       <div className="space-y-4">
-        <div className="text-center sm:text-left">
-          <h3 className="text-lg font-bold text-[#EDEDED]">Available Subscription Plans</h3>
-          <p className="text-xs text-[#888]">Choose a plan that fits your business message volume</p>
+        <div>
+          <h3 className="text-sm font-bold text-[#111827]">Available Plans</h3>
+          <p className="text-xs text-[#6B7280]">Choose a plan that fits your business message volume</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {PLANS.map((p) => {
-            const isCurrent = billingData?.currentPlan === p.id;
-
             return (
               <div
                 key={p.id}
                 className={cn(
-                  "p-6 rounded-2xl border flex flex-col justify-between transition-all relative",
+                  "p-6 rounded-2xl border flex flex-col justify-between transition-all relative bg-white",
                   p.highlight
-                    ? "bg-[#0F0F0F] border-amber-500/50 shadow-2xl shadow-amber-500/5"
-                    : "bg-[#0A0A0A] border-[#222] hover:border-[#333]"
+                    ? "border-[#F59E0B] shadow-md shadow-[#F59E0B]/10 ring-1 ring-[#F59E0B]"
+                    : "border-[#E5E7EB] hover:border-[#D1D5DB]"
                 )}
               >
                 {p.tag && (
-                  <span className="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black shadow-md">
+                  <span className="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-bold bg-[#F59E0B] text-black shadow-sm">
                     {p.tag}
                   </span>
                 )}
 
                 <div className="space-y-4">
                   <div>
-                    <h4 className="font-bold text-base text-[#EDEDED]">{p.name}</h4>
-                    <p className="text-xs text-[#888] mt-1 leading-relaxed">{p.description}</p>
+                    <h4 className="font-bold text-sm text-[#111827]">{p.name}</h4>
+                    <p className="text-xs text-[#6B7280] mt-1 leading-relaxed">{p.description}</p>
                   </div>
 
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-[#EDEDED]">{p.price}</span>
-                    <span className="text-xs text-[#888]">{p.period}</span>
+                    <span className="text-2xl font-black text-[#111827]">{p.price}</span>
+                    <span className="text-xs text-[#6B7280]">{p.period}</span>
                   </div>
 
-                  <div className="w-full h-[1px] bg-[#222] my-4" />
+                  <div className="w-full h-[1px] bg-[#F3F4F6] my-4" />
 
                   <ul className="space-y-2.5">
                     {p.features.map((feat, idx) => (
-                      <li key={idx} className="flex items-start gap-2.5 text-xs text-[#AAA]">
-                        <Check className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" />
+                      <li key={idx} className="flex items-start gap-2 text-xs text-[#374151]">
+                        <Check className="w-4 h-4 text-[#059669] shrink-0 mt-0.5" />
                         <span>{feat}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="pt-6 mt-6 border-t border-[#1C1C1C]">
+                <div className="pt-6 mt-6 border-t border-[#F3F4F6]">
                   <button
                     onClick={() => handleOpenUpgrade(p.id)}
                     className={cn(
-                      "w-full py-2.5 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer",
-                      isCurrent
-                        ? "bg-[#222] text-[#EDEDED] hover:bg-[#333]"
-                        : p.highlight
-                        ? "bg-amber-500 hover:bg-amber-400 text-black"
-                        : "bg-white hover:bg-[#EDEDED] text-black"
+                      "w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm",
+                      p.highlight
+                        ? "bg-[#F59E0B] hover:bg-[#D97706] text-black"
+                        : "bg-[#F9FAFB] hover:bg-[#F3F4F6] border border-[#E5E7EB] text-[#374151]"
                     )}
                   >
-                    <span>{isCurrent ? "Renew Current Plan" : "Select " + p.name}</span>
+                    <span>Select {p.name}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -352,281 +260,69 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Payment History Table */}
-      <div className="space-y-4 pt-6 border-t border-[#222]">
-        <div>
-          <h3 className="text-lg font-bold text-[#EDEDED]">Payment & Verification History</h3>
-          <p className="text-xs text-[#888]">Recent subscription payments and admin approvals</p>
-        </div>
-
-        {billingData?.paymentHistory?.length === 0 ? (
-          <div className="p-8 rounded-xl border border-[#222] bg-[#0A0A0A] text-center text-xs text-[#777]">
-            No payment history yet. Upgrading will display your transaction status here.
-          </div>
-        ) : (
-          <div className="rounded-xl border border-[#222] bg-[#0A0A0A] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#111] text-[#888] border-b border-[#222]">
-                  <tr>
-                    <th className="p-3.5 font-medium">Date</th>
-                    <th className="p-3.5 font-medium">Plan</th>
-                    <th className="p-3.5 font-medium">Amount</th>
-                    <th className="p-3.5 font-medium">Method</th>
-                    <th className="p-3.5 font-medium">Sender No.</th>
-                    <th className="p-3.5 font-medium">TrxID</th>
-                    <th className="p-3.5 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1C1C1C]">
-                  {billingData?.paymentHistory?.map((tx: any) => (
-                    <tr key={tx.id} className="hover:bg-[#111]/40 transition-colors">
-                      <td className="p-3.5 text-[#888] font-mono">
-                        {new Date(tx.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="p-3.5 font-semibold text-[#EDEDED]">{tx.plan}</td>
-                      <td className="p-3.5 font-mono text-[#EDEDED]">৳{tx.amount}</td>
-                      <td className="p-3.5 font-medium text-[#AAA]">{tx.method}</td>
-                      <td className="p-3.5 font-mono text-[#888]">{tx.senderNumber}</td>
-                      <td className="p-3.5 font-mono text-amber-500 font-semibold">{tx.trxId}</td>
-                      <td className="p-3.5">
-                        {tx.status === "APPROVED" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
-                            Approved
-                          </span>
-                        )}
-                        {tx.status === "PENDING" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                            Pending Verification
-                          </span>
-                        )}
-                        {tx.status === "REJECTED" && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
-                            Rejected
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Upgrade & Bangladeshi Payment Modal */}
+      {/* Payment Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-[#0A0A0A]/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-[#111] border border-[#333] p-6 space-y-6 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[#222] pb-4">
-              <div>
-                <h3 className="font-bold text-base text-[#EDEDED]">
-                  Upgrade to {selectedPlan} Plan
-                </h3>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-[#888]">Payable Amount:</span>
-                  {appliedCoupon ? (
-                    <div className="flex items-center gap-1.5 font-bold text-xs font-mono">
-                      <span className="text-[#666] line-through">৳{getPlanPrice().toLocaleString()}</span>
-                      <span className="text-emerald-400 text-sm">৳{calculateFinalPrice().toLocaleString()} BDT</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        {appliedCoupon.code} (-৳{appliedCoupon.discountAmount})
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-amber-500 font-bold font-mono text-sm">
-                      ৳{getPlanPrice().toLocaleString()} BDT / month
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-[#888] hover:text-[#EDEDED] p-1 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in">
+            <h3 className="text-sm font-bold text-[#111827]">
+              Subscribe to {selectedPlan} Plan
+            </h3>
 
-            {/* Promo Coupon Code Section */}
-            <div className="p-3.5 rounded-xl bg-[#0A0A0A] border border-[#222] space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-[#888] flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Have a Promo Coupon Code?</span>
-                </label>
-                {appliedCoupon && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveCoupon}
-                    className="text-[11px] text-red-400 hover:underline cursor-pointer"
-                  >
-                    Remove Coupon
-                  </button>
-                )}
-              </div>
-
-              {!appliedCoupon ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. MOGENT50"
-                    value={couponCodeInput}
-                    onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
-                    className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500 uppercase"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyCoupon}
-                    disabled={isValidatingCoupon || !couponCodeInput.trim()}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {isValidatingCoupon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Apply"}
-                  </button>
-                </div>
-              ) : (
-                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center justify-between">
-                  <span>🎉 Coupon applied: You saved ৳{appliedCoupon.discountAmount.toLocaleString()}!</span>
-                  <span className="font-mono font-bold">{appliedCoupon.code}</span>
-                </div>
-              )}
-
-              {couponMsg && !appliedCoupon && (
-                <p
-                  className={cn(
-                    "text-[11px]",
-                    couponMsg.type === "success" ? "text-emerald-400" : "text-red-400"
-                  )}
-                >
-                  {couponMsg.text}
-                </p>
-              )}
-            </div>
-
-            {/* Bangladeshi Payment Instructions (Admin Configured) */}
-            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222] space-y-3">
-              <span className="text-xs font-semibold text-[#EDEDED] flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-amber-500" />
-                <span>Payment Accounts (Bangladesh):</span>
-              </span>
-
-              <div className="space-y-1.5 text-xs text-[#AAA] font-mono">
-                <div className="p-2 rounded bg-[#111] flex justify-between items-center">
-                  <span>bKash ({paymentConfig.bkashType || "Send Money"}):</span>
-                  <span className="font-bold text-pink-500">{paymentConfig.bkashNumber}</span>
-                </div>
-                <div className="p-2 rounded bg-[#111] flex justify-between items-center">
-                  <span>Nagad ({paymentConfig.nagadType || "Send Money"}):</span>
-                  <span className="font-bold text-orange-500">{paymentConfig.nagadNumber}</span>
-                </div>
-                <div className="p-2 rounded bg-[#111] flex justify-between items-center">
-                  <span>Rocket ({paymentConfig.rocketType || "Send Money"}):</span>
-                  <span className="font-bold text-purple-400">{paymentConfig.rocketNumber}</span>
-                </div>
-              </div>
-              <p className="text-[11px] text-[#777] leading-relaxed">
-                {paymentConfig.instructions ||
-                  "Send the exact plan amount to any number above, then enter your mobile number and Transaction ID (TrxID) below for instant admin verification."}
+            <div className="p-3.5 rounded-xl bg-[#FFFDF5] border border-[#FEF3C7] space-y-1">
+              <p className="text-xs font-bold text-[#92400E]">Send Money / Merchant Payment:</p>
+              <p className="text-xs text-[#78350F]">
+                bKash / Nagad Personal: <span className="font-mono font-bold">01700000000</span>
               </p>
             </div>
 
-            {feedback && (
-              <div
-                className={cn(
-                  "p-3 rounded-lg text-xs flex items-center gap-2",
-                  feedback.type === "success"
-                    ? "bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981]"
-                    : "bg-red-500/10 border border-red-500/20 text-red-400"
-                )}
-              >
-                {feedback.type === "success" ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                )}
-                <span>{feedback.message}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmitTrx} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Select Payment Method</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {["BKASH", "NAGAD", "ROCKET"].map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setPaymentMethod(m)}
-                      className={cn(
-                        "py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer",
-                        paymentMethod === m
-                          ? "bg-amber-500 text-black border-amber-500 font-bold"
-                          : "bg-[#0A0A0A] text-[#888] border-[#222] hover:text-[#EDEDED]"
-                      )}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Sender Mobile Number</label>
+            <form onSubmit={handleSubmitTrx} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-[#374151] mb-1">Sender Mobile Number *</label>
                 <input
                   type="text"
                   required
-                  placeholder="017XXXXXXXX"
+                  placeholder="017xxxxxxxx"
                   value={senderNumber}
                   onChange={(e) => setSenderNumber(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 transition-colors font-mono"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Transaction ID (TrxID)</label>
+              <div>
+                <label className="block text-xs font-semibold text-[#374151] mb-1">Transaction ID (TrxID) *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. BL92KJX87M"
+                  placeholder="e.g. BL9A7K2M"
                   value={trxId}
                   onChange={(e) => setTrxId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 transition-colors font-mono uppercase"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs font-mono uppercase focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Notes (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="Any additional notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 transition-colors"
-                />
-              </div>
+              {feedback && (
+                <div className={cn(
+                  "p-3 rounded-xl text-xs font-medium",
+                  feedback.type === "success" ? "bg-[#ECFDF5] text-[#059669]" : "bg-[#FEF2F2] text-[#DC2626]"
+                )}>
+                  {feedback.message}
+                </div>
+              )}
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#222]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#F3F4F6]">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED] hover:bg-[#222] transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl border text-xs font-semibold text-[#4B5563]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-[#F59E0B] text-black font-bold text-xs disabled:opacity-50"
                 >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Submitting...</span>
-                    </>
-                  ) : (
-                    <span>Submit TrxID for Approval</span>
-                  )}
+                  {submitting ? "Verifying..." : "Submit Payment"}
                 </button>
               </div>
             </form>

@@ -1,76 +1,136 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
-  MessageSquare,
-  Users,
-  ShoppingBag,
+  Package,
+  BookOpen,
+  Wrench,
+  Globe,
   Bot,
-  Share2,
-  Settings,
+  Layers,
+  LayoutDashboard,
+  MessageSquare,
+  MessageCircle,
+  Megaphone,
+  Users,
+  ShoppingCart,
+  ChevronDown,
   Sparkles,
   LogOut,
-  CreditCard,
+  Settings,
   Key,
   Shield,
   CheckCircle2,
-  Lock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { fetchPages } from "@/lib/api";
 
-const mainNavigation = [
+interface NavItem {
+  name: string;
+  nameBn?: string;
+  href: string;
+  icon: any;
+  badge?: string;
+  matchPrefixes?: string[];
+}
+
+const yourAiNav: NavItem[] = [
   {
-    name: "Analytics",
-    href: "/dashboard",
-    icon: BarChart3,
-  },
-  {
-    name: "Live Inbox",
-    href: "/dashboard/inbox",
-    icon: MessageSquare,
-    badge: "Live",
-  },
-  {
-    name: "Contacts",
-    href: "/dashboard/contacts",
-    icon: Users,
-    matchPrefixes: ["/dashboard/contacts", "/dashboard/leads"],
-  },
-  {
-    name: "Orders & Catalog",
+    name: "Products",
+    nameBn: "Products",
     href: "/dashboard/commerce",
-    icon: ShoppingBag,
-    badge: "New",
-    matchPrefixes: ["/dashboard/commerce", "/dashboard/orders"],
+    icon: Package,
+    matchPrefixes: ["/dashboard/commerce", "/dashboard/products"],
   },
   {
-    name: "AI Studio",
-    href: "/dashboard/ai",
+    name: "Knowledge Base",
+    nameBn: "Knowledge Base",
+    href: "/dashboard/knowledge",
+    icon: BookOpen,
+    matchPrefixes: ["/dashboard/knowledge", "/dashboard/ai"],
+  },
+  {
+    name: "Services",
+    nameBn: "সার্ভিস",
+    href: "/dashboard/services",
+    icon: Wrench,
+    matchPrefixes: ["/dashboard/services"],
+  },
+  {
+    name: "Website",
+    nameBn: "Website",
+    href: "/dashboard/website",
+    icon: Globe,
+    matchPrefixes: ["/dashboard/website"],
+  },
+  {
+    name: "Try Your AI",
+    nameBn: "Try Your AI",
+    href: "/dashboard/playground",
     icon: Bot,
-    matchPrefixes: ["/dashboard/ai", "/dashboard/knowledge", "/dashboard/automation", "/dashboard/playground"],
-  },
-  {
-    name: "Integrations",
-    href: "/dashboard/integrations",
-    icon: Share2,
-    matchPrefixes: ["/dashboard/integrations", "/dashboard/pages", "/dashboard/telegram"],
-  },
-  {
-    name: "Billing & Plans",
-    href: "/dashboard/billing",
-    icon: CreditCard,
-  },
-  {
-    name: "Settings",
-    href: "/dashboard/settings",
-    icon: Settings,
+    matchPrefixes: ["/dashboard/playground"],
   },
 ];
 
-const adminNavigation = [
+const goLiveNav: NavItem[] = [
+  {
+    name: "Integrations",
+    nameBn: "Integrations",
+    href: "/dashboard/integrations",
+    icon: Layers,
+    matchPrefixes: ["/dashboard/integrations", "/dashboard/pages", "/dashboard/telegram"],
+  },
+];
+
+const activityNav: NavItem[] = [
+  {
+    name: "Dashboard",
+    nameBn: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    name: "Inbox",
+    nameBn: "Inbox",
+    href: "/dashboard/inbox",
+    icon: MessageSquare,
+    matchPrefixes: ["/dashboard/inbox"],
+  },
+  {
+    name: "Comments",
+    nameBn: "Comments",
+    href: "/dashboard/comments",
+    icon: MessageCircle,
+    matchPrefixes: ["/dashboard/comments"],
+  },
+  {
+    name: "Campaigns",
+    nameBn: "ক্যাম্পেইন",
+    href: "/dashboard/broadcasts",
+    icon: Megaphone,
+    badge: "বেটা",
+    matchPrefixes: ["/dashboard/broadcasts", "/dashboard/campaigns"],
+  },
+  {
+    name: "Leads",
+    nameBn: "Leads",
+    href: "/dashboard/leads",
+    icon: Users,
+    matchPrefixes: ["/dashboard/leads", "/dashboard/contacts"],
+  },
+  {
+    name: "Orders",
+    nameBn: "Orders",
+    href: "/dashboard/orders",
+    icon: ShoppingCart,
+    matchPrefixes: ["/dashboard/orders"],
+  },
+];
+
+const adminNavigation: NavItem[] = [
   {
     name: "Mogent API Keys",
     href: "/dashboard/admin/keys",
@@ -97,168 +157,188 @@ const adminNavigation = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, workspace, logout } = useAuth();
+  const [pagesList, setPagesList] = useState<any[]>([]);
+  const [activePageId, setActivePageId] = useState<string>("ALL");
+  const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
 
-  const isSuperAdmin =
-    user?.isAdmin ||
-    user?.email === "shohag@burhan.com" ||
-    user?.email === "admin@mogent.tech" ||
-    user?.email === "shohag.tech@gmail.com" ||
-    (user?.email && user.email.toLowerCase().includes("admin"));
+  useEffect(() => {
+    fetchPages().then((pages) => {
+      if (Array.isArray(pages)) {
+        setPagesList(pages);
+      }
+    });
 
-  const userInitials = user?.name
-    ? user.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .substring(0, 2)
-    : "SA";
+    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
+    if (saved) {
+      setActivePageId(saved);
+    }
+  }, [pathname]);
+
+  const handlePageSwitch = (pageId: string) => {
+    setActivePageId(pageId);
+    setPageDropdownOpen(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_active_page_id", pageId);
+      window.dispatchEvent(new CustomEvent("mogent_page_changed", { detail: { pageId } }));
+    }
+  };
+
+  const isNavActive = (item: NavItem) => {
+    if (pathname === item.href) return true;
+    if (item.matchPrefixes && item.matchPrefixes.some((p) => pathname.startsWith(p))) return true;
+    return false;
+  };
+
+  const activePageObj = pagesList.find((p) => p.id === activePageId);
+  const activeBusinessName = activePageId === "ALL" 
+    ? (workspace?.name || user?.name || "MD Shohag's Business")
+    : (activePageObj?.name || "Connected Page");
+
+  const initials = (activeBusinessName || "MS")
+    .split(" ")
+    .map((n: string) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const renderNavGroup = (title: string, items: NavItem[]) => (
+    <div className="space-y-1">
+      <div className="px-3 py-1.5 text-[11px] font-bold text-[#8E8E93] tracking-wider uppercase">
+        {title}
+      </div>
+      {items.map((item) => {
+        const active = isNavActive(item);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group",
+              active
+                ? "bg-[#FEF9EE] text-[#D97706] font-semibold shadow-sm"
+                : "text-[#4B5563] hover:bg-[#F3F4F6] hover:text-[#111827]"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Icon
+                className={cn(
+                  "w-4 h-4 transition-colors",
+                  active ? "text-[#D97706]" : "text-[#6B7280] group-hover:text-[#111827]"
+                )}
+              />
+              <span>{item.nameBn || item.name}</span>
+            </div>
+            {item.badge && (
+              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
+                {item.badge}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
 
   return (
-    <aside className="w-[240px] border-r border-[#222] bg-[#0A0A0A] flex flex-col justify-between shrink-0 h-screen sticky top-0 z-20 select-none overflow-y-auto">
-      <div>
-        {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-5 border-b border-[#222]">
-          <Link href="/dashboard" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-black font-bold transition-transform group-hover:scale-105 shadow-[0_0_15px_rgba(255,255,255,0.15)]">
-              <Bot className="w-5 h-5" />
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-[15px] tracking-tight text-[#EDEDED]">
-                  Mogent
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#222] text-[#888] border border-[#333]">
-                  v2.0
-                </span>
-              </div>
-              <span className="text-[11px] text-[#666] font-medium leading-none">
-                AI Customer Engine
+    <aside className="w-64 border-r border-[#E5E7EB] bg-[#FFFFFF] flex flex-col justify-between select-none h-screen sticky top-0 shadow-[1px_0_4px_rgba(0,0,0,0.02)]">
+      <div className="p-4 space-y-4 overflow-y-auto flex-1 scrollbar-none">
+        {/* Brand Logo */}
+        <div className="flex items-center justify-between px-2 pt-1 pb-2">
+          <Link href="/dashboard" className="flex items-center gap-2.5">
+            <span className="text-2xl font-black tracking-tight text-[#EAB308] flex items-center gap-1 font-serif italic">
+              Mogent
+              <span className="text-xs not-italic font-bold px-1.5 py-0.5 rounded-md bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
+                AI
               </span>
-            </div>
+            </span>
           </Link>
         </div>
 
-        {/* Primary Navigation Menu */}
-        <nav className="p-3 space-y-1 mt-2">
-          {mainNavigation.map((item) => {
-            const isActive =
-              item.matchPrefixes
-                ? item.matchPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix))
-                : pathname === item.href;
+        {/* Business Selector Pill */}
+        <div className="relative">
+          <button
+            onClick={() => setPageDropdownOpen(!pageDropdownOpen)}
+            className="w-full flex items-center justify-between p-2 rounded-xl bg-[#F9FAFB] hover:bg-[#F3F4F6] border border-[#E5E7EB] transition-all text-left group"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-[#F59E0B] text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
+                {initials}
+              </div>
+              <div className="truncate">
+                <p className="text-xs font-semibold text-[#111827] truncate">
+                  {activeBusinessName}
+                </p>
+              </div>
+            </div>
+            <ChevronDown className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#4B5563] shrink-0 transition-transform" />
+          </button>
 
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
+          {/* Business Switcher Dropdown */}
+          {pageDropdownOpen && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 p-1.5 rounded-xl bg-white border border-[#E5E7EB] shadow-lg z-50 space-y-1">
+              <button
+                onClick={() => handlePageSwitch("ALL")}
                 className={cn(
-                  "flex items-center justify-between px-3.5 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150 group",
-                  isActive
-                    ? "bg-[#1C1C1C] text-[#EDEDED] font-semibold border border-[#333] shadow-sm"
-                    : "text-[#888] hover:text-[#EDEDED] hover:bg-[#121212]"
+                  "w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-between",
+                  activePageId === "ALL" ? "bg-[#FEF9EE] text-[#D97706] font-semibold" : "hover:bg-[#F3F4F6] text-[#374151]"
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <item.icon
-                    className={cn(
-                      "w-[18px] h-[18px] transition-colors",
-                      isActive ? "text-white" : "text-[#777] group-hover:text-[#EDEDED]"
-                    )}
-                    strokeWidth={isActive ? 2.5 : 2}
-                  />
-                  <span>{item.name}</span>
-                </div>
-                {item.badge && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-semibold px-1.5 py-0.5 rounded-sm flex items-center gap-1.5",
-                      isActive
-                        ? "bg-white text-black font-bold"
-                        : "bg-[#222] text-[#888] group-hover:text-[#EDEDED]"
-                    )}
-                  >
-                    {item.badge === "Live" && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></span>
-                    )}
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Super Admin Console Section (For Platform Owner) */}
-        {isSuperAdmin && (
-          <div className="px-3 pt-4 pb-2 border-t border-[#1C1C1C] mt-2">
-            <div className="px-3 py-1 flex items-center gap-2 text-[10px] font-bold tracking-wider text-amber-500 uppercase">
-              <Shield className="w-3 h-3" />
-              <span>Super Admin Suite</span>
+                <span>All Connected Pages</span>
+                <span className="text-[10px] text-[#9CA3AF]">{pagesList.length}</span>
+              </button>
+              {pagesList.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handlePageSwitch(p.id)}
+                  className={cn(
+                    "w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-between",
+                    activePageId === p.id ? "bg-[#FEF9EE] text-[#D97706] font-semibold" : "hover:bg-[#F3F4F6] text-[#374151]"
+                  )}
+                >
+                  <span className="truncate">{p.name}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
+                </button>
+              ))}
             </div>
-            <nav className="space-y-1 mt-1.5">
-              {adminNavigation.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium transition-all group",
-                      isActive
-                        ? "bg-amber-500/10 text-amber-500 font-bold border border-amber-500/30"
-                        : "text-[#888] hover:text-[#EDEDED] hover:bg-[#121212]"
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <item.icon className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span>{item.name}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black">
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-        )}
-      </div>
-
-      {/* Footer User Profile Card */}
-      <div className="p-3 border-t border-[#222] bg-[#0A0A0A] space-y-3">
-        {/* Real-time Webhook Pulse */}
-        <div className="px-3 py-2 rounded-lg bg-[#111] border border-[#222] flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[11px] text-[#888]">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-            <span>Mogent AI Gateway</span>
-          </div>
-          <span className="text-[10px] font-mono text-[#10B981] font-semibold">Active</span>
+          )}
         </div>
 
-        {/* User Account */}
-        <div 
-          onClick={logout}
-          title="Click to sign out"
-          className="p-2.5 rounded-xl bg-[#111] border border-[#222] flex items-center justify-between hover:border-red-500/30 hover:bg-red-500/5 transition-colors cursor-pointer group"
-        >
+        {/* Navigation Categories */}
+        <nav className="space-y-5 pt-2">
+          {renderNavGroup("YOUR AI", yourAiNav)}
+          {renderNavGroup("GO LIVE", goLiveNav)}
+          {renderNavGroup("ACTIVITY", activityNav)}
+
+          {/* Admin Navigation (if Owner/Admin) */}
+          {(user?.isAdmin || workspace?.role === "OWNER" || workspace?.role === "ADMIN") && (
+            renderNavGroup("ENTERPRISE ADMIN", adminNavigation)
+          )}
+        </nav>
+      </div>
+
+      {/* Footer User Account */}
+      <div className="p-3 border-t border-[#E5E7EB] bg-[#FAFAFA]">
+        <div className="flex items-center justify-between p-2 rounded-xl hover:bg-[#F3F4F6] transition-colors">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-500 to-orange-600 border border-[#444] flex items-center justify-center font-bold text-xs text-black shrink-0">
-              {userInitials}
+            <div className="w-7 h-7 rounded-full bg-[#E5E7EB] text-[#374151] font-bold text-xs flex items-center justify-center shrink-0">
+              {user?.name?.[0]?.toUpperCase() || "U"}
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-[#EDEDED] truncate">
-                {workspace?.name || user?.name || "Mogent Master"}
-              </span>
-              <span className="text-[10px] text-[#888] truncate font-mono">
-                {user?.email || "Signed In"} • Click to Logout
-              </span>
+            <div className="truncate min-w-0">
+              <p className="text-xs font-semibold text-[#111827] truncate">{user?.name || "User"}</p>
+              <p className="text-[10px] text-[#6B7280] truncate">{user?.email || "user@mogent.com"}</p>
             </div>
           </div>
-          <LogOut className="w-4 h-4 text-[#555] group-hover:text-red-400 transition-colors shrink-0" />
+          <button
+            onClick={() => logout()}
+            title="Log out"
+            className="text-[#9CA3AF] hover:text-[#DC2626] transition-colors p-1.5 rounded-lg hover:bg-white cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </aside>
   );
 }
+

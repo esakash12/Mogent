@@ -119,7 +119,14 @@ export async function createPage(data: {
 
 export async function updatePageSettings(
   pageId: string,
-  data: { aiMode?: string; systemPrompt?: string; temperature?: number }
+  data: {
+    aiMode?: string;
+    systemPrompt?: string;
+    temperature?: number;
+    autoReplyEnabled?: boolean;
+    commentReplyEnabled?: boolean;
+    privateReplyEnabled?: boolean;
+  }
 ) {
   try {
     const res = await fetch(`${API_BASE}/api/pages/${pageId}`, {

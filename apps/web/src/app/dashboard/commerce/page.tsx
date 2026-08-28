@@ -1,60 +1,49 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import {
-  ShoppingBag,
-  Users,
-  Send,
-  Search,
-  Download,
-  Plus,
-  CheckCircle2,
-  Calendar,
-  Phone,
-  MapPin,
-  Facebook,
-  Tag,
   Package,
-  Image as ImageIcon,
-  ExternalLink,
-  MessageCircle,
+  Search,
+  Plus,
+  Facebook,
+  Rss,
+  Eye,
   Trash2,
   Edit2,
-  Sparkles,
-  Layers,
+  CheckCircle2,
   Loader2,
   UploadCloud,
-  X
+  X,
+  Box,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchProducts, createProduct, toggleProductStock, deleteProduct, uploadImageFile, fetchContacts, fetchPages } from "@/lib/api";
+import { fetchProducts, createProduct, toggleProductStock, deleteProduct, uploadImageFile } from "@/lib/api";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 interface Product {
   id: string;
   name: string;
   price: number;
-  regularPrice: number;
-  image: string;
-  category: string;
+  regularPrice?: number;
+  image?: string;
+  category?: string;
   inStock: boolean;
-  salesCount: number;
-  description: string;
+  stockCount?: number;
+  salesCount?: number;
+  description?: string;
 }
 
-export default function CommerceSectorPage() {
-  const [activeTab, setActiveTab] = useState<"CATALOG" | "ORDERS" | "CONTACTS">("CATALOG");
-  const [pages, setPages] = useState<any[]>([]);
-  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
-
-  // Live Products State
+export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
-  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Modal state
+  const [showAddModal, setShowAddModal] = useState(false);
   const [newProdName, setNewProdName] = useState("");
   const [newProdPrice, setNewProdPrice] = useState("");
-  const [newProdRegularPrice, setNewProdRegularPrice] = useState("");
+  const [newProdStock, setNewProdStock] = useState("100");
   const [newProdCategory, setNewProdCategory] = useState("General");
   const [newProdDescription, setNewProdDescription] = useState("");
   const [newProdImage, setNewProdImage] = useState("");
@@ -65,451 +54,346 @@ export default function CommerceSectorPage() {
   const [deleteItem, setDeleteItem] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Live Contacts State
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const loadData = async (pageId = selectedPageId) => {
-    setLoadingProducts(true);
+  const loadData = async () => {
+    setLoading(true);
     try {
-      const [prodsData, pagesData, contactsData] = await Promise.all([
-        fetchProducts(),
-        fetchPages(),
-        fetchContacts(undefined, pageId),
-      ]);
-      if (Array.isArray(prodsData)) setProducts(prodsData);
-      if (Array.isArray(pagesData)) setPages(pagesData);
-      if (Array.isArray(contactsData)) setContacts(contactsData);
+      const data = await fetchProducts();
+      if (Array.isArray(data)) setProducts(data);
     } catch (err) {
-      console.error("Failed to load commerce data:", err);
+      console.error("Failed to load products:", err);
     } finally {
-      setLoadingProducts(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
-    const initialPage = saved || "ALL";
-    setSelectedPageId(initialPage);
-    loadData(initialPage);
-
-    const handleGlobalPageChange = (e: any) => {
-      const newPageId = e.detail?.pageId || "ALL";
-      setSelectedPageId(newPageId);
-      loadData(newPageId);
-    };
-
-    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
-    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
+    loadData();
   }, []);
-
-  const handlePageChange = (newPageId: string) => {
-    setSelectedPageId(newPageId);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mogent_active_page_id", newPageId);
-    }
-    loadData(newPageId);
-  };
-
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingImage(true);
-    const res = await uploadImageFile(file);
-    if (res.success && res.url) {
-      setNewProdImage(res.url);
-    } else {
-      console.error("Image upload failed:", res.error);
-    }
-    setIsUploadingImage(false);
-  };
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName || !newProdPrice) return;
-
     setIsSubmitting(true);
-    const res = await createProduct({
-      name: newProdName,
-      price: Number(newProdPrice),
-      regularPrice: newProdRegularPrice ? Number(newProdRegularPrice) : undefined,
-      image: newProdImage || undefined,
-      category: newProdCategory,
-      description: newProdDescription,
-    });
-
-    if (res) {
-      setShowAddProductModal(false);
+    try {
+      await createProduct({
+        name: newProdName,
+        price: parseFloat(newProdPrice),
+        regularPrice: parseFloat(newProdPrice),
+        category: newProdCategory,
+        description: newProdDescription,
+        image: newProdImage,
+      });
+      setShowAddModal(false);
       setNewProdName("");
       setNewProdPrice("");
-      setNewProdRegularPrice("");
       setNewProdDescription("");
       setNewProdImage("");
-      loadData();
+      await loadData();
+    } catch (err) {
+      console.error("Failed to create product:", err);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
-  const handleToggleStock = async (id: string) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, inStock: !p.inStock } : p))
-    );
-    await toggleProductStock(id);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingImage(true);
+    try {
+      const res = await uploadImageFile(file);
+      if (res?.url) {
+        setNewProdImage(res.url);
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
-  const confirmDeleteProduct = async () => {
+  const handleDelete = async () => {
     if (!deleteItem) return;
     setIsDeleting(true);
-    const success = await deleteProduct(deleteItem.id);
-    if (success) {
-      setProducts((prev) => prev.filter((p) => p.id !== deleteItem.id));
+    try {
+      await deleteProduct(deleteItem.id);
+      setProducts(products.filter((p) => p.id !== deleteItem.id));
+      setDeleteItem(null);
+    } catch (err) {
+      console.error("Delete error:", err);
+    } finally {
+      setIsDeleting(false);
     }
-    setIsDeleting(false);
-    setDeleteItem(null);
   };
 
+  const handleToggleStock = async (product: Product) => {
+    try {
+      setProducts(
+        products.map((p) => (p.id === product.id ? { ...p, inStock: !p.inStock } : p))
+      );
+      await toggleProductStock(product.id);
+    } catch (err) {
+      console.error("Toggle stock error:", err);
+    }
+  };
+
+  const filteredProducts = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Top Header & Tabs & Page Switcher */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#222] pb-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] flex items-center gap-2.5">
-              <ShoppingBag className="w-6 h-6 text-amber-500" />
-              <span>Orders & Product Catalog</span>
-            </h1>
-            {selectedPageId !== "ALL" && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold font-mono">
-                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Page"}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-[#888] mt-0.5">
-            Manage your store items for Mogent AI sales recommendation, order capture, and inventory.
-          </p>
+    <div className="space-y-6">
+      {/* Top Search & Actions Bar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search by name, description, brand..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] placeholder-[#9CA3AF] focus:outline-none focus:border-[#F59E0B] focus:ring-2 focus:ring-[#F59E0B]/10 transition-all shadow-sm"
+          />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Tab Controls */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#111] border border-[#222]">
-            <button
-              onClick={() => setActiveTab("CATALOG")}
-              className={cn(
-                "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
-                activeTab === "CATALOG"
-                  ? "bg-white text-black shadow-sm font-bold"
-                  : "text-[#888] hover:text-[#EDEDED]"
-              )}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>Product Catalog ({products.length})</span>
-            </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => alert("Facebook Catalog Sync initiated.")}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-[#F9FAFB] border border-[#E5E7EB] text-xs font-semibold text-[#374151] transition-all shadow-sm cursor-pointer"
+          >
+            <Facebook className="w-3.5 h-3.5 text-[#F59E0B]" />
+            <span>Import from Facebook</span>
+          </button>
 
-            <button
-              onClick={() => setActiveTab("ORDERS")}
-              className={cn(
-                "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
-                activeTab === "ORDERS"
-                  ? "bg-white text-black shadow-sm font-bold"
-                  : "text-[#888] hover:text-[#EDEDED]"
-              )}
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Captured Orders (0)</span>
-            </button>
+          <button
+            onClick={() => alert("Feed Sync initiated.")}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-[#F9FAFB] border border-[#E5E7EB] text-xs font-semibold text-[#374151] transition-all shadow-sm cursor-pointer"
+          >
+            <Rss className="w-3.5 h-3.5 text-[#F59E0B]" />
+            <span>Import from Feed</span>
+          </button>
 
-            <button
-              onClick={() => setActiveTab("CONTACTS")}
-              className={cn(
-                "px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer",
-                activeTab === "CONTACTS"
-                  ? "bg-white text-black shadow-sm font-bold"
-                  : "text-[#888] hover:text-[#EDEDED]"
-              )}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Leads ({contacts.length})</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Product</span>
+          </button>
         </div>
       </div>
 
-      {/* 1. CATALOG TAB */}
-      {activeTab === "CATALOG" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[#888]">
-              Products your Mogent AI assistant recommends with real pricing, stock status, and specs.
-            </span>
+      {/* Product Table Container */}
+      <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-[#F3F4F6] text-xs font-bold text-[#6B7280]">
+          {filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}
+        </div>
 
+        {loading ? (
+          <div className="p-12 text-center space-y-3">
+            <Loader2 className="w-8 h-8 text-[#F59E0B] animate-spin mx-auto" />
+            <p className="text-xs text-[#6B7280]">Loading products catalog...</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="p-16 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#FFFBEB] text-[#F59E0B] flex items-center justify-center mx-auto border border-[#FDE68A]">
+              <Package className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#111827]">No products in catalog</h3>
+              <p className="text-xs text-[#6B7280] max-w-sm mx-auto mt-1">
+                Add your products or import from Facebook so your AI agent knows what to recommend.
+              </p>
+            </div>
             <button
-              onClick={() => setShowAddProductModal(true)}
-              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-lg shadow-amber-500/10"
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-white text-xs font-bold transition-all shadow-sm cursor-pointer inline-flex items-center gap-1.5"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add New Product</span>
+              <Plus className="w-4 h-4" />
+              <span>Add First Product</span>
             </button>
           </div>
-
-          {loadingProducts ? (
-            <div className="py-16 flex flex-col items-center justify-center gap-2 border border-[#222] bg-[#0A0A0A] rounded-2xl">
-              <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-              <span className="text-xs text-[#888]">Loading catalog...</span>
-            </div>
-          ) : products.length === 0 ? (
-            <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3 border border-[#222] bg-[#0A0A0A] rounded-2xl">
-              <div className="w-12 h-12 rounded-2xl bg-[#111] border border-[#222] flex items-center justify-center text-amber-500">
-                <Package className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-bold text-sm text-[#EDEDED]">Your Product Catalog is Empty</h3>
-                <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-                  Add products to your store so Mogent AI can instantly answer price inquiries, suggest items, and capture delivery details.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowAddProductModal(true)}
-                className="mt-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Your First Product</span>
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {products.map((p) => (
-                <div
-                  key={p.id}
-                  className="rounded-2xl border border-[#222] bg-[#0A0A0A] overflow-hidden hover:border-[#333] transition-all flex flex-col justify-between group"
-                >
-                  {/* Image banner */}
-                  {p.image && (
-                    <div className="w-full h-40 bg-[#141414] overflow-hidden relative border-b border-[#1C1C1C]">
-                      <img
-                        src={p.image}
-                        alt={p.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                      <button
-                        onClick={() => setDeleteItem(p)}
-                        className="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-black/60 hover:bg-rose-600 text-white/80 hover:text-white backdrop-blur-md transition-colors cursor-pointer"
-                        title="Delete Product"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1C1C1C] text-[#888] border border-[#333]">
-                          {p.category}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleToggleStock(p.id)}
-                            className={cn(
-                              "px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors cursor-pointer",
-                              p.inStock
-                                ? "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20"
-                                : "bg-red-500/10 text-red-400 border border-red-500/20"
-                            )}
-                          >
-                            {p.inStock ? "In Stock" : "Out of Stock"}
-                          </button>
-                          {!p.image && (
-                            <button
-                              onClick={() => setDeleteItem(p)}
-                              className="p-1 rounded text-[#555] hover:text-rose-400 transition-colors cursor-pointer"
-                              title="Delete Product"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <h4 className="font-bold text-sm text-[#EDEDED]">{p.name}</h4>
-                      <p className="text-xs text-[#888] line-clamp-2">{p.description || "No description provided."}</p>
-                    </div>
-
-                    <div className="pt-3 border-t border-[#1C1C1C] flex items-center justify-between">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-bold text-base text-[#EDEDED]">৳{p.price.toLocaleString()}</span>
-                        {p.regularPrice && (
-                          <span className="text-xs text-[#666] line-through font-mono">৳{p.regularPrice.toLocaleString()}</span>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#FAFAFA] text-[#6B7280] font-semibold border-b border-[#E5E7EB]">
+                <tr>
+                  <th className="p-4 w-10">
+                    <input type="checkbox" className="rounded border-[#D1D5DB] text-[#F59E0B]" />
+                  </th>
+                  <th className="p-4 w-20">Image</th>
+                  <th className="p-4">Name</th>
+                  <th className="p-4">Price</th>
+                  <th className="p-4">Stock</th>
+                  <th className="p-4">Availability</th>
+                  <th className="p-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {filteredProducts.map((prod) => (
+                  <tr key={prod.id} className="hover:bg-[#F9FAFB] transition-colors group">
+                    <td className="p-4">
+                      <input type="checkbox" className="rounded border-[#D1D5DB] text-[#F59E0B]" />
+                    </td>
+                    <td className="p-4">
+                      <div className="w-12 h-12 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden flex items-center justify-center shrink-0">
+                        {prod.image ? (
+                          <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-5 h-5 text-[#9CA3AF]" />
                         )}
                       </div>
-                      <span className="text-[11px] text-[#666]">{p.salesCount} sold</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 2. ORDERS TAB */}
-      {activeTab === "ORDERS" && (
-        <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3 border border-[#222] bg-[#0A0A0A] rounded-2xl">
-          <div className="w-12 h-12 rounded-2xl bg-[#111] border border-[#222] flex items-center justify-center text-amber-500">
-            <ShoppingBag className="w-6 h-6" />
+                    </td>
+                    <td className="p-4 font-semibold text-[#111827]">
+                      <p className="line-clamp-2 max-w-md">{prod.name}</p>
+                      {prod.category && (
+                        <span className="text-[10px] text-[#6B7280] font-normal">{prod.category}</span>
+                      )}
+                    </td>
+                    <td className="p-4 font-bold text-[#111827]">
+                      ৳{prod.price}
+                    </td>
+                    <td className="p-4 text-[#4B5563] font-medium">
+                      {prod.stockCount || 100}
+                    </td>
+                    <td className="p-4">
+                      <button
+                        onClick={() => handleToggleStock(prod)}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer",
+                          prod.inStock
+                            ? "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]"
+                            : "bg-[#F3F4F6] text-[#6B7280] border-[#E5E7EB]"
+                        )}
+                      >
+                        <Box className="w-3 h-3" />
+                        <span>{prod.inStock ? "In stock" : "Out of stock"}</span>
+                      </button>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setDeleteItem(prod)}
+                          className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                          title="Delete Product"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="space-y-1">
-            <h3 className="font-bold text-sm text-[#EDEDED]">No Orders Captured Yet</h3>
-            <p className="text-xs text-[#777] max-w-sm leading-relaxed">
-              When a customer confirms a purchase in Facebook Messenger, Mogent AI will automatically extract their address, mobile number, items, and log the order here.
-            </p>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* 3. CONTACTS TAB */}
-      {activeTab === "CONTACTS" && (
-        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] text-center space-y-3">
-          <p className="text-xs text-[#888]">
-            Total Leads Captured: <strong className="text-[#EDEDED]">{contacts.length}</strong>
-          </p>
-          <Link
-            href="/dashboard/contacts"
-            className="px-4 py-2 rounded-xl bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] inline-flex items-center gap-1.5 transition-colors"
-          >
-            <span>Open Full Contacts Directory</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      )}
-
-      {/* Modal: Add Product */}
-      {showAddProductModal && (
-        <div className="fixed inset-0 z-50 bg-[#0A0A0A]/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-[#111] border border-[#333] p-6 space-y-6 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[#222] pb-4">
-              <h3 className="font-bold text-base text-[#EDEDED]">Add Product to Catalog</h3>
+      {/* Add Product Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-[#F3F4F6]">
+              <h3 className="text-sm font-bold text-[#111827]">Add New Product</h3>
               <button
-                onClick={() => setShowAddProductModal(false)}
-                className="text-[#888] hover:text-[#EDEDED] p-1 cursor-pointer"
+                onClick={() => setShowAddModal(false)}
+                className="text-[#9CA3AF] hover:text-[#111827] p-1"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateProduct} className="space-y-4">
-              {/* Product Image Upload */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Product Image (Cloudflare R2 Storage)</label>
-                {newProdImage ? (
-                  <div className="relative w-full h-36 rounded-xl bg-[#0A0A0A] border border-[#333] overflow-hidden group">
-                    <img src={newProdImage} alt="Preview" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => setNewProdImage("")}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/70 hover:bg-rose-600 text-white transition-colors cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="w-full h-28 border-2 border-dashed border-[#333] hover:border-amber-500/50 rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer bg-[#0A0A0A] transition-colors">
-                    {isUploadingImage ? (
-                      <div className="flex items-center gap-2 text-xs text-amber-500">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Uploading to Cloudflare R2...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <UploadCloud className="w-6 h-6 text-[#777]" />
-                        <span className="text-xs text-[#AAA] font-medium">Click to upload product image</span>
-                        <span className="text-[10px] text-[#666]">JPG, PNG, WebP up to 5MB</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageFileChange}
-                      disabled={isUploadingImage}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Product Name</label>
+            <form onSubmit={handleCreateProduct} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#374151] mb-1">Product Name *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Premium Cotton Polo Shirt"
+                  placeholder="e.g. Premium ID Card Printing"
                   value={newProdName}
                   onChange={(e) => setNewProdName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">Offer Price (BDT)</label>
+                <div>
+                  <label className="block text-xs font-semibold text-[#374151] mb-1">Price (৳) *</label>
                   <input
                     type="number"
                     required
-                    placeholder="e.g. 1250"
+                    placeholder="150"
                     value={newProdPrice}
                     onChange={(e) => setNewProdPrice(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] focus:outline-none focus:border-[#F59E0B]"
                   />
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">Regular Price (Optional)</label>
+                <div>
+                  <label className="block text-xs font-semibold text-[#374151] mb-1">Stock Quantity</label>
                   <input
                     type="number"
-                    placeholder="e.g. 1600"
-                    value={newProdRegularPrice}
-                    onChange={(e) => setNewProdRegularPrice(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                    placeholder="100"
+                    value={newProdStock}
+                    onChange={(e) => setNewProdStock(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] focus:outline-none focus:border-[#F59E0B]"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Category</label>
+              <div>
+                <label className="block text-xs font-semibold text-[#374151] mb-1">Category</label>
                 <input
                   type="text"
-                  placeholder="e.g. Clothing / Electronics"
+                  placeholder="Printing, Apparel, Electronics..."
                   value={newProdCategory}
                   onChange={(e) => setNewProdCategory(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Product Details & Specs (For AI)</label>
+              <div>
+                <label className="block text-xs font-semibold text-[#374151] mb-1">Description / Details</label>
                 <textarea
                   rows={3}
-                  placeholder="Fabric 100% combed cotton, available colors: Navy, Maroon, Black. Sizes: M, L, XL."
+                  placeholder="Mention delivery turnaround, size options, warranty, etc."
                   value={newProdDescription}
                   onChange={(e) => setNewProdDescription(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#0A0A0A] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#E5E7EB] text-xs text-[#111827] focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#222]">
+              <div>
+                <label className="block text-xs font-semibold text-[#374151] mb-1">Product Image</label>
+                <div className="flex items-center gap-3">
+                  {newProdImage && (
+                    <img src={newProdImage} alt="Preview" className="w-12 h-12 rounded-xl object-cover border" />
+                  )}
+                  <label className="flex-1 border border-dashed border-[#D1D5DB] hover:border-[#F59E0B] rounded-xl p-3 text-center cursor-pointer hover:bg-[#FFFBEB] transition-colors">
+                    <span className="text-xs text-[#6B7280]">
+                      {isUploadingImage ? "Uploading image..." : "Upload product photo"}
+                    </span>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#F3F4F6]">
                 <button
                   type="button"
-                  onClick={() => setShowAddProductModal(false)}
-                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#888] hover:text-[#EDEDED] cursor-pointer"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 rounded-xl border border-[#E5E7EB] text-xs font-semibold text-[#4B5563] hover:bg-[#F3F4F6]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || isUploadingImage}
-                  className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-white text-xs font-bold shadow-sm flex items-center gap-1.5"
                 >
-                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Save Product</span>}
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  <span>Save Product</span>
                 </button>
               </div>
             </form>
@@ -517,16 +401,16 @@ export default function CommerceSectorPage() {
         </div>
       )}
 
-      {/* Delete Product Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       <ConfirmModal
-        isOpen={!!deleteItem}
-        onClose={() => setDeleteItem(null)}
-        onConfirm={confirmDeleteProduct}
+        isOpen={Boolean(deleteItem)}
         title="Delete Product"
-        description={`Are you sure you want to remove "${deleteItem?.name}" from your store catalog? Mogent AI will no longer pitch or sell this item.`}
-        confirmText="Delete Product"
+        description={`Are you sure you want to delete "${deleteItem?.name}" from your catalog?`}
+        confirmText="Delete"
         variant="danger"
         isLoading={isDeleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteItem(null)}
       />
     </div>
   );

@@ -42,11 +42,9 @@ export default function DashboardLayout({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#0A0A0A] relative">
-        {/* Subtle Top Glow */}
-        <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-primary/5 to-transparent pointer-events-none -z-10" />
+      <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] relative">
         <Header />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-10">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-8">
           <div className="max-w-[1400px] mx-auto">
             {children}
           </div>

@@ -1,304 +1,257 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
-  PlayCircle,
-  Sparkles,
-  Send,
-  Bot,
-  User,
+  Plus,
   RotateCcw,
-  Sliders,
+  Send,
+  Loader2,
+  Image as ImageIcon,
   CheckCircle2,
-  BookOpen,
-  HelpCircle,
-  Zap,
-  MessageCircle,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface SimulatorMessage {
+interface ChatMessage {
+  id: string;
   role: "user" | "model";
-  content: string;
-  thinking?: string;
-  latency?: string;
-  button?: { title: string; url: string };
+  text: string;
+  time: string;
 }
 
-export default function PlaygroundPage() {
-  const [messages, setMessages] = useState<SimulatorMessage[]>([
+interface TestChatSession {
+  id: string;
+  title: string;
+  lastMessage: string;
+  timeAgo: string;
+  msgCount: number;
+}
+
+export default function TryYourAIPage() {
+  const [sessions, setSessions] = useState<TestChatSession[]>([
     {
-      role: "model",
-      content: "আসসালামু আলাইকুম! আমি আপনার AI সহকারী। প্রোডাক্ট অর্ডার বা যেকোনো তথ্যের জন্য আমাকে মেসেজ দিন।",
-      thinking: "Initialized persona with friendly Bangladeshi e-commerce tone.",
+      id: "1",
+      title: "hi",
+      lastMessage: "হ্যালো! আপনি কেমন আছেন?",
+      timeAgo: "4h ago",
+      msgCount: 2,
     },
   ]);
-  const [inputMessage, setInputMessage] = useState("");
+  const [activeSessionId, setActiveSessionId] = useState("1");
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "m1",
+      role: "user",
+      text: "hi",
+      time: "11:24 AM",
+    },
+    {
+      id: "m2",
+      role: "model",
+      text: "হ্যালো! আপনি কেমন আছেন? আপনাকে কীভাবে সাহায্য করতে পারি?",
+      time: "11:24 AM",
+    },
+  ]);
+
+  const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [persona, setPersona] = useState("Friendly & Helpful");
-  const [language, setLanguage] = useState("Bangla (Natural)");
-  const [temperature, setTemperature] = useState(0.4);
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim()) return;
+    if (!inputText.trim()) return;
 
-    const userText = inputMessage;
-    setInputMessage("");
+    const userText = inputText;
+    setInputText("");
 
-    setMessages((prev) => [...prev, { role: "user", content: userText }]);
+    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      text: userText,
+      time: now,
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
-    // Simulate AI thinking and response
     setTimeout(() => {
       let reply = "";
-      let think = "";
-
-      if (userText.includes("দাম") || userText.includes("price")) {
-        reply = "আমাদের স্মার্টওয়াচ প্রো এর বর্তমান অফার প্রাইস ২৪৫০ টাকা। আপনি ক্যাশ অন ডেলিভারিতে অর্ডার করতে চাইলে আপনার নাম ও ঠিকানা পাঠান।";
-        think = "Matched Knowledge Base -> 'Smartwatch Pro' (2450 BDT). Generated friendly sales response.";
-      } else if (userText.includes("অর্ডার") || userText.includes("order")) {
-        reply = "অর্ডার করতে আপনার নাম, ডেলিভারি ঠিকানা ও সচল মোবাইল নাম্বারটি লিখে পাঠিয়ে দিন। ঢাকার ভেতরে ১ দিনে এবং ঢাকার বাইরে ২-৩ দিনে ডেলিভারি পেয়ে যাবেন।";
-        think = "Detected ORDER_INTENT. Prompted user for delivery address & phone number.";
+      if (userText.includes("দাম") || userText.toLowerCase().includes("price")) {
+        reply = "আমাদের টি-শার্টের প্রাইস ৩৫০ টাকা থেকে শুরু এবং পোলো শার্ট ৫৫০ টাকা। আপনি কোন সাইজ নিতে চান?";
+      } else if (userText.includes("অর্ডার") || userText.toLowerCase().includes("order")) {
+        reply = "অর্ডার কনফার্ম করার জন্য আপনার নাম, সম্পূর্ণ ঠিকানা এবং মোবাইল নাম্বারটি লিখে পাঠিয়ে দিন।";
+      } else if (userText.includes("ডেলিভারি") || userText.toLowerCase().includes("delivery")) {
+        reply = "ঢাকার ভেতরে ডেলিভারি চার্জ ৮০ টাকা (১-২ দিন) এবং ঢাকার বাইরে ১৫০ টাকা (২-৪ দিন)।";
       } else {
-        reply = "ধন্যবাদ মেসেজ দেওয়ার জন্য! জি, আপনার এই বিষয়ে বিস্তারিত জানতে আমরা আনন্দের সাথে সাহায্য করব। আপনি কি নির্দিষ্ট কোনো মডেল বা সাইজ খুঁজছেন?";
-        think = "General inquiry fallback using Mogent AI with temperature " + temperature;
+        reply = "ধন্যবাদ মেসেজের জন্য! আমাদের কাছে প্রিমিয়াম কোয়ালিটি প্রোডাক্ট স্টক আছে। আপনি কি নির্দিষ্ট কিছু দেখতে চান?";
       }
 
       setMessages((prev) => [
         ...prev,
         {
+          id: (Date.now() + 1).toString(),
           role: "model",
-          content: reply,
-          thinking: think,
-          latency: "420ms",
+          text: reply,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
       setIsTyping(false);
     }, 600);
   };
 
-  const handleReset = () => {
-    setMessages([
-      {
-        role: "model",
-        content: "আসসালামু আলাইকুম! আমি আপনার AI সহকারী। প্রোডাক্ট অর্ডার বা যেকোনো তথ্যের জন্য আমাকে মেসেজ দিন।",
-        thinking: "Session reset.",
-      },
-    ]);
+  const handleNewChat = () => {
+    const newSession: TestChatSession = {
+      id: Date.now().toString(),
+      title: "New chat",
+      lastMessage: "Started new conversation",
+      timeAgo: "Just now",
+      msgCount: 0,
+    };
+    setSessions([newSession, ...sessions]);
+    setActiveSessionId(newSession.id);
+    setMessages([]);
+  };
+
+  const handleClear = () => {
+    setMessages([]);
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Sector Tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-[#222] pb-3 text-xs">
-        <Link
-          href="/dashboard/knowledge"
-          className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Knowledge Base</span>
-        </Link>
-        <Link
-          href="/dashboard/automation"
-          className="px-3 py-1.5 rounded-lg text-[#888] hover:text-[#EDEDED] hover:bg-[#111] transition-colors flex items-center gap-2"
-        >
-          <Zap className="w-3.5 h-3.5" />
-          <span>Rules & Triggers</span>
-        </Link>
-        <Link
-          href="/dashboard/playground"
-          className="px-3 py-1.5 rounded-lg bg-[#222] text-[#EDEDED] font-semibold flex items-center gap-2"
-        >
-          <PlayCircle className="w-3.5 h-3.5 text-indigo-400" />
-          <span>AI Playground</span>
-        </Link>
-      </div>
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED]">
-            AI Test Playground & Simulator
-          </h1>
-          <p className="text-[#888] text-sm mt-1">
-            Test and fine-tune your Facebook bot's personality and responses before deploying to live customers.
-          </p>
-        </div>
+    <div className="h-[calc(100vh-140px)] flex flex-col md:flex-row rounded-2xl border border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
+      {/* Left Panel: Test Chats */}
+      <div className="w-full md:w-72 border-r border-[#E5E7EB] bg-[#F9FAFB] flex flex-col p-3 space-y-3 shrink-0">
+        <span className="text-xs font-bold text-[#111827] px-1">Test chats</span>
 
         <button
-          onClick={handleReset}
-          className="px-3.5 py-2 rounded-lg bg-[#111] hover:bg-[#222] border border-[#333] text-xs font-medium text-[#EDEDED] flex items-center gap-2 transition-colors w-fit"
+          onClick={handleNewChat}
+          className="w-full py-2 px-3 rounded-xl bg-white hover:bg-[#F3F4F6] border border-[#E5E7EB] text-xs font-semibold text-[#374151] flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset Session</span>
+          <Plus className="w-3.5 h-3.5" />
+          <span>New chat</span>
         </button>
+
+        <div className="space-y-1 overflow-y-auto flex-1">
+          {sessions.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => setActiveSessionId(s.id)}
+              className={cn(
+                "p-3 rounded-xl cursor-pointer transition-all text-left",
+                activeSessionId === s.id
+                  ? "bg-white border border-[#E5E7EB] shadow-sm text-[#111827]"
+                  : "hover:bg-[#F3F4F6] text-[#6B7280]"
+              )}
+            >
+              <p className="text-xs font-semibold truncate">{s.title}</p>
+              <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                {s.timeAgo} • {s.msgCount} msgs
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Main Sandbox Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-230px)] min-h-[500px]">
-        {/* Left 2 Cols: Chat Simulator */}
-        <div className="lg:col-span-2 rounded-2xl border border-[#222] bg-[#0A0A0A] flex flex-col overflow-hidden">
-          {/* Simulator Bar */}
-          <div className="h-12 px-4 border-b border-[#222] flex items-center justify-between bg-[#111]/50 text-xs">
-            <div className="flex items-center gap-2 text-[#888]">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-              <span>Facebook Messenger Sandbox</span>
+      {/* Right Panel: Chat Simulator */}
+      <div className="flex-1 flex flex-col justify-between bg-white">
+        {/* Top Header */}
+        <div className="p-3 px-6 border-b border-[#E5E7EB] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-[#FFFDF5] border border-[#FDE68A] flex items-center justify-center text-[#D97706]">
+              <MessageSquare className="w-3.5 h-3.5" />
             </div>
-            <span className="font-mono text-[#555]">Mogent Engine Ultra</span>
+            <div>
+              <p className="text-xs font-bold text-[#111827]">Test chat</p>
+              <p className="text-[10px] text-[#059669] flex items-center gap-1 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
+                <span>Connected</span>
+              </p>
+            </div>
           </div>
 
-          {/* Messages Stream */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((m, idx) => (
-              <div
-                key={idx}
-                className={cn(
-                  "flex flex-col max-w-[85%]",
-                  m.role === "user" ? "self-end items-end ml-auto" : "self-start items-start"
-                )}
-              >
-                <div className="flex items-center gap-1.5 mb-1 text-[10px] text-[#888]">
-                  {m.role === "user" ? (
-                    <span>You (Customer)</span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-indigo-400 font-medium">
-                      <Bot className="w-3 h-3" /> Page AI Bot
-                    </span>
-                  )}
-                  {m.latency && <span>• {m.latency}</span>}
-                </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClear}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-[#E5E7EB] text-xs font-semibold text-[#4B5563] hover:bg-[#F9FAFB] transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Clear</span>
+            </button>
+            <button
+              onClick={handleNewChat}
+              className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New chat</span>
+            </button>
+          </div>
+        </div>
 
+        {/* Messages Body */}
+        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+          {/* Today Date Pill */}
+          <div className="flex justify-center">
+            <span className="px-3 py-1 rounded-full bg-[#F3F4F6] text-[10px] font-semibold text-[#6B7280]">
+              Today
+            </span>
+          </div>
+
+          {messages.map((m) => {
+            const isUser = m.role === "user";
+            return (
+              <div
+                key={m.id}
+                className={cn("flex flex-col", isUser ? "items-end" : "items-start")}
+              >
                 <div
                   className={cn(
-                    "px-4 py-2.5 rounded-2xl text-[13px] leading-relaxed",
-                    m.role === "user"
-                      ? "bg-white text-black rounded-tr-sm"
-                      : "bg-[#181818] border border-[#262626] text-[#EDEDED] rounded-tl-sm"
+                    "max-w-[70%] p-3.5 rounded-2xl text-xs leading-relaxed shadow-sm",
+                    isUser
+                      ? "bg-[#F59E0B] text-black font-medium rounded-tr-sm"
+                      : "bg-white text-[#111827] border border-[#E5E7EB] rounded-tl-sm"
                   )}
                 >
-                  <p>{m.content}</p>
-
-                  {m.button && (
-                    <div className="mt-3 pt-2 border-t border-[#262626]">
-                      <a
-                        href={m.button.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-2 px-3 rounded-xl bg-[#222] hover:bg-[#2a2a2a] border border-[#333] text-[#25D366] text-xs font-semibold flex items-center justify-center gap-2 transition-all text-center shadow-sm cursor-pointer"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
-                        <span>{m.button.title}</span>
-                      </a>
-                    </div>
-                  )}
+                  <p className="whitespace-pre-wrap">{m.text}</p>
                 </div>
-
-                {m.thinking && (
-                  <div className="mt-1.5 p-2 rounded bg-[#111] border border-[#222] text-[10px] font-mono text-[#888] max-w-full">
-                    <span className="text-amber-500 font-semibold">Brain: </span>
-                    {m.thinking}
-                  </div>
-                )}
+                <span className="text-[10px] text-[#9CA3AF] mt-1 px-1">{m.time}</span>
               </div>
-            ))}
+            );
+          })}
 
-            {isTyping && (
-              <div className="flex items-center gap-2 p-3 rounded-2xl bg-[#181818] border border-[#262626] w-fit text-xs text-[#888]">
-                <Sparkles className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                <span>AI is formulating response from Knowledge Base...</span>
-              </div>
-            )}
-          </div>
+          {isTyping && (
+            <div className="flex items-center gap-2 text-xs text-[#9CA3AF]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F59E0B]" />
+              <span>AI is typing...</span>
+            </div>
+          )}
+        </div>
 
-          {/* Test Input */}
-          <form onSubmit={handleSend} className="p-3 border-t border-[#222] bg-[#0A0A0A] flex gap-2">
+        {/* Bottom Input Area */}
+        <form onSubmit={handleSendMessage} className="p-4 border-t border-[#E5E7EB] bg-white">
+          <div className="relative flex items-center rounded-2xl bg-[#F9FAFB] border border-[#E5E7EB] focus-within:border-[#F59E0B] focus-within:ring-2 focus-within:ring-[#F59E0B]/10 transition-all">
+            <button
+              type="button"
+              className="pl-3.5 text-[#9CA3AF] hover:text-[#4B5563] cursor-pointer"
+              title="Attach media"
+            >
+              <ImageIcon className="w-4 h-4" />
+            </button>
             <input
               type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type a test customer message (e.g. ওয়াচটার দাম কত?)..."
-              className="flex-1 px-4 py-2.5 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-white transition-colors"
+              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              className="w-full pl-3 pr-12 py-3 bg-transparent text-xs text-[#111827] placeholder-[#9CA3AF] focus:outline-none"
             />
             <button
               type="submit"
-              disabled={!inputMessage.trim()}
-              className="px-4 py-2.5 rounded-lg bg-white text-black font-semibold text-xs disabled:opacity-50 flex items-center gap-1.5"
+              disabled={!inputText.trim() || isTyping}
+              className="absolute right-2.5 p-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black transition-all disabled:opacity-30 cursor-pointer shadow-sm"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Test</span>
             </button>
-          </form>
-        </div>
-
-        {/* Right 1 Col: Live Controls */}
-        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6 overflow-y-auto">
-          <div className="flex items-center gap-2 pb-3 border-b border-[#222]">
-            <Sliders className="w-4 h-4 text-[#888]" />
-            <h3 className="font-semibold text-sm text-[#EDEDED]">Persona Parameters</h3>
           </div>
-
-          {/* Persona Style */}
-          <div className="space-y-2">
-            <label className="block text-xs text-[#888] font-medium">Tone & Style</label>
-            <select
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none"
-            >
-              <option value="Friendly & Helpful">Friendly & Courteous (Recommended)</option>
-              <option value="Direct & Sales Driven">Direct & Sales Aggressive</option>
-              <option value="Formal & Corporate">Formal Corporate Executive</option>
-            </select>
-          </div>
-
-          {/* Language Setting */}
-          <div className="space-y-2">
-            <label className="block text-xs text-[#888] font-medium">Dialect</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none"
-            >
-              <option value="Bangla (Natural)">Natural Bengali (Bangla Script)</option>
-              <option value="Banglish (Phonetic)">Banglish (English letters, Bangla words)</option>
-              <option value="English">Pure English</option>
-            </select>
-          </div>
-
-          {/* Temperature Slider */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-[#888]">Creativity (Temperature)</span>
-              <span className="font-mono text-[#EDEDED]">{temperature}</span>
-            </div>
-            <input
-              type="range"
-              min="0.1"
-              max="1.0"
-              step="0.1"
-              value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              className="w-full accent-white"
-            />
-            <div className="flex justify-between text-[10px] text-[#555]">
-              <span>Strict / Factual</span>
-              <span>Creative</span>
-            </div>
-          </div>
-
-          {/* Connected Knowledge Status */}
-          <div className="p-3 rounded-xl bg-[#111] border border-[#222] space-y-2 text-xs">
-            <div className="flex items-center gap-2 text-[#EDEDED] font-medium">
-              <BookOpen className="w-4 h-4 text-indigo-400" />
-              <span>Active Knowledge Base</span>
-            </div>
-            <p className="text-[11px] text-[#888]">
-              Simulator is loaded with 12 products, shipping policy, and pricing rules.
-            </p>
-          </div>
-        </div>
+        </form>
       </div>
     </div>
   );
