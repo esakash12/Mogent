@@ -10,6 +10,15 @@ const REDIS_KEYS_SET = "mogent:gemini_keys_pool";
 const REDIS_META_CONFIG = "mogent:meta_developer_config";
 const REDIS_PAYMENT_CONFIG = "mogent:payment_gateway_config";
 
+function safeParseJson(val: any, fallback: any = null): any {
+  if (!val) return fallback;
+  try {
+    return typeof val === "string" ? JSON.parse(val) : val;
+  } catch {
+    return fallback;
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 1. GET REAL PLATFORM OVERVIEW STATS (100% LIVE FROM POSTGRES & REDIS)
 // -----------------------------------------------------------------------------
@@ -90,7 +99,7 @@ export const MODEL_TEMPLATES: Record<string, { name: string; category: string; d
 adminRouter.get("/keys", async (c) => {
   try {
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = rawMeta ? JSON.parse(rawMeta) : [];
+    let keysList: any[] = safeParseJson(rawMeta, []);
 
     // Fallback: If metadata is empty, load from set pool
     if (!Array.isArray(keysList) || keysList.length === 0) {
@@ -177,7 +186,7 @@ adminRouter.post("/keys", async (c) => {
     const keyRole = role || "BACKUP";
 
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = rawMeta ? JSON.parse(rawMeta) : [];
+    let keysList: any[] = safeParseJson(rawMeta, []);
     if (!Array.isArray(keysList)) keysList = [];
 
     const newKeyObj = {
@@ -222,7 +231,7 @@ adminRouter.put("/keys/:id", async (c) => {
   try {
     const body = await c.req.json();
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = rawMeta ? JSON.parse(rawMeta) : [];
+    let keysList: any[] = safeParseJson(rawMeta, []);
     if (!Array.isArray(keysList)) keysList = [];
 
     const index = keysList.findIndex((k) => k.id === id || k.key === id || k.maskedKey === id);
@@ -274,7 +283,7 @@ adminRouter.post("/keys/:id/model", async (c) => {
     }
 
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = rawMeta ? JSON.parse(rawMeta) : [];
+    let keysList: any[] = safeParseJson(rawMeta, []);
     if (!Array.isArray(keysList)) keysList = [];
 
     const keyObj = keysList.find((k) => k.id === id || k.key === id || k.maskedKey === id);
@@ -305,7 +314,7 @@ adminRouter.delete("/keys/:id", async (c) => {
   const { id } = c.req.param();
   try {
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = rawMeta ? JSON.parse(rawMeta) : [];
+    let keysList: any[] = safeParseJson(rawMeta, []);
     if (!Array.isArray(keysList)) keysList = [];
 
     const keyObj = keysList.find((k) => k.id === id || k.key === id || k.maskedKey === id);
@@ -365,7 +374,7 @@ adminRouter.get("/clients", async (c) => {
 adminRouter.get("/meta-config", async (c) => {
   try {
     const redisVal = await redisConnection.get(REDIS_META_CONFIG);
-    let parsed = redisVal ? JSON.parse(redisVal) : null;
+    let parsed = safeParseJson(redisVal, null);
 
     const data = {
       appId: parsed?.appId || config.facebook.appId || process.env.FACEBOOK_APP_ID || "",
@@ -415,7 +424,7 @@ const REDIS_CLOUDFLARE_CONFIG = "mogent:cloudflare_r2_config";
 adminRouter.get("/telegram-master-config", async (c) => {
   try {
     const redisVal = await redisConnection.get(REDIS_TELEGRAM_MASTER_CONFIG);
-    let parsed = redisVal ? JSON.parse(redisVal) : null;
+    let parsed = safeParseJson(redisVal, null);
 
     const data = {
       botToken: parsed?.botToken || config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "",
@@ -491,7 +500,7 @@ adminRouter.post("/telegram-master-config", async (c) => {
 adminRouter.get("/cloudflare-config", async (c) => {
   try {
     const redisVal = await redisConnection.get(REDIS_CLOUDFLARE_CONFIG);
-    let parsed = redisVal ? JSON.parse(redisVal) : null;
+    let parsed = safeParseJson(redisVal, null);
 
     const data = {
       accountId: parsed?.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || "",
@@ -534,7 +543,7 @@ adminRouter.post("/cloudflare-config", async (c) => {
 adminRouter.get("/payment-config", async (c) => {
   try {
     const redisVal = await redisConnection.get(REDIS_PAYMENT_CONFIG);
-    let parsed = redisVal ? JSON.parse(redisVal) : null;
+    let parsed = safeParseJson(redisVal, null);
 
     const data = {
       bkashNumber: parsed?.bkashNumber || "01711998877",
@@ -730,4 +739,5 @@ adminRouter.post("/db-sync", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
 

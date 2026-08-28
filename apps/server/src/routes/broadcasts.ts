@@ -94,9 +94,12 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
     // 1. Fetch Follow-up Config
     const redisKey = `mogent:followup_config:${workspaceId}`;
     const cached = await redisConnection.get(redisKey);
-    const followupData = cached
-      ? JSON.parse(cached)
-      : { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার অর্ডারটি কি কনফার্ম করে দেব?", pageId: "ALL" };
+    let followupData = { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার অর্ডারটি কি কনফার্ম করে দেব?", pageId: "ALL" };
+    if (cached) {
+      try {
+        followupData = { ...followupData, ...JSON.parse(cached) };
+      } catch {}
+    }
 
     if (!followupData.isEnabled) {
       return c.json({ success: true, message: "Automated follow-up is currently disabled.", sentCount: 0 });

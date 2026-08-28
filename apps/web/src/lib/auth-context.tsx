@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -40,6 +40,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
+async function safeJsonParse(res: Response) {
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) return null;
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -49,47 +59,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Load session on startup
+  // Load session on startup safely
   useEffect(() => {
-    const savedToken = localStorage.getItem("mogent_auth_token");
-    const savedUser = localStorage.getItem("mogent_user");
-    const savedWs = localStorage.getItem("mogent_workspace");
+    try {
+      const savedToken = localStorage.getItem("mogent_auth_token");
+      const savedUser = localStorage.getItem("mogent_user");
+      const savedWs = localStorage.getItem("mogent_workspace");
 
-    if (savedToken) {
-      setToken(savedToken);
-      if (savedUser) {
-        try {
-          setUser(JSON.parse(savedUser));
-        } catch {}
-      }
-      if (savedWs) {
-        try {
-          setWorkspace(JSON.parse(savedWs));
-        } catch {}
-      }
-
-      // Refresh profile from server
-      fetch(`${API_BASE}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${savedToken}` },
-      })
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success && json.data) {
-            setUser(json.data.user);
-            if (json.data.workspace) setWorkspace(json.data.workspace);
-            if (json.data.workspaces) setWorkspaces(json.data.workspaces);
-            localStorage.setItem("mogent_user", JSON.stringify(json.data.user));
-            if (json.data.workspace) {
-              localStorage.setItem("mogent_workspace", JSON.stringify(json.data.workspace));
-            }
-          } else {
-            // Token expired or invalid
-            logout();
+      if (savedToken) {
+        setToken(savedToken);
+        if (savedUser && savedUser.startsWith("{")) {
+          try {
+            setUser(JSON.parse(savedUser));
+          } catch {
+            localStorage.removeItem("mogent_user");
           }
+        }
+        if (savedWs && savedWs.startsWith("{")) {
+          try {
+            setWorkspace(JSON.parse(savedWs));
+          } catch {
+            localStorage.removeItem("mogent_workspace");
+          }
+        }
+
+        // Refresh profile from server safely
+        fetch(`${API_BASE}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${savedToken}` },
         })
-        .catch(() => {})
-        .finally(() => setIsLoading(false));
-    } else {
+          .then(safeJsonParse)
+          .then((json) => {
+            if (json?.success && json?.data) {
+              setUser(json.data.user);
+              if (json.data.workspace) setWorkspace(json.data.workspace);
+              if (json.data.workspaces) setWorkspaces(json.data.workspaces);
+              try {
+                localStorage.setItem("mogent_user", JSON.stringify(json.data.user));
+                if (json.data.workspace) {
+                  localStorage.setItem("mogent_workspace", JSON.stringify(json.data.workspace));
+                }
+              } catch {}
+            }
+          })
+          .catch(() => {})
+          .finally(() => setIsLoading(false));
+      } else {
+        setIsLoading(false);
+      }
+    } catch {
       setIsLoading(false);
     }
   }, []);
@@ -102,9 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ email, password: pass }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        return { success: false, error: json.error || "Login failed" };
+      const json = await safeJsonParse(res);
+      if (!res.ok || !json?.success) {
+        return { success: false, error: json?.error || "Login failed. Please check your credentials." };
       }
 
       const { token, user, workspace, workspaces } = json.data;
@@ -113,9 +130,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setWorkspace(workspace);
       setWorkspaces(workspaces || [workspace]);
 
-      localStorage.setItem("mogent_auth_token", token);
-      localStorage.setItem("mogent_user", JSON.stringify(user));
-      localStorage.setItem("mogent_workspace", JSON.stringify(workspace));
+      try {
+        localStorage.setItem("mogent_auth_token", token);
+        localStorage.setItem("mogent_user", JSON.stringify(user));
+        localStorage.setItem("mogent_workspace", JSON.stringify(workspace));
+      } catch {}
 
       router.push("/dashboard");
       return { success: true };
@@ -132,9 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ name, email, password: pass, workspaceName: wsName }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        return { success: false, error: json.error || "Registration failed" };
+      const json = await safeJsonParse(res);
+      if (!res.ok || !json?.success) {
+        return { success: false, error: json?.error || "Registration failed" };
       }
 
       const { token, user, workspace } = json.data;
@@ -143,9 +162,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setWorkspace(workspace);
       setWorkspaces([workspace]);
 
-      localStorage.setItem("mogent_auth_token", token);
-      localStorage.setItem("mogent_user", JSON.stringify(user));
-      localStorage.setItem("mogent_workspace", JSON.stringify(workspace));
+      try {
+        localStorage.setItem("mogent_auth_token", token);
+        localStorage.setItem("mogent_user", JSON.stringify(user));
+        localStorage.setItem("mogent_workspace", JSON.stringify(workspace));
+      } catch {}
 
       router.push("/dashboard");
       return { success: true };
@@ -159,9 +180,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
-    localStorage.removeItem("mogent_auth_token");
-    localStorage.removeItem("mogent_user");
-    localStorage.removeItem("mogent_workspace");
+    try {
+      localStorage.removeItem("mogent_auth_token");
+      localStorage.removeItem("mogent_user");
+      localStorage.removeItem("mogent_workspace");
+    } catch {}
     router.push("/login");
   };
 
@@ -169,7 +192,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const found = workspaces.find((w) => w.id === workspaceId);
     if (found) {
       setWorkspace(found);
-      localStorage.setItem("mogent_workspace", JSON.stringify(found));
+      try {
+        localStorage.setItem("mogent_workspace", JSON.stringify(found));
+      } catch {}
+      window.location.reload();
     }
   };
 
@@ -195,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;

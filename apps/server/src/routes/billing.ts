@@ -160,7 +160,12 @@ billingRouter.get("/", async (c) => {
 billingRouter.get("/payment-config", async (c) => {
   try {
     const redisVal = await redisConnection.get(REDIS_PAYMENT_CONFIG);
-    let parsed = redisVal ? JSON.parse(redisVal) : null;
+    let parsed: any = null;
+    if (redisVal) {
+      try {
+        parsed = JSON.parse(redisVal);
+      } catch {}
+    }
 
     const data = {
       bkashNumber: parsed?.bkashNumber || "01711998877",

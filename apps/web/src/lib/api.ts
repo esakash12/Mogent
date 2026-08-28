@@ -1,4 +1,14 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+﻿const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+async function safeFetchJson<T = any>(res: Response, fallback: T = null as any): Promise<T> {
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) return fallback;
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+}
 
 function getHeaders(customHeaders: Record<string, string> = {}) {
   const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : null;
@@ -6,7 +16,11 @@ function getHeaders(customHeaders: Record<string, string> = {}) {
   let workspaceId = "";
   if (workspaceStr) {
     try {
-      workspaceId = JSON.parse(workspaceStr)?.id || "";
+      if (workspaceStr.startsWith("{")) {
+        workspaceId = JSON.parse(workspaceStr)?.id || "";
+      } else if (workspaceStr !== "null" && workspaceStr !== "undefined") {
+        workspaceId = workspaceStr;
+      }
     } catch {}
   }
 
@@ -33,7 +47,7 @@ export async function fetchAnalytics() {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch analytics");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.warn("Using fallback analytics data:", err);
@@ -49,7 +63,7 @@ export async function fetchPages() {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch pages");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data || [];
   } catch (err) {
     console.warn("Error fetching pages:", err);
@@ -62,7 +76,7 @@ export async function fetchFacebookConfig() {
     const res = await fetch(`${API_BASE}/api/pages/facebook/config`, {
       headers: getHeaders(),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     return null;
@@ -76,7 +90,7 @@ export async function inspectFacebookToken(token: string) {
       headers: getHeaders(),
       body: JSON.stringify({ token }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -89,7 +103,7 @@ export async function connectFacebookPagesOAuth(pages: Array<{ id: string; name:
       headers: getHeaders(),
       body: JSON.stringify({ pages }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -109,7 +123,7 @@ export async function createPage(data: {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.error("Error creating page:", err);
@@ -134,7 +148,7 @@ export async function updatePageSettings(
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success;
   } catch (err) {
     console.error("Error updating page:", err);
@@ -148,7 +162,7 @@ export async function deletePage(pageId: string) {
       method: "DELETE",
       headers: getHeaders(),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success;
   } catch (err) {
     console.error("Error deleting page:", err);
@@ -165,7 +179,7 @@ export async function fetchConversations(queryString: string = "") {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch conversations");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data || [];
   } catch (err) {
     console.warn("Using fallback conversations data:", err);
@@ -180,7 +194,7 @@ export async function fetchMessages(conversationId: string) {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch messages");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data || [];
   } catch (err) {
     console.warn("Using fallback messages data:", err);
@@ -195,7 +209,7 @@ export async function sendMessage(conversationId: string, text: string) {
       headers: getHeaders(),
       body: JSON.stringify({ text }),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.error("Error sending message:", err);
@@ -225,7 +239,7 @@ export async function fetchProducts() {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch products");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data || [];
   } catch (err) {
     console.warn("Using fallback products data:", err);
@@ -247,7 +261,7 @@ export async function createProduct(data: {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.error("Error creating product:", err);
@@ -261,7 +275,7 @@ export async function toggleProductStock(productId: string) {
       method: "PATCH",
       headers: getHeaders(),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.inStock;
   } catch (err) {
     console.error("Error toggling product stock:", err);
@@ -275,7 +289,7 @@ export async function deleteProduct(productId: string) {
       method: "DELETE",
       headers: getHeaders(),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success;
   } catch (err) {
     console.error("Error deleting product:", err);
@@ -290,7 +304,7 @@ export async function importProductFromUrl(url: string) {
       headers: getHeaders(),
       body: JSON.stringify({ url }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -303,7 +317,7 @@ export async function importProductFromFacebook() {
       headers: getHeaders(),
       body: JSON.stringify({}),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -316,7 +330,7 @@ export async function importProductFromFeed(feedUrl: string) {
       headers: getHeaders(),
       body: JSON.stringify({ feedUrl }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -339,7 +353,7 @@ export async function uploadImageFile(file: File): Promise<{ success: boolean; u
       body: formData,
     });
 
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     if (json.success && json.data) {
       return { success: true, url: json.data.url };
     }
@@ -363,7 +377,7 @@ export async function fetchContacts(filter?: string, pageId?: string) {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch contacts");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data || [];
   } catch (err) {
     console.warn("Using fallback contacts data:", err);
@@ -382,7 +396,7 @@ export async function fetchKnowledgeAndWhatsApp(pageId?: string) {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch knowledge");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.warn("Using fallback knowledge data:", err);
@@ -397,7 +411,7 @@ export async function createKnowledgeItem(data: { title: string; category: strin
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.error("Error creating knowledge item:", err);
@@ -445,7 +459,7 @@ export async function saveSystemPrompt(data: { systemPrompt: string; businessNam
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json;
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to save system prompt" };
@@ -460,7 +474,7 @@ export async function fetchBillingStatus() {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Failed to fetch billing");
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err) {
     console.warn("Using fallback billing data:", err);
@@ -482,7 +496,7 @@ export async function submitPayment(data: {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json;
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to submit payment" };
@@ -496,7 +510,7 @@ export async function testPlaygroundChat(message: string, history: Array<{ role:
       headers: getHeaders(),
       body: JSON.stringify({ message, history, pageId }),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json;
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to reach AI Playground" };
@@ -510,7 +524,7 @@ export async function fetchCurrentUser() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success ? json.data : null;
   } catch (err) {
     console.error("Error fetching user:", err);
@@ -525,7 +539,7 @@ export async function updateUserProfile(data: { name?: string; password?: string
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -538,7 +552,7 @@ export async function fetchTeamMembers() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success ? json.data : [];
   } catch (err) {
     console.error("Error fetching team members:", err);
@@ -553,7 +567,7 @@ export async function inviteTeamMember(data: { name?: string; email: string; rol
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -565,7 +579,7 @@ export async function deleteTeamMember(id: string) {
       method: "DELETE",
       headers: getHeaders(),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -584,7 +598,7 @@ export async function fetchOrders(status?: string, pageId?: string) {
       headers: getHeaders(),
       cache: "no-store",
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success ? json.data : [];
   } catch (err) {
     console.error("Error fetching orders:", err);
@@ -599,7 +613,7 @@ export async function createOrder(data: any) {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -612,7 +626,7 @@ export async function updateOrderStatus(orderId: string, status: string) {
       headers: getHeaders(),
       body: JSON.stringify({ status }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -625,7 +639,7 @@ export async function fetchAutomationRules() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.success ? json.data : [];
   } catch (err) {
     console.error("Error fetching rules:", err);
@@ -640,7 +654,7 @@ export async function createAutomationRule(data: { name: string; keywords: strin
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -653,7 +667,7 @@ export async function toggleAutomationRule(id: string, isActive: boolean) {
       headers: getHeaders(),
       body: JSON.stringify({ isActive }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -665,7 +679,7 @@ export async function deleteAutomationRule(id: string) {
       method: "DELETE",
       headers: getHeaders(),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -678,7 +692,7 @@ export async function fetchTelegramStatus() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -690,7 +704,7 @@ export async function disconnectTelegram() {
       method: "POST",
       headers: getHeaders(),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -702,7 +716,7 @@ export async function sendTestTelegramAlert() {
       method: "POST",
       headers: getHeaders(),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -715,7 +729,7 @@ export async function fetchPaymentConfig() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -727,7 +741,7 @@ export async function fetchAdminPaymentConfig() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -748,7 +762,7 @@ export async function saveAdminPaymentConfig(data: {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -762,7 +776,7 @@ export async function validateCouponCode(code: string, plan: string) {
       headers: getHeaders(),
       body: JSON.stringify({ code, plan }),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -774,7 +788,7 @@ export async function fetchAdminCoupons() {
       headers: getHeaders(),
       cache: "no-store",
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -796,7 +810,7 @@ export async function createAdminCoupon(data: {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -808,7 +822,7 @@ export async function deleteAdminCoupon(id: string) {
       method: "DELETE",
       headers: getHeaders(),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -820,7 +834,7 @@ export async function toggleAdminCoupon(id: string) {
       method: "PATCH",
       headers: getHeaders(),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -833,7 +847,7 @@ export async function testPlaygroundAI(data: { message: string; history?: any[] 
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -844,7 +858,7 @@ export async function fetchFollowupConfig() {
     const res = await fetch(`${API_BASE}/api/broadcasts/followup-config`, {
       headers: getHeaders(),
     });
-    const json = await res.json();
+    const json = await safeFetchJson(res);
     return json.data;
   } catch (err: any) {
     return null;
@@ -863,7 +877,7 @@ export async function saveFollowupConfig(data: {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -876,11 +890,12 @@ export async function triggerFollowupScan() {
       headers: getHeaders(),
       body: JSON.stringify({}),
     });
-    return await res.json();
+    return await safeFetchJson(res);
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
+
 
 
 
