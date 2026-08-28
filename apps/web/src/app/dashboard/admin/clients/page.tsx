@@ -13,6 +13,7 @@ import {
   Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchAdminClients } from "@/lib/api";
 
 interface ClientWorkspace {
   id: string;
@@ -27,8 +28,6 @@ interface ClientWorkspace {
   createdAt: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
 export default function AdminClientsPage() {
   const [clients, setClients] = useState<ClientWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,14 +36,9 @@ export default function AdminClientsPage() {
   const loadClients = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/clients`, {
-        headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-      });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setClients(json.data);
+      const res = await fetchAdminClients();
+      if (res.success && Array.isArray(res.data)) {
+        setClients(res.data);
       }
     } catch (err) {
       console.error("Error loading clients:", err);

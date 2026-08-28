@@ -23,6 +23,13 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  fetchAdminKeys,
+  addAdminKey,
+  switchAdminKeyModel,
+  updateAdminKey,
+  deleteAdminKey,
+} from "@/lib/api";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 interface ManagedApiKey {
@@ -38,44 +45,59 @@ interface ManagedApiKey {
   tpmLimit: number;
   rpdUsed: number;
   rpdLimit: number;
-  status: "HEALTHY" | "COOLDOWN" | "DAILY_EXHAUSTED" | "DISABLED";
-  isEnabled: boolean;
-  cooldownUntil?: number | null;
+  status: "ACTIVE" | "HEALTHY" | "COOLDOWN" | "DAILY_EXHAUSTED" | "DISABLED" | "QUOTA_EXCEEDED" | "RATE_LIMITED" | "DEAD" | string;
+  lastUsedAt?: string;
   lastUsed?: string;
+  cooldownUntil?: any;
+  errorCount: number;
+  isEnabled: boolean;
 }
 
 interface ModelSummary {
-  modelKey: string;
-  name: string;
-  category: string;
-  rpmUsed: number;
-  rpmLimit: number;
-  tpmUsed: number;
-  tpmLimit: number;
-  rpdUsed: number;
-  rpdLimit: number;
-  activeKeysCount: number;
+  model?: string;
+  modelKey?: string;
+  name?: string;
+  displayName?: string;
+  category?: string;
+  totalKeys?: number;
+  activeKeys?: number;
+  activeKeysCount?: number;
+  totalRpmLimit?: number;
+  totalRpmUsed?: number;
+  rpmUsed?: number;
+  rpmLimit?: number;
+  totalTpmLimit?: number;
+  totalTpmUsed?: number;
+  tpmUsed?: number;
+  tpmLimit?: number;
+  totalRpdLimit?: number;
+  totalRpdUsed?: number;
+  rpdUsed?: number;
+  rpdLimit?: number;
+  health?: "HEALTHY" | "DEGRADED" | "CRITICAL";
+  [key: string]: any;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
-export default function ApiKeysPage() {
+export default function AdminKeysPage() {
   const [keys, setKeys] = useState<ManagedApiKey[]>([]);
   const [modelsSummary, setModelsSummary] = useState<ModelSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // Add Key Form State
   const [newKeyInput, setNewKeyInput] = useState("");
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyRole, setNewKeyRole] = useState<"PRIMARY" | "SECONDARY" | "BACKUP">("PRIMARY");
-  const [selectedModel, setSelectedModel] = useState("gemini-3.5-flash-lite");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
   const [isAdding, setIsAdding] = useState(false);
-  const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
-  // Edit Modal State
+  // Edit Key Modal State
   const [editingKey, setEditingKey] = useState<ManagedApiKey | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     role: "PRIMARY" as "PRIMARY" | "SECONDARY" | "BACKUP",
-    model: "gemini-3.5-flash-lite",
+    model: "gemini-2.5-flash",
     rpmUsed: 0,
     rpmLimit: 15,
     tpmUsed: 0,
@@ -95,15 +117,10 @@ export default function ApiKeysPage() {
   const fetchKeys = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/keys`, {
-        headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-      });
-      const json = await res.json();
-      if (json.success) {
-        if (Array.isArray(json.data)) setKeys(json.data);
-        if (Array.isArray(json.modelsSummary)) setModelsSummary(json.modelsSummary);
+      const res = await fetchAdminKeys();
+      if (res.success) {
+        if (Array.isArray(res.data)) setKeys(res.data);
+        if (Array.isArray(res.modelsSummary)) setModelsSummary(res.modelsSummary);
       }
     } catch (err) {
       console.error("Failed to load admin keys:", err);
@@ -122,27 +139,19 @@ export default function ApiKeysPage() {
 
     setIsAdding(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/keys`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-        body: JSON.stringify({
-          key: newKeyInput.trim(),
-          name: newKeyName.trim() || undefined,
-          role: newKeyRole,
-          model: selectedModel,
-        }),
+      const res = await addAdminKey({
+        key: newKeyInput.trim(),
+        name: newKeyName.trim() || undefined,
+        role: newKeyRole,
+        model: selectedModel,
       });
-      const json = await res.json();
-      if (json.success) {
-        showToast(json.message || "Key added successfully!");
+      if (res.success) {
+        showToast(res.message || "Key added successfully!");
         setNewKeyInput("");
         setNewKeyName("");
         fetchKeys();
       } else {
-        showToast(json.error || "Failed to add key", "error");
+        showToast(res.error || "Failed to add key", "error");
       }
     } catch (err: any) {
       showToast(err.message || "Failed to connect to backend server", "error");
@@ -153,20 +162,12 @@ export default function ApiKeysPage() {
 
   const handleSwitchModel = async (keyId: string, model: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/keys/${keyId}/model`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-        body: JSON.stringify({ model }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        showToast(json.message || "Model updated and live limits synced!");
+      const res = await switchAdminKeyModel(keyId, model);
+      if (res.success) {
+        showToast(res.message || "Model updated and live limits synced!");
         fetchKeys();
       } else {
-        showToast(json.error || "Failed to update model", "error");
+        showToast(res.error || "Failed to update model", "error");
       }
     } catch (err: any) {
       showToast(err.message || "Failed to switch model", "error");
@@ -195,21 +196,13 @@ export default function ApiKeysPage() {
 
     setIsSavingEdit(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/keys/${editingKey.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-        body: JSON.stringify(editForm),
-      });
-      const json = await res.json();
-      if (json.success) {
+      const res = await updateAdminKey(editingKey.id, editForm);
+      if (res.success) {
         showToast("Key configuration & limits updated successfully!");
         setEditingKey(null);
         fetchKeys();
       } else {
-        showToast(json.error || "Failed to update key", "error");
+        showToast(res.error || "Failed to update key", "error");
       }
     } catch (err: any) {
       showToast(err.message || "Error saving changes", "error");
@@ -224,12 +217,7 @@ export default function ApiKeysPage() {
     setKeys((prev) => prev.filter((k) => k.id !== keyId));
 
     try {
-      await fetch(`${API_BASE}/api/admin/keys/${keyId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-      });
+      await deleteAdminKey(keyId);
       showToast("Key removed from rotation pool.");
     } catch (err) {
       console.error("Failed to delete key:", err);

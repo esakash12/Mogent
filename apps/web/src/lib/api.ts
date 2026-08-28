@@ -1,6 +1,27 @@
-﻿const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+/**
+ * Centralized Enterprise API Client for Mogent Platform
+ * Built with Strict TypeScript Generics, Centralized Error Interception,
+ * and Dynamic Multi-Tenant Workspace & Auth Token Injection.
+ */
 
-async function safeFetchJson<T = any>(res: Response, fallback: T = null as any): Promise<T> {
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+  totalCount?: number;
+  verifiedPhonesCount?: number;
+  confirmedBuyersCount?: number;
+  modelsSummary?: any[];
+  [key: string]: any;
+}
+
+/**
+ * Safely parse JSON without crashing on malformed or empty responses
+ */
+export async function safeFetchJson<T = any>(res: Response, fallback: T = null as any): Promise<T> {
   try {
     const text = await res.text();
     if (!text || !text.trim()) return fallback;
@@ -10,18 +31,27 @@ async function safeFetchJson<T = any>(res: Response, fallback: T = null as any):
   }
 }
 
-function getHeaders(customHeaders: Record<string, string> = {}) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : null;
-  const workspaceStr = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") : null;
+/**
+ * Extracts and sanitizes authorization token and multi-tenant workspace ID
+ */
+export function getHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
+  let token = "";
   let workspaceId = "";
-  if (workspaceStr) {
-    try {
-      if (workspaceStr.startsWith("{")) {
-        workspaceId = JSON.parse(workspaceStr)?.id || "";
-      } else if (workspaceStr !== "null" && workspaceStr !== "undefined") {
-        workspaceId = workspaceStr;
+
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("mogent_auth_token") || "";
+    const workspaceRaw = localStorage.getItem("mogent_workspace");
+    if (workspaceRaw) {
+      try {
+        if (workspaceRaw.startsWith("{")) {
+          workspaceId = JSON.parse(workspaceRaw)?.id || "";
+        } else if (workspaceRaw !== "null" && workspaceRaw !== "undefined") {
+          workspaceId = workspaceRaw;
+        }
+      } catch {
+        workspaceId = "";
       }
-    } catch {}
+    }
   }
 
   const headers: Record<string, string> = {
@@ -39,74 +69,116 @@ function getHeaders(customHeaders: Record<string, string> = {}) {
   return headers;
 }
 
-// --- ANALYTICS ---
-export async function fetchAnalytics() {
+/**
+ * Central generic HTTP requester with centralized 401/403/500 error trapping
+ */
+export async function apiRequest<T = any>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<ApiResponse<T>> {
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `${API_BASE}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const customHeaders = (options.headers as Record<string, string>) || {};
+  const headers = getHeaders(customHeaders);
+
   try {
-    const res = await fetch(`${API_BASE}/api/dashboard/analytics`, {
-      headers: getHeaders(),
-      cache: "no-store",
+    const res = await fetch(url, {
+      ...options,
+      headers,
     });
-    if (!res.ok) throw new Error("Failed to fetch analytics");
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.warn("Using fallback analytics data:", err);
-    return null;
+
+    if (res.status === 401) {
+      return {
+        success: false,
+        error: "Session expired or unauthorized. Please log in.",
+      };
+    }
+
+    if (res.status === 403) {
+      return {
+        success: false,
+        error: "Access denied. Insufficient permissions for this action.",
+      };
+    }
+
+    const json = await safeFetchJson<ApiResponse<T>>(res, {
+      success: res.ok,
+      error: res.ok ? undefined : `Server responded with status ${res.status}`,
+    });
+
+    return json;
+  } catch (err: any) {
+    console.error(`API Error [${endpoint}]:`, err);
+    return {
+      success: false,
+      error: err?.message || "Network connection failed. Please check your internet.",
+    };
   }
 }
 
-// --- FACEBOOK PAGES ---
+/**
+ * Generic REST Client (GET, POST, PUT, PATCH, DELETE)
+ */
+export const api = {
+  get: <T = any>(endpoint: string, options?: RequestInit) =>
+    apiRequest<T>(endpoint, { method: "GET", ...options }),
+
+  post: <T = any, B = any>(endpoint: string, body?: B, options?: RequestInit) =>
+    apiRequest<T>(endpoint, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    }),
+
+  put: <T = any, B = any>(endpoint: string, body?: B, options?: RequestInit) =>
+    apiRequest<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    }),
+
+  patch: <T = any, B = any>(endpoint: string, body?: B, options?: RequestInit) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    }),
+
+  delete: <T = any>(endpoint: string, options?: RequestInit) =>
+    apiRequest<T>(endpoint, { method: "DELETE", ...options }),
+};
+
+// =============================================================================
+// 1. DASHBOARD & ANALYTICS
+// =============================================================================
+export async function fetchAnalytics() {
+  const res = await api.get("/api/dashboard/analytics", { cache: "no-store" });
+  return res.success ? res.data : null;
+}
+
+// =============================================================================
+// 2. FACEBOOK PAGES & OAUTH
+// =============================================================================
 export async function fetchPages() {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch pages");
-    const json = await safeFetchJson(res);
-    return json.data || [];
-  } catch (err) {
-    console.warn("Error fetching pages:", err);
-    return [];
-  }
+  const res = await api.get<any[]>("/api/pages", { cache: "no-store" });
+  return res.success && Array.isArray(res.data) ? res.data : [];
 }
 
 export async function fetchFacebookConfig() {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages/facebook/config`, {
-      headers: getHeaders(),
-    });
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    return null;
-  }
+  const res = await api.get("/api/pages/facebook/config");
+  return res.success ? res.data : null;
 }
 
 export async function inspectFacebookToken(token: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages/inspect-token`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ token }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/pages/inspect-token", { token });
 }
 
-export async function connectFacebookPagesOAuth(pages: Array<{ id: string; name: string; accessToken: string; category?: string }>) {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages/facebook/oauth-connect`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ pages }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+export async function connectFacebookPagesOAuth(
+  pages: Array<{ id: string; name: string; accessToken: string; category?: string }>
+) {
+  return await api.post("/api/pages/facebook/oauth-connect", { pages });
 }
 
 export async function createPage(data: {
@@ -117,18 +189,8 @@ export async function createPage(data: {
   aiMode?: string;
   category?: string;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.error("Error creating page:", err);
-    return null;
-  }
+  const res = await api.post("/api/pages", data);
+  return res.success ? res.data : null;
 }
 
 export async function updatePageSettings(
@@ -142,656 +204,339 @@ export async function updatePageSettings(
     privateReplyEnabled?: boolean;
   }
 ) {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages/${pageId}`, {
-      method: "PATCH",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    const json = await safeFetchJson(res);
-    return json.success;
-  } catch (err) {
-    console.error("Error updating page:", err);
-    return false;
-  }
+  return await api.patch(`/api/pages/${pageId}`, data);
 }
 
 export async function deletePage(pageId: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/pages/${pageId}`, {
-      method: "DELETE",
-      headers: getHeaders(),
-    });
-    const json = await safeFetchJson(res);
-    return json.success;
-  } catch (err) {
-    console.error("Error deleting page:", err);
-    return false;
-  }
+  return await api.delete(`/api/pages/${pageId}`);
 }
 
-// --- CONVERSATIONS ---
+// =============================================================================
+// 3. CONVERSATIONS & LIVE MESSENGER CHAT
+// =============================================================================
 export async function fetchConversations(queryString: string = "") {
-  try {
-    const url = `${API_BASE}/api/conversations${queryString}`;
-    const res = await fetch(url, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch conversations");
-    const json = await safeFetchJson(res);
-    return json.data || [];
-  } catch (err) {
-    console.warn("Using fallback conversations data:", err);
-    return null;
-  }
+  const endpoint = `/api/conversations${queryString ? `?${queryString}` : ""}`;
+  const res = await api.get<any[]>(endpoint);
+  return res.success && Array.isArray(res.data) ? res.data : [];
 }
 
 export async function fetchMessages(conversationId: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch messages");
-    const json = await safeFetchJson(res);
-    return json.data || [];
-  } catch (err) {
-    console.warn("Using fallback messages data:", err);
-    return null;
-  }
+  const res = await api.get<any[]>(`/api/conversations/${conversationId}/messages`);
+  return res.success && Array.isArray(res.data) ? res.data : [];
 }
 
 export async function sendMessage(conversationId: string, text: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ text }),
-    });
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.error("Error sending message:", err);
-    return null;
-  }
+  return await api.post(`/api/conversations/${conversationId}/messages`, { text });
 }
 
 export async function toggleConversationMode(conversationId: string, isHumanControl: boolean) {
-  try {
-    const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/toggle-mode`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ isHumanControl }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.error("Error toggling mode:", err);
-    return false;
-  }
+  return await api.post(`/api/conversations/${conversationId}/toggle-mode`, { isHumanControl });
 }
 
-// --- PRODUCTS ---
+// =============================================================================
+// 4. COMMERCE PRODUCTS & CATALOG SYNC
+// =============================================================================
 export async function fetchProducts() {
-  try {
-    const res = await fetch(`${API_BASE}/api/products`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch products");
-    const json = await safeFetchJson(res);
-    return json.data || [];
-  } catch (err) {
-    console.warn("Using fallback products data:", err);
-    return null;
-  }
+  const res = await api.get<any[]>("/api/products");
+  return res.success && Array.isArray(res.data) ? res.data : [];
 }
 
 export async function createProduct(data: {
   name: string;
   price: number;
   regularPrice?: number;
-  image?: string;
   category?: string;
   description?: string;
+  image?: string;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/products`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.error("Error creating product:", err);
-    return null;
-  }
+  const res = await api.post("/api/products", data);
+  return res.success ? res.data : null;
 }
 
 export async function toggleProductStock(productId: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/products/${productId}/stock`, {
-      method: "PATCH",
-      headers: getHeaders(),
-    });
-    const json = await safeFetchJson(res);
-    return json.inStock;
-  } catch (err) {
-    console.error("Error toggling product stock:", err);
-    return null;
-  }
+  return await api.patch(`/api/products/${productId}/toggle-stock`);
 }
 
 export async function deleteProduct(productId: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/products/${productId}`, {
-      method: "DELETE",
-      headers: getHeaders(),
-    });
-    const json = await safeFetchJson(res);
-    return json.success;
-  } catch (err) {
-    console.error("Error deleting product:", err);
-    return false;
-  }
+  return await api.delete(`/api/products/${productId}`);
 }
 
 export async function importProductFromUrl(url: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/products/import-url`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ url }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/products/import-url", { url });
 }
 
 export async function importProductFromFacebook() {
-  try {
-    const res = await fetch(`${API_BASE}/api/products/import-facebook`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({}),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/products/import-facebook", {});
 }
 
 export async function importProductFromFeed(feedUrl: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/products/import-feed`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ feedUrl }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/products/import-feed", { feedUrl });
 }
 
 export async function uploadImageFile(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("image", file);
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_token") : "";
-    const wsId = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace_id") : "";
+    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : null;
+    const workspaceRaw = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") : null;
+    let workspaceId = "";
+    if (workspaceRaw) {
+      try {
+        workspaceId = workspaceRaw.startsWith("{") ? JSON.parse(workspaceRaw)?.id || "" : workspaceRaw;
+      } catch {}
+    }
 
-    const res = await fetch(`${API_BASE}/api/upload`, {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (workspaceId) headers["x-workspace-id"] = workspaceId;
+
+    const res = await fetch(`${API_BASE}/api/products/upload-image`, {
       method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(wsId ? { "x-workspace-id": wsId } : {}),
-      },
+      headers,
       body: formData,
     });
 
     const json = await safeFetchJson(res);
-    if (json.success && json.data) {
-      return { success: true, url: json.data.url };
-    }
-    return { success: false, error: json.error || "Upload failed" };
+    return json.success ? { success: true, url: json.url } : { success: false, error: json.error };
   } catch (err: any) {
-    return { success: false, error: err.message || "Network error during upload" };
+    return { success: false, error: err.message || "Failed to upload image." };
   }
 }
 
-// --- CONTACTS ---
+// =============================================================================
+// 5. CRM CONTACTS & CUSTOMER LEADS
+// =============================================================================
 export async function fetchContacts(filter?: string, pageId?: string) {
-  try {
-    const params = new URLSearchParams();
-    if (filter) params.append("filter", filter);
-    if (pageId && pageId !== "ALL") params.append("pageId", pageId);
+  const params = new URLSearchParams();
+  if (filter && filter !== "ALL") params.append("filter", filter);
+  if (pageId && pageId !== "ALL") params.append("pageId", pageId);
 
-    const queryString = params.toString() ? `?${params.toString()}` : "";
-    const url = `${API_BASE}/api/contacts${queryString}`;
-    const res = await fetch(url, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch contacts");
-    const json = await safeFetchJson(res);
-    return json.data || [];
-  } catch (err) {
-    console.warn("Using fallback contacts data:", err);
-    return null;
-  }
+  const endpoint = `/api/contacts${params.toString() ? `?${params.toString()}` : ""}`;
+  return await api.get(endpoint);
 }
 
-// --- KNOWLEDGE & WHATSAPP ---
+export async function createContactLead(data: {
+  name: string;
+  phone?: string;
+  address?: string;
+  pageId?: string;
+  sentiment?: string;
+}) {
+  return await api.post("/api/contacts", data);
+}
+
+// =============================================================================
+// 6. ORDERS & E-COMMERCE CHECKOUT
+// =============================================================================
+export async function fetchOrders(status?: string, pageId?: string) {
+  const params = new URLSearchParams();
+  if (status && status !== "ALL") params.append("status", status);
+  if (pageId && pageId !== "ALL") params.append("pageId", pageId);
+
+  const endpoint = `/api/orders${params.toString() ? `?${params.toString()}` : ""}`;
+  const res = await api.get<any[]>(endpoint);
+  return res.success && Array.isArray(res.data) ? res.data : [];
+}
+
+export async function createOrderManual(data: {
+  customerName?: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
+  productName?: string;
+  totalAmount?: number | string;
+  paymentMethod?: string;
+  status?: string;
+  pageId?: string;
+}) {
+  return await api.post("/api/orders", data);
+}
+
+export async function updateOrderStatus(orderId: string, status: string) {
+  return await api.patch(`/api/orders/${orderId}/status`, { status });
+}
+
+// =============================================================================
+// 7. KNOWLEDGE BASE & AI SYSTEM PROMPTS
+// =============================================================================
 export async function fetchKnowledgeAndWhatsApp(pageId?: string) {
-  try {
-    const url = pageId && pageId !== "ALL"
-      ? `${API_BASE}/api/knowledge?pageId=${pageId}`
-      : `${API_BASE}/api/knowledge`;
-    const res = await fetch(url, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch knowledge");
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.warn("Using fallback knowledge data:", err);
-    return null;
-  }
+  const endpoint = `/api/knowledge${pageId ? `?pageId=${pageId}` : ""}`;
+  const res = await api.get(endpoint);
+  return res.success ? res.data : null;
 }
 
 export async function createKnowledgeItem(data: { title: string; category: string; content: string }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/knowledge`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.error("Error creating knowledge item:", err);
-    return null;
-  }
+  const res = await api.post("/api/knowledge", data);
+  return res.success ? res.data : null;
 }
 
 export async function deleteKnowledgeItem(id: string) {
-  try {
-    await fetch(`${API_BASE}/api/knowledge/${id}`, {
-      method: "DELETE",
-      headers: getHeaders(),
-    });
-    return true;
-  } catch (err) {
-    console.error("Error deleting knowledge item:", err);
-    return false;
-  }
+  return await api.delete(`/api/knowledge/${id}`);
 }
 
 export async function saveWhatsAppProtocol(data: {
-  mode: string;
-  number: string;
-  hotline: string;
-  address: string;
-  prefillText: string;
+  mode?: string;
+  number?: string;
+  hotline?: string;
+  address?: string;
+  prefillText?: string;
+  isEnabled?: boolean;
+  contactNumber?: string;
+  sharingRule?: "ALWAYS" | "WHEN_REQUESTED" | "HUMAN_HANDOFF" | string;
+  shareInquiryHotline?: boolean;
+  [key: string]: any;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/knowledge/whatsapp`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return res.ok;
-  } catch (err) {
-    console.error("Error saving WhatsApp protocol:", err);
-    return false;
-  }
+  return await api.post("/api/knowledge/whatsapp", data);
 }
 
 export async function saveSystemPrompt(data: { systemPrompt: string; businessName?: string; pageId?: string }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/knowledge/system-prompt`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    const json = await safeFetchJson(res);
-    return json;
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to save system prompt" };
-  }
+  return await api.post("/api/knowledge/system-prompt", data);
 }
 
-// --- BILLING & PAYMENTS ---
+export async function testPlaygroundAI(data: { message: string; history?: any[]; pageId?: string }) {
+  return await api.post("/api/knowledge/playground", data);
+}
+
+export async function testPlaygroundChat(message: string, history: Array<{ role: string; content: string }>, pageId?: string) {
+  return await api.post("/api/knowledge/playground", { message, history, pageId });
+}
+
+// =============================================================================
+// 8. BILLING, PAYMENTS & PROMO COUPONS
+// =============================================================================
 export async function fetchBillingStatus() {
-  try {
-    const res = await fetch(`${API_BASE}/api/billing`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch billing");
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err) {
-    console.warn("Using fallback billing data:", err);
-    return null;
-  }
+  const res = await api.get("/api/billing/status");
+  return res.success ? res.data : null;
 }
 
 export async function submitPayment(data: {
   plan: string;
+  amount?: number;
   method: string;
   senderNumber: string;
   trxId: string;
   couponCode?: string;
   notes?: string;
+  [key: string]: any;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/billing/submit-payment`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    const json = await safeFetchJson(res);
-    return json;
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to submit payment" };
-  }
+  return await api.post("/api/billing/submit-payment", data);
 }
 
-export async function testPlaygroundChat(message: string, history: Array<{ role: string; content: string }>, pageId?: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/knowledge/playground`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ message, history, pageId }),
-    });
-    const json = await safeFetchJson(res);
-    return json;
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to reach AI Playground" };
-  }
+export async function validateCouponCode(code: string, plan: string) {
+  return await api.post("/api/billing/validate-coupon", { code, plan });
 }
 
-// --- PROFILE & USER ---
-export async function fetchCurrentUser() {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/me`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    const json = await safeFetchJson(res);
-    return json.success ? json.data : null;
-  } catch (err) {
-    console.error("Error fetching user:", err);
-    return null;
-  }
+export async function fetchPaymentConfig() {
+  const res = await api.get("/api/billing/payment-config");
+  return res.success ? res.data : null;
 }
 
-export async function updateUserProfile(data: { name?: string; password?: string }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/profile`, {
-      method: "PUT",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-// --- TEAM MANAGEMENT ---
-export async function fetchTeamMembers() {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/team`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    const json = await safeFetchJson(res);
-    return json.success ? json.data : [];
-  } catch (err) {
-    console.error("Error fetching team members:", err);
-    return [];
-  }
-}
-
-export async function inviteTeamMember(data: { name?: string; email: string; role: string }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/team/invite`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-export async function deleteTeamMember(id: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/team/${id}`, {
-      method: "DELETE",
-      headers: getHeaders(),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-// --- ORDERS ---
-export async function fetchOrders(status?: string, pageId?: string) {
-  try {
-    const params = new URLSearchParams();
-    if (status && status !== "ALL") params.append("status", status);
-    if (pageId && pageId !== "ALL") params.append("pageId", pageId);
-
-    const queryString = params.toString() ? `?${params.toString()}` : "";
-    const url = `${API_BASE}/api/orders${queryString}`;
-    const res = await fetch(url, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    const json = await safeFetchJson(res);
-    return json.success ? json.data : [];
-  } catch (err) {
-    console.error("Error fetching orders:", err);
-    return [];
-  }
-}
-
-export async function createOrder(data: any) {
-  try {
-    const res = await fetch(`${API_BASE}/api/orders`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-export async function updateOrderStatus(orderId: string, status: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
-      method: "PATCH",
-      headers: getHeaders(),
-      body: JSON.stringify({ status }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-// --- AUTOMATION & RULES ---
+// =============================================================================
+// 9. AUTOMATION & ESCALATION RULES
+// =============================================================================
 export async function fetchAutomationRules() {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/rules`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    const json = await safeFetchJson(res);
-    return json.success ? json.data : [];
-  } catch (err) {
-    console.error("Error fetching rules:", err);
-    return [];
-  }
+  const res = await api.get<any[]>("/api/automation/rules");
+  return res.success && Array.isArray(res.data) ? res.data : [];
 }
 
 export async function createAutomationRule(data: { name: string; keywords: string[]; reason?: string }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/rules`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/automation/rules", data);
 }
 
 export async function toggleAutomationRule(id: string, isActive: boolean) {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/rules/${id}`, {
-      method: "PATCH",
-      headers: getHeaders(),
-      body: JSON.stringify({ isActive }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.patch(`/api/automation/rules/${id}`, { isActive });
 }
 
 export async function deleteAutomationRule(id: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/rules/${id}`, {
-      method: "DELETE",
-      headers: getHeaders(),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.delete(`/api/automation/rules/${id}`);
 }
 
-// --- TELEGRAM MASTER BOT ALERTS ---
+// =============================================================================
+// 10. SINGLE MASTER TELEGRAM BOT
+// =============================================================================
 export async function fetchTelegramStatus() {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/telegram`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.get("/api/automation/telegram");
 }
 
 export async function disconnectTelegram() {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/telegram/disconnect`, {
-      method: "POST",
-      headers: getHeaders(),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.delete("/api/automation/telegram");
 }
 
 export async function sendTestTelegramAlert() {
-  try {
-    const res = await fetch(`${API_BASE}/api/automation/telegram/test`, {
-      method: "POST",
-      headers: getHeaders(),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/automation/telegram/test-alert", {});
 }
 
-// --- PAYMENT CONFIG & RECEIVER NUMBERS ---
-export async function fetchPaymentConfig() {
-  try {
-    const res = await fetch(`${API_BASE}/api/billing/payment-config`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+// =============================================================================
+// 11. USER PROFILE & TEAM MANAGEMENT
+// =============================================================================
+export async function fetchCurrentUser() {
+  const res = await api.get("/api/auth/me");
+  return res.success ? res.data : null;
 }
 
-export async function fetchAdminPaymentConfig() {
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/payment-config`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+export async function updateUserProfile(data: { name?: string; password?: string }) {
+  return await api.put("/api/auth/profile", data);
 }
 
-export async function saveAdminPaymentConfig(data: {
-  bkashNumber?: string;
-  bkashType?: string;
-  nagadNumber?: string;
-  nagadType?: string;
-  rocketNumber?: string;
-  rocketType?: string;
-  instructions?: string;
+export async function fetchTeamMembers() {
+  const res = await api.get<any[]>("/api/auth/team");
+  return res.success && Array.isArray(res.data) ? res.data : [];
+}
+
+export async function inviteTeamMember(data: { name?: string; email: string; role: string }) {
+  return await api.post("/api/auth/team/invite", data);
+}
+
+export async function deleteTeamMember(id: string) {
+  return await api.delete(`/api/auth/team/${id}`);
+}
+
+// =============================================================================
+// 12. ADMIN CONTROL PANEL (KEYS, WORKSPACES, APPROVALS, SETTINGS)
+// =============================================================================
+export async function fetchAdminKeys() {
+  return await api.get("/api/admin/keys");
+}
+
+export async function addAdminKey(data: {
+  key: string;
+  name?: string;
+  role?: "PRIMARY" | "SECONDARY" | "BACKUP";
+  model?: string;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/payment-config`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/admin/keys", data);
 }
 
-// --- COUPON & DISCOUNT CODES ---
-export async function validateCouponCode(code: string, plan: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/billing/coupons/validate`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({ code, plan }),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+export async function switchAdminKeyModel(keyId: string, model: string) {
+  return await api.post(`/api/admin/keys/${keyId}/model`, { model });
+}
+
+export async function updateAdminKey(keyId: string, data: any) {
+  return await api.put(`/api/admin/keys/${keyId}`, data);
+}
+
+export async function deleteAdminKey(keyId: string) {
+  return await api.delete(`/api/admin/keys/${keyId}`);
+}
+
+export async function fetchAdminClients() {
+  return await api.get("/api/admin/clients");
+}
+
+export async function fetchAdminPayments() {
+  return await api.get("/api/billing/admin/payments");
+}
+
+export async function approveAdminPayment(id: string) {
+  return await api.post(`/api/billing/admin/payments/${id}/approve`, {});
+}
+
+export async function rejectAdminPayment(id: string, reason?: string) {
+  return await api.post(`/api/billing/admin/payments/${id}/reject`, { reason });
 }
 
 export async function fetchAdminCoupons() {
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/coupons`, {
-      headers: getHeaders(),
-      cache: "no-store",
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.get("/api/admin/coupons");
 }
 
 export async function createAdminCoupon(data: {
@@ -804,65 +549,74 @@ export async function createAdminCoupon(data: {
   usageLimit?: number;
   expiresAt?: string;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/coupons`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/admin/coupons", data);
 }
 
 export async function deleteAdminCoupon(id: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/coupons/${id}`, {
-      method: "DELETE",
-      headers: getHeaders(),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.delete(`/api/admin/coupons/${id}`);
 }
 
 export async function toggleAdminCoupon(id: string) {
-  try {
-    const res = await fetch(`${API_BASE}/api/admin/coupons/${id}/toggle`, {
-      method: "PATCH",
-      headers: getHeaders(),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.patch(`/api/admin/coupons/${id}/toggle`, {});
 }
 
-export async function testPlaygroundAI(data: { message: string; history?: any[] }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/knowledge/playground`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+export async function fetchAdminPaymentConfig() {
+  const res = await api.get("/api/admin/payment-config");
+  return res.success ? res.data : null;
 }
 
+export async function saveAdminPaymentConfig(data: {
+  bkashNumber?: string;
+  bkashType?: string;
+  nagadNumber?: string;
+  nagadType?: string;
+  rocketNumber?: string;
+  rocketType?: string;
+  instructions?: string;
+}) {
+  return await api.post("/api/admin/payment-config", data);
+}
+
+export async function fetchAdminMetaConfig() {
+  return await api.get("/api/admin/meta-config");
+}
+
+export async function saveAdminMetaConfig(data: { appId: string; appSecret: string; verifyToken: string }) {
+  return await api.post("/api/admin/meta-config", data);
+}
+
+export async function fetchAdminTelegramMasterConfig() {
+  return await api.get("/api/admin/telegram-master-config");
+}
+
+export async function saveAdminTelegramMasterConfig(data: {
+  botToken: string;
+  botUsername: string;
+  adminChatId: string;
+}) {
+  return await api.post("/api/admin/telegram-master-config", data);
+}
+
+export async function fetchAdminCloudflareConfig() {
+  return await api.get("/api/admin/cloudflare-config");
+}
+
+export async function saveAdminCloudflareConfig(data: {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucketName: string;
+  publicDomain: string;
+}) {
+  return await api.post("/api/admin/cloudflare-config", data);
+}
+
+// =============================================================================
+// 13. FOLLOW-UP AUTOMATIONS & BROADCASTS
+// =============================================================================
 export async function fetchFollowupConfig() {
-  try {
-    const res = await fetch(`${API_BASE}/api/broadcasts/followup-config`, {
-      headers: getHeaders(),
-    });
-    const json = await safeFetchJson(res);
-    return json.data;
-  } catch (err: any) {
-    return null;
-  }
+  const res = await api.get("/api/broadcasts/followup-config");
+  return res.success ? res.data : null;
 }
 
 export async function saveFollowupConfig(data: {
@@ -871,34 +625,9 @@ export async function saveFollowupConfig(data: {
   messageText: string;
   pageId?: string;
 }) {
-  try {
-    const res = await fetch(`${API_BASE}/api/broadcasts/followup-config`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/broadcasts/followup-config", data);
 }
 
 export async function triggerFollowupScan() {
-  try {
-    const res = await fetch(`${API_BASE}/api/broadcasts/trigger-followup`, {
-      method: "POST",
-      headers: getHeaders(),
-      body: JSON.stringify({}),
-    });
-    return await safeFetchJson(res);
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
+  return await api.post("/api/broadcasts/trigger-followup", {});
 }
-
-
-
-
-
-
-

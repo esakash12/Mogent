@@ -86,3 +86,126 @@ contactsRouter.get("/", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
+// POST /api/contacts - Create or update a customer contact/lead
+contactsRouter.post("/", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { name, phone, address, pageId, sentiment } = body;
+
+    if (!name || !name.trim()) {
+      return c.json({ success: false, error: "Customer name is required" }, 400);
+    }
+
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst({
+        orderBy: { updatedAt: "desc" },
+      });
+      targetWorkspaceId = defaultWs?.id;
+    }
+
+    let targetPageId = pageId;
+    if (!targetPageId || targetPageId === "ALL") {
+      const page = await prisma.facebookPage.findFirst({
+        where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
+      });
+      targetPageId = page?.id;
+    }
+
+    if (!targetPageId) {
+      const anyPage = await prisma.facebookPage.findFirst();
+      if (anyPage) {
+        targetPageId = anyPage.id;
+      } else if (targetWorkspaceId) {
+        const newPage = await prisma.facebookPage.create({
+          data: {
+            workspaceId: targetWorkspaceId,
+            pageId: `store-${Date.now()}`,
+            name: "Direct Leads",
+            category: "Direct Leads",
+            encryptedAccessToken: "direct_token",
+            tokenIv: "direct_iv",
+            tokenTag: "direct_tag",
+            verifyToken: "mogent_fb_verify_token_secure",
+          },
+        });
+        targetPageId = newPage.id;
+      } else {
+        return c.json({ success: false, error: "No connected store page found" }, 404);
+      }
+    }
+
+    const cleanName = (name || "").trim();
+    const parts = cleanName.split(" ").filter(Boolean);
+    const firstName = parts[0] || "Customer";
+    const lastName = parts.slice(1).join(" ") || "";
+
+    const cleanPhone = (phone || "").trim();
+    const cleanAddress = (address || "").trim();
+
+    let sentimentScore = 0.7;
+    if (sentiment === "PURCHASED") sentimentScore = 0.95;
+    else if (sentiment === "HIGH_INTENT") sentimentScore = 0.85;
+    else if (sentiment === "COMPLAINT") sentimentScore = -0.5;
+
+    let customer;
+    if (cleanPhone) {
+      const existing = await prisma.customer.findFirst({
+        where: {
+          facebookPageId: targetPageId,
+          phoneNumber: cleanPhone,
+        },
+      });
+
+      if (existing) {
+        customer = await prisma.customer.update({
+          where: { id: existing.id },
+          data: {
+            firstName,
+            lastName,
+            deliveryAddress: cleanAddress || existing.deliveryAddress,
+            sentimentScore,
+          },
+          include: { facebookPage: true },
+        });
+      }
+    }
+
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: {
+          facebookPageId: targetPageId,
+          psid: `lead-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          firstName,
+          lastName,
+          phoneNumber: cleanPhone || null,
+          deliveryAddress: cleanAddress || null,
+          sentimentScore,
+        },
+        include: { facebookPage: true },
+      });
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        id: customer.id,
+        name: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+        phone: customer.phoneNumber || "",
+        address: customer.deliveryAddress || "",
+        ordersCount: customer.totalOrders,
+        totalSpent: customer.totalSpent,
+        sentiment: sentiment || "INQUIRY",
+        psid: customer.psid,
+        pageName: customer.facebookPage?.name || "Connected Page",
+      },
+      message: "Lead saved successfully!",
+    });
+  } catch (error: any) {
+    console.error("Create contact error:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});

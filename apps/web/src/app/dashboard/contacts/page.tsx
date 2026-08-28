@@ -47,12 +47,14 @@ export default function ContactsPage() {
 
   const loadData = async (pageFilter = selectedPageFilter) => {
     try {
-      const [contactsData, pagesData] = await Promise.all([
+      const [contactsRes, pagesData] = await Promise.all([
         fetchContacts(undefined, pageFilter),
         fetchPages(),
       ]);
-      if (Array.isArray(contactsData)) {
-        setContacts(contactsData);
+      if (contactsRes && Array.isArray(contactsRes.data)) {
+        setContacts(contactsRes.data);
+      } else if (Array.isArray(contactsRes)) {
+        setContacts(contactsRes);
       } else {
         setContacts([]);
       }

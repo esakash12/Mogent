@@ -21,8 +21,16 @@ import {
   AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+import {
+  fetchAdminMetaConfig,
+  saveAdminMetaConfig,
+  fetchAdminTelegramMasterConfig,
+  saveAdminTelegramMasterConfig,
+  fetchAdminCloudflareConfig,
+  saveAdminCloudflareConfig,
+  fetchAdminPaymentConfig,
+  saveAdminPaymentConfig,
+} from "@/lib/api";
 
 export default function AdminGlobalSettingsPage() {
   const [isSaved, setIsSaved] = useState(false);
@@ -34,7 +42,7 @@ export default function AdminGlobalSettingsPage() {
   const [verifyToken, setVerifyToken] = useState("mogent_fb_verify_token_secure");
 
   // System Settings
-  const [defaultModel, setDefaultModel] = useState("gemini-3.5-flash-lite");
+  const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
   const [cooldownSecs, setCooldownSecs] = useState("60");
   // Master Telegram Bot Settings
   const [tgBotToken, setTgBotToken] = useState("");
@@ -62,41 +70,38 @@ export default function AdminGlobalSettingsPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
-    const headers = { Authorization: `Bearer ${token}` };
-
     Promise.all([
-      fetch(`${API_BASE}/api/admin/meta-config`, { headers }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/admin/telegram-master-config`, { headers }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/admin/cloudflare-config`, { headers }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/admin/payment-config`, { headers }).then((r) => r.json()),
+      fetchAdminMetaConfig(),
+      fetchAdminTelegramMasterConfig(),
+      fetchAdminCloudflareConfig(),
+      fetchAdminPaymentConfig(),
     ])
-      .then(([metaJson, tgJson, cfJson, payJson]) => {
-        if (metaJson.success && metaJson.data) {
+      .then(([metaJson, tgJson, cfJson, payData]) => {
+        if (metaJson?.success && metaJson.data) {
           setAppId(metaJson.data.appId || "");
           setAppSecret(metaJson.data.appSecret || "");
           setVerifyToken(metaJson.data.verifyToken || "mogent_fb_verify_token_secure");
         }
-        if (tgJson.success && tgJson.data) {
+        if (tgJson?.success && tgJson.data) {
           setTgBotToken(tgJson.data.botToken || "");
           setTgBotUsername(tgJson.data.botUsername || "MogentAlertBot");
           setTelegramChatId(tgJson.data.adminChatId || "-1002349182390");
         }
-        if (cfJson.success && cfJson.data) {
+        if (cfJson?.success && cfJson.data) {
           setCfAccountId(cfJson.data.accountId || "");
           setCfAccessKeyId(cfJson.data.accessKeyId || "");
           setCfSecretAccessKey(cfJson.data.secretAccessKey || "");
           setCfBucketName(cfJson.data.bucketName || "mogent-assets");
           setCfPublicDomain(cfJson.data.publicDomain || "");
         }
-        if (payJson.success && payJson.data) {
-          setBkashNumber(payJson.data.bkashNumber || "01711998877");
-          setBkashType(payJson.data.bkashType || "Personal (Send Money)");
-          setNagadNumber(payJson.data.nagadNumber || "01711998877");
-          setNagadType(payJson.data.nagadType || "Personal (Send Money)");
-          setRocketNumber(payJson.data.rocketNumber || "01711998877-0");
-          setRocketType(payJson.data.rocketType || "Personal (Send Money)");
-          setPaymentInstructions(payJson.data.instructions || "");
+        if (payData) {
+          setBkashNumber(payData.bkashNumber || "01711998877");
+          setBkashType(payData.bkashType || "Personal (Send Money)");
+          setNagadNumber(payData.nagadNumber || "01711998877");
+          setNagadType(payData.nagadType || "Personal (Send Money)");
+          setRocketNumber(payData.rocketNumber || "01711998877-0");
+          setRocketType(payData.rocketType || "Personal (Send Money)");
+          setPaymentInstructions(payData.instructions || "");
         }
         setIsLoading(false);
       })
@@ -124,21 +129,12 @@ export default function AdminGlobalSettingsPage() {
       return;
     }
     setIsVerifyingTg(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
     try {
-      const res = await fetch(`${API_BASE}/api/admin/telegram-master-config`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          botToken: tgBotToken.trim(),
-          botUsername: tgBotUsername.trim(),
-          adminChatId: telegramChatId.trim(),
-        }),
+      const data = await saveAdminTelegramMasterConfig({
+        botToken: tgBotToken.trim(),
+        botUsername: tgBotUsername.trim(),
+        adminChatId: telegramChatId.trim(),
       });
-      const data = await res.json();
       if (data.success) {
         if (data.data?.botUsername) {
           setTgBotUsername(data.data.botUsername);
@@ -160,57 +156,35 @@ export default function AdminGlobalSettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : "";
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    };
 
     try {
-      const [metaRes, tgRes, cfRes, payRes] = await Promise.all([
-        fetch(`${API_BASE}/api/admin/meta-config`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ appId, appSecret, verifyToken }),
+      const [, tgRes] = await Promise.all([
+        saveAdminMetaConfig({ appId, appSecret, verifyToken }),
+        saveAdminTelegramMasterConfig({
+          botToken: tgBotToken,
+          botUsername: tgBotUsername,
+          adminChatId: telegramChatId,
         }),
-        fetch(`${API_BASE}/api/admin/telegram-master-config`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            botToken: tgBotToken,
-            botUsername: tgBotUsername,
-            adminChatId: telegramChatId,
-          }),
+        saveAdminCloudflareConfig({
+          accountId: cfAccountId,
+          accessKeyId: cfAccessKeyId,
+          secretAccessKey: cfSecretAccessKey,
+          bucketName: cfBucketName,
+          publicDomain: cfPublicDomain,
         }),
-        fetch(`${API_BASE}/api/admin/cloudflare-config`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            accountId: cfAccountId,
-            accessKeyId: cfAccessKeyId,
-            secretAccessKey: cfSecretAccessKey,
-            bucketName: cfBucketName,
-            publicDomain: cfPublicDomain,
-          }),
-        }),
-        fetch(`${API_BASE}/api/admin/payment-config`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            bkashNumber,
-            bkashType,
-            nagadNumber,
-            nagadType,
-            rocketNumber,
-            rocketType,
-            instructions: paymentInstructions,
-          }),
+        saveAdminPaymentConfig({
+          bkashNumber,
+          bkashType,
+          nagadNumber,
+          nagadType,
+          rocketNumber,
+          rocketType,
+          instructions: paymentInstructions,
         }),
       ]);
 
-      const tgJson = await tgRes.json();
-      if (tgJson.success && tgJson.data?.botUsername) {
-        setTgBotUsername(tgJson.data.botUsername);
+      if (tgRes?.success && tgRes.data?.botUsername) {
+        setTgBotUsername(tgRes.data.botUsername);
       }
 
       setIsSaved(true);
@@ -219,12 +193,12 @@ export default function AdminGlobalSettingsPage() {
         "Configurations Saved Successfully! ✅",
         "Meta OAuth, Telegram Master Webhook, Cloudflare Storage & Payment Accounts are now live."
       );
-      setTimeout(() => setIsSaved(false), 4000);
+      setTimeout(() => setIsSaved(false), 3000);
     } catch (err: any) {
-      console.error("Save error:", err);
-      showToast("error", "Failed to Save", err.message || "Something went wrong while saving settings.");
+      showToast("error", "Save Error", err.message || "Failed to save settings.");
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   return (

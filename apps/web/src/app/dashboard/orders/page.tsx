@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchOrders, updateOrderStatus } from "@/lib/api";
+import { fetchOrders, updateOrderStatus, createOrderManual } from "@/lib/api";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -25,6 +25,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newOrder, setNewOrder] = useState({
     customerName: "",
     customerPhone: "",
@@ -51,6 +52,7 @@ export default function OrdersPage() {
   }, []);
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
+    // Optimistic UI update
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
     );
@@ -58,6 +60,54 @@ export default function OrdersPage() {
       await updateOrderStatus(orderId, newStatus);
     } catch (err) {
       console.error("Error updating order status:", err);
+      loadData();
+    }
+  };
+
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOrder.customerName || !newOrder.customerPhone || !newOrder.totalAmount) return;
+
+    const optimisticId = `temp-${Date.now()}`;
+    const optimisticOrder = {
+      id: optimisticId,
+      customerName: newOrder.customerName,
+      customerPhone: newOrder.customerPhone,
+      deliveryAddress: newOrder.deliveryAddress,
+      itemsSummary: newOrder.productName || "1x Custom Order",
+      totalAmount: newOrder.totalAmount,
+      paymentMethod: newOrder.paymentMethod,
+      status: "CONFIRMED",
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistic immediate insert
+    setOrders((prev) => [optimisticOrder, ...prev]);
+    setShowCreateModal(false);
+    setIsSubmitting(true);
+
+    const payload = { ...newOrder };
+    setNewOrder({
+      customerName: "",
+      customerPhone: "",
+      deliveryAddress: "",
+      productName: "",
+      totalAmount: "",
+      paymentMethod: "COD",
+    });
+
+    try {
+      const res = await createOrderManual(payload);
+      if (res?.success && res.data) {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === optimisticId ? { ...o, id: res.data.id, ...res.data } : o))
+        );
+      }
+    } catch (err) {
+      console.error("Order creation error:", err);
+      loadData();
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -118,11 +168,15 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Main Content Area: Table or Empty State */}
+      {/* Main Content Area: Table or Skeleton / Empty State */}
       {loading ? (
-        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-16 shadow-sm flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-7 h-7 text-[#F59E0B] animate-spin" />
-          <p className="text-xs font-bold text-[#64748B]">Loading orders...</p>
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6 space-y-4">
+          <div className="h-5 w-40 bg-[#E2E8F0] rounded animate-pulse" />
+          <div className="space-y-3 pt-2">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 w-full bg-[#F8FAFC] rounded-xl animate-pulse" />
+            ))}
+          </div>
         </div>
       ) : filteredOrders.length > 0 ? (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
@@ -215,29 +269,7 @@ export default function OrdersPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newOrder.customerName || !newOrder.customerPhone || !newOrder.totalAmount) return;
-                setOrders([
-                  {
-                    id: Date.now().toString(),
-                    customerName: newOrder.customerName,
-                    customerPhone: newOrder.customerPhone,
-                    deliveryAddress: newOrder.deliveryAddress,
-                    itemsSummary: newOrder.productName || "1x Custom Order",
-                    totalAmount: newOrder.totalAmount,
-                    paymentMethod: newOrder.paymentMethod,
-                    status: "CONFIRMED",
-                    createdAt: new Date().toISOString(),
-                  },
-                  ...orders,
-                ]);
-                setShowCreateModal(false);
-                setNewOrder({ customerName: "", customerPhone: "", deliveryAddress: "", productName: "", totalAmount: "", paymentMethod: "COD" });
-              }}
-              className="space-y-3"
-            >
+            <form onSubmit={handleCreateOrder} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-[#334155] mb-1">Customer Name *</label>
                 <input

@@ -26,7 +26,10 @@ import {
   fetchAdminCoupons,
   createAdminCoupon,
   deleteAdminCoupon,
-  toggleAdminCoupon
+  toggleAdminCoupon,
+  fetchAdminPayments,
+  approveAdminPayment,
+  rejectAdminPayment,
 } from "@/lib/api";
 
 interface PaymentTransaction {
@@ -65,8 +68,6 @@ interface CouponItem {
   createdAt: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
 export default function AdminBillingApprovalsPage() {
   const [activeTab, setActiveTab] = useState<"PAYMENTS" | "COUPONS">("PAYMENTS");
 
@@ -101,14 +102,9 @@ export default function AdminBillingApprovalsPage() {
   const loadPayments = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/billing/admin/payments`, {
-        headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-      });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setPayments(json.data);
+      const res = await fetchAdminPayments();
+      if (res.success && Array.isArray(res.data)) {
+        setPayments(res.data);
       }
     } catch (err) {
       console.error("Failed to load admin payments:", err);
@@ -143,18 +139,12 @@ export default function AdminBillingApprovalsPage() {
     setMsg(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/billing/admin/payments/${id}/approve`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-      });
-      const json = await res.json();
-      if (json.success) {
+      const res = await approveAdminPayment(id);
+      if (res.success) {
         setMsg({ type: "success", text: "Payment approved and plan activated successfully!" });
         loadPayments();
       } else {
-        setMsg({ type: "error", text: json.error || "Approval failed" });
+        setMsg({ type: "error", text: res.error || "Approval failed" });
       }
     } catch (err: any) {
       setMsg({ type: "error", text: err.message || "Approval error" });
@@ -171,20 +161,12 @@ export default function AdminBillingApprovalsPage() {
     setMsg(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/billing/admin/payments/${id}/reject`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        },
-        body: JSON.stringify({ reason: reason || "Invalid TrxID / Payment not received" }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setMsg({ type: "success", text: "Transaction rejected." });
+      const res = await rejectAdminPayment(id, reason || "Invalid TrxID / Payment not received");
+      if (res.success) {
+        setMsg({ type: "success", text: "Payment marked as REJECTED." });
         loadPayments();
       } else {
-        setMsg({ type: "error", text: json.error || "Rejection failed" });
+        setMsg({ type: "error", text: res.error || "Rejection failed" });
       }
     } catch (err: any) {
       setMsg({ type: "error", text: err.message || "Rejection error" });

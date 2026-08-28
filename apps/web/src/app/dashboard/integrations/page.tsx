@@ -25,6 +25,7 @@ import {
   createPage,
   deletePage,
   updatePageSettings,
+  fetchTelegramStatus,
 } from "@/lib/api";
 
 export default function IntegrationsPage() {
@@ -48,22 +49,21 @@ export default function IntegrationsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Telegram State
-  const [telegramToken, setTelegramToken] = useState("");
-  const [telegramChatId, setTelegramChatId] = useState("");
-  const [savingTg, setSavingTg] = useState(false);
-  const [tgSaved, setTgSaved] = useState(false);
-
-  // Copy state
+  const [telegramData, setTelegramData] = useState<any>(null);
   const [copiedWidget, setCopiedWidget] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await fetchPages();
-      if (Array.isArray(data)) {
-        setPages(data);
+      const [pagesData, tgRes] = await Promise.all([
+        fetchPages(),
+        fetchTelegramStatus(),
+      ]);
+
+      if (Array.isArray(pagesData)) {
+        setPages(pagesData);
         const toggles: Record<string, { chat: boolean; comment: boolean; privateInbox: boolean }> = {};
-        data.forEach((p) => {
+        pagesData.forEach((p) => {
           toggles[p.id] = {
             chat: p.autoReplyEnabled ?? true,
             comment: p.commentReplyEnabled ?? true,
@@ -71,6 +71,10 @@ export default function IntegrationsPage() {
           };
         });
         setPageToggles(toggles);
+      }
+
+      if (tgRes?.success && tgRes.data) {
+        setTelegramData(tgRes.data);
       }
     } catch (err) {
       console.error("Failed to load integrations:", err);
@@ -81,23 +85,6 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     loadData();
-
-    // Fetch Telegram
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-    fetch(`${API_BASE}/api/telegram`, {
-      headers: {
-        Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-        "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") || "" : "",
-      },
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && res.data) {
-          setTelegramToken(res.data.botToken || "");
-          setTelegramChatId(res.data.chatId || "");
-        }
-      })
-      .catch(() => {});
   }, []);
 
   const handleToggle = async (pageId: string, type: "chat" | "comment" | "privateInbox") => {
@@ -149,35 +136,6 @@ export default function IntegrationsPage() {
       console.error("Delete page error:", err);
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const handleSaveTelegram = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingTg(true);
-    try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-      const res = await fetch(`${API_BASE}/api/telegram`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : ""}`,
-          "x-workspace-id": typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") || "" : "",
-        },
-        body: JSON.stringify({
-          botToken: telegramToken,
-          chatId: telegramChatId,
-          enabled: true,
-        }),
-      });
-      if (res.ok) {
-        setTgSaved(true);
-        setTimeout(() => setTgSaved(false), 2500);
-      }
-    } catch (err) {
-      console.error("Telegram save error:", err);
-    } finally {
-      setSavingTg(false);
     }
   };
 

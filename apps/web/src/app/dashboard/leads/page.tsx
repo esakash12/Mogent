@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchContacts } from "@/lib/api";
+import { fetchContacts, createContactLead } from "@/lib/api";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -27,6 +27,7 @@ export default function LeadsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>("ALL");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newLead, setNewLead] = useState({ name: "", phone: "", address: "" });
 
   const loadData = async () => {
@@ -53,6 +54,43 @@ export default function LeadsPage() {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleCreateLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLead.name || !newLead.phone) return;
+
+    const optimisticId = `temp-${Date.now()}`;
+    const optimisticLead = {
+      id: optimisticId,
+      name: newLead.name,
+      phone: newLead.phone,
+      address: newLead.address,
+      ordersCount: 0,
+      pageName: "Direct",
+      sentiment: "INQUIRY",
+    };
+
+    setLeads((prev) => [optimisticLead, ...prev]);
+    setShowAddModal(false);
+    setIsSubmitting(true);
+
+    const payload = { ...newLead };
+    setNewLead({ name: "", phone: "", address: "" });
+
+    try {
+      const res = await createContactLead(payload);
+      if (res?.success && res.data) {
+        setLeads((prev) =>
+          prev.map((l) => (l.id === optimisticId ? { ...l, id: res.data.id, ...res.data } : l))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to persist lead:", err);
+      loadData();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -146,11 +184,15 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* Main Content Area: Live Table or Empty State */}
+      {/* Main Content Area: Live Table or Skeleton / Empty State */}
       {loading ? (
-        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-16 shadow-sm flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-7 h-7 text-[#F59E0B] animate-spin" />
-          <p className="text-xs font-bold text-[#64748B]">Loading customer leads...</p>
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6 space-y-4">
+          <div className="h-5 w-40 bg-[#E2E8F0] rounded animate-pulse" />
+          <div className="space-y-3 pt-2">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 w-full bg-[#F8FAFC] rounded-xl animate-pulse" />
+            ))}
+          </div>
         </div>
       ) : filteredLeads.length > 0 ? (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
@@ -183,7 +225,7 @@ export default function LeadsPage() {
                     <td className="py-3 px-4 font-mono font-semibold text-[#0F172A]">
                       {lead.phone ? (
                         <div className="flex items-center gap-1.5">
-                          <Phone className="w-3 h-3 text-[#059669]" />
+                          <Phone className="w-3.5 h-3.5 text-[#059669]" />
                           <span>{lead.phone}</span>
                         </div>
                       ) : (
@@ -193,7 +235,7 @@ export default function LeadsPage() {
                     <td className="py-3 px-4 max-w-xs truncate text-[#334155]">
                       {lead.address ? (
                         <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3 h-3 text-[#D97706] shrink-0" />
+                          <MapPin className="w-3.5 h-3.5 text-[#D97706] shrink-0" />
                           <span className="truncate">{lead.address}</span>
                         </div>
                       ) : (
@@ -261,27 +303,7 @@ export default function LeadsPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newLead.name || !newLead.phone) return;
-                setLeads([
-                  {
-                    id: Date.now().toString(),
-                    name: newLead.name,
-                    phone: newLead.phone,
-                    address: newLead.address,
-                    ordersCount: 0,
-                    pageName: "Manual",
-                    sentiment: "INQUIRY",
-                  },
-                  ...leads,
-                ]);
-                setShowAddModal(false);
-                setNewLead({ name: "", phone: "", address: "" });
-              }}
-              className="space-y-3"
-            >
+            <form onSubmit={handleCreateLead} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-[#334155] mb-1">Customer Full Name *</label>
                 <input
