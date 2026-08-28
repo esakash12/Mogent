@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { fetchBillingStatus } from "@/lib/api";
+import { fetchBillingStatus, fetchAnalytics } from "@/lib/api";
 
 interface PageMeta {
   title: string;
@@ -101,19 +101,18 @@ const pageMetaMap: Record<string, PageMeta> = {
 export function Header() {
   const [lang, setLang] = useState<"en" | "bn">("bn");
   const [profileOpen, setProfileOpen] = useState(false);
-  const [billingPlanName, setBillingPlanName] = useState<string>("PRO GROWTH");
+  const [remainingCreditsText, setRemainingCreditsText] = useState<string>("৪,৮৫৪ মেসেজ বাকি");
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
 
   useEffect(() => {
-    fetchBillingStatus()
-      .then((b) => {
-        if (b?.currentPlanDetails?.name) {
-          setBillingPlanName(b.currentPlanDetails.name);
-        } else if (b?.currentPlan) {
-          setBillingPlanName(`${b.currentPlan} PLAN`);
-        }
+    Promise.all([fetchBillingStatus(), fetchAnalytics()])
+      .then(([b, a]) => {
+        const limit = b?.currentPlanDetails?.msgLimit || 5000;
+        const used = a?.totalConversations || 0;
+        const remaining = Math.max(0, limit - used);
+        setRemainingCreditsText(`${remaining.toLocaleString()} মেসেজ বাকি`);
       })
       .catch(() => {});
   }, []);
@@ -157,13 +156,13 @@ export function Header() {
           <span>✨ অটোমেশন</span>
         </Link>
 
-        {/* Live Plan / Credits Badge */}
+        {/* Live Remaining Credits Badge */}
         <Link
           href="/dashboard/billing"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-sm"
         >
           <Coins className="w-3.5 h-3.5 text-[#D97706]" />
-          <span>🪙 {billingPlanName}</span>
+          <span>🪙 {remainingCreditsText}</span>
         </Link>
 
         {/* Language Switcher Toggle */}

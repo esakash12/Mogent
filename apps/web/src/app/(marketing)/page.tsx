@@ -1,244 +1,357 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { ArrowRight, Bot, Zap, MessageSquare, ShieldCheck, CheckCircle2 } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  Zap,
+  MessageSquare,
+  ShieldCheck,
+  CheckCircle2,
+  Package,
+  BookOpen,
+  Globe,
+  Sparkles,
+  Smartphone,
+  Facebook,
+  Check,
+  ChevronRight,
+  ShoppingCart,
+  Users,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-[#EDEDED] flex flex-col selection:bg-white/20 font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col font-sans selection:bg-[#F59E0B]/20">
       {/* Navbar */}
-      <header className="h-16 border-b border-[#222] bg-[#0A0A0A]/90 backdrop-blur-md px-4 md:px-10 flex items-center justify-between z-50 sticky top-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-black">
-            <Bot className="w-5 h-5" />
-          </div>
-          <span className="font-bold text-lg tracking-tight">Mogent</span>
-        </div>
-        <nav className="hidden md:flex items-center gap-8 text-[13px] font-medium text-[#888]">
-          <Link href="#features" className="hover:text-white transition-colors">Features</Link>
-          <Link href="#pricing" className="hover:text-white transition-colors">Pricing</Link>
-          <Link href="#docs" className="hover:text-white transition-colors">Documentation</Link>
-        </nav>
-        <div className="flex items-center gap-3 md:gap-4">
-          <Link href="/login" className="hidden sm:block text-[13px] font-medium text-[#888] hover:text-white transition-colors">
-            Log in
+      <header className="h-16 border-b border-[#E2E8F0] bg-white/90 backdrop-blur-md px-6 md:px-12 flex items-center justify-between z-50 sticky top-0 shadow-xs">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="text-2xl font-black tracking-tight text-[#EAB308] flex items-center gap-1 font-serif italic">
+              Mogent
+              <span className="text-xs not-italic font-bold px-1.5 py-0.5 rounded-md bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
+                AI
+              </span>
+            </span>
           </Link>
-          <Link href="/register" className="px-3 md:px-4 py-2 rounded-md bg-white text-black text-[12px] md:text-[13px] font-medium hover:bg-[#EDEDED] transition-colors">
-            Get Started
+        </div>
+
+        <nav className="hidden md:flex items-center gap-8 text-xs font-bold text-[#475569]">
+          <Link href="#features" className="hover:text-[#0F172A] transition-colors">ফিচারসমূহ</Link>
+          <Link href="#how-it-works" className="hover:text-[#0F172A] transition-colors">কীভাবে কাজ করে</Link>
+          <Link href="#pricing" className="hover:text-[#0F172A] transition-colors">প্রাইসিং</Link>
+          <Link href="/dashboard" className="hover:text-[#0F172A] transition-colors">ড্যাশবোর্ড</Link>
+        </nav>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="text-xs font-bold text-[#475569] hover:text-[#0F172A] transition-colors px-3 py-2"
+          >
+            লগইন
+          </Link>
+          <Link
+            href="/register"
+            className="px-4 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>ফ্রি শুরু করুন</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="flex flex-col items-center justify-start text-center px-4 pt-16 md:pt-32 pb-16 md:pb-20">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#111] border border-[#333] text-[11px] md:text-[12px] font-medium text-[#888] mb-6 md:mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500 hover:border-[#555] transition-colors cursor-default">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-          </span>
-          Mogent v2.0 is now live
+      <section className="flex flex-col items-center justify-start text-center px-4 pt-16 md:pt-24 pb-16 max-w-5xl mx-auto space-y-6">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#FFFDF5] border border-[#FDE68A] text-xs font-bold text-[#92400E] shadow-xs">
+          <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
+          <span>Mogent AI 3.5 — সম্পূর্ণ স্বয়ংক্রিয় কাস্টমার ও সেলস এজেন্ট</span>
         </div>
-        
-        <h1 className="text-4xl sm:text-5xl md:text-[80px] font-bold tracking-tighter max-w-5xl leading-[1.1] mb-6 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-          Automate your customer support with superhuman AI.
+
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-[#0F172A] leading-[1.15] max-w-4xl">
+          আপনার ফেসবুক পেইজে সেলস ও সাপোর্ট দিন <span className="text-[#D97706]">স্বয়ংক্রিয় এআই</span> দিয়ে
         </h1>
-        
-        <p className="text-[#888] text-base md:text-xl max-w-2xl mb-8 md:mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
-          Connect your Facebook pages and let Mogent AI Engine handle 95% of your customer inquiries instantly. Zero wait times. Perfect responses.
+
+        <p className="text-base md:text-lg text-[#475569] max-w-2xl leading-relaxed font-medium">
+          Mogent AI আপনার প্রোডাক্ট ক্যাটালগ ও নিয়মাবলী শিখে কাস্টমারদের প্রশ্নের তাত্ক্ষণিক উত্তর দেয়, ডেলিভারি তথ্য কালেকশন করে এবং অর্ডার কনফার্ম করে।
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300 w-full sm:w-auto">
-          <Link href="/register" className="w-full sm:w-auto justify-center px-8 py-3.5 rounded-lg bg-white text-black font-semibold text-[15px] hover:bg-[#EDEDED] transition-colors flex items-center gap-2">
-            Start for free
+        <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+          <Link
+            href="/register"
+            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>আজই ফ্রি ট্রায়াল শুরু করুন</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
-          <Link href="/login" className="w-full sm:w-auto justify-center px-8 py-3.5 rounded-lg bg-[#111] text-[#EDEDED] border border-[#333] font-semibold text-[15px] hover:bg-[#222] transition-colors flex items-center">
-            Sign In
+          <Link
+            href="/dashboard/playground"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>লাইভ ডেমো দেখুন</span>
           </Link>
         </div>
 
-        {/* Dashboard Preview Mockup */}
-        <div className="mt-16 md:mt-20 w-full max-w-[1000px] rounded-xl md:rounded-2xl border border-[#333] bg-[#0A0A0A] p-1.5 md:p-2 shadow-2xl relative animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-500 hidden sm:block">
-          <div className="rounded-lg md:rounded-xl overflow-hidden border border-[#222] bg-[#050505] relative flex h-[350px] md:h-[500px] shadow-2xl">
-            {/* Sidebar */}
-            <div className="hidden md:flex w-[240px] border-r border-[#222] flex-col p-4 bg-[#0A0A0A] shrink-0">
-              <div className="flex items-center gap-2 mb-8 px-2 mt-2">
-                 <div className="w-6 h-6 rounded bg-[#EDEDED] flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-black" />
-                 </div>
-                 <div className="h-4 w-24 bg-[#333] rounded-sm" />
+        {/* Dashboard Preview UI Mockup */}
+        <div className="w-full mt-10 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-xl overflow-hidden">
+          <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] p-6 space-y-6">
+            {/* Top Cards in Mockup */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] text-left">
+                <p className="text-[10px] font-bold text-[#64748B]">মোট কথোপকথন</p>
+                <p className="text-xl font-black text-[#0F172A] mt-1">146</p>
+                <span className="text-[9px] text-[#059669] font-bold">⚡ লাইভ সিঙ্ক</span>
               </div>
-              <div className="space-y-1">
-                 <div className="h-9 w-full bg-[#222] rounded-md px-3 flex items-center gap-3">
-                   <div className="w-4 h-4 rounded-sm bg-[#555]" />
-                   <div className="h-3 w-16 bg-[#555] rounded-sm" />
-                 </div>
-                 <div className="h-9 w-full rounded-md px-3 flex items-center gap-3 opacity-50">
-                   <div className="w-4 h-4 rounded-sm bg-[#555]" />
-                   <div className="h-3 w-20 bg-[#555] rounded-sm" />
-                 </div>
-                 <div className="h-9 w-full rounded-md px-3 flex items-center gap-3 opacity-50">
-                   <div className="w-4 h-4 rounded-sm bg-[#555]" />
-                   <div className="h-3 w-24 bg-[#555] rounded-sm" />
-                 </div>
+              <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] text-left">
+                <p className="text-[10px] font-bold text-[#64748B]">এআই উত্তর দিয়েছে</p>
+                <p className="text-xl font-black text-[#0F172A] mt-1">142</p>
+                <span className="text-[9px] text-[#059669] font-bold">✓ 98.4% সাকসেস</span>
               </div>
-            </div>
-            
-            {/* Main Content Area */}
-            <div className="flex-1 flex flex-col bg-[#050505] p-8">
-              {/* Top Bar Mockup */}
-              <div className="flex justify-between items-center mb-8">
-                <div className="h-6 w-48 bg-[#222] rounded-sm" />
-                <div className="h-8 w-24 bg-[#222] rounded-md" />
+              <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] text-left">
+                <p className="text-[10px] font-bold text-[#64748B]">ক্যাপচারড লিডস</p>
+                <p className="text-xl font-black text-[#0F172A] mt-1">146</p>
+                <span className="text-[9px] text-[#2563EB] font-bold">✓ ফোন ও ঠিকানা</span>
               </div>
-              
-              {/* 4 Metrics Mockup */}
-              <div className="grid grid-cols-4 gap-4 mb-8">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-28 bg-[#111] rounded-xl border border-[#222] p-4 flex flex-col justify-between">
-                    <div className="flex justify-between">
-                       <div className="h-3 w-16 bg-[#333] rounded-sm" />
-                       <div className="w-4 h-4 rounded-sm bg-[#333]" />
-                    </div>
-                    <div className="h-6 w-12 bg-[#EDEDED] rounded-sm" />
-                  </div>
-                ))}
-              </div>
-
-              {/* Chart/Table Mockup */}
-              <div className="flex-1 bg-[#111] rounded-xl border border-[#222] p-6 flex flex-col">
-                 <div className="h-4 w-32 bg-[#333] rounded-sm mb-6" />
-                 <div className="flex-1 space-y-4">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="h-12 w-full bg-[#1A1A1A] rounded-lg border border-[#222] flex items-center px-4 gap-4">
-                        <div className="w-6 h-6 rounded-full bg-[#333]" />
-                        <div className="h-3 w-24 bg-[#444] rounded-sm" />
-                        <div className="h-3 w-32 bg-[#333] rounded-sm ml-auto" />
-                        <div className="h-5 w-16 bg-[#222] rounded-md" />
-                      </div>
-                    ))}
-                 </div>
+              <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] text-left">
+                <p className="text-[10px] font-bold text-[#64748B]">গড় রেসপন্স স্পিড</p>
+                <p className="text-xl font-black text-[#0F172A] mt-1">1.2s</p>
+                <span className="text-[9px] text-[#7C3AED] font-bold">তাত্ক্ষণিক উত্তর</span>
               </div>
             </div>
 
-            {/* Fading overlay at the bottom so it blends into the landing page */}
-            <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#0A0A0A] to-transparent pointer-events-none" />
+            {/* Simulated Chat Bubble */}
+            <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 text-left space-y-3 max-w-xl mx-auto shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-[#E2E8F0] text-[#0F172A] font-bold text-xs flex items-center justify-center shrink-0">
+                  C
+                </div>
+                <div className="bg-[#F1F5F9] p-3 rounded-xl text-xs text-[#0F172A] font-medium">
+                  এই পোলো শার্টটার দাম কত আর ডেলিভারি চার্জ কত ঢাকার ভেতরে?
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 justify-end">
+                <div className="bg-[#F59E0B] p-3 rounded-xl text-xs text-black font-bold max-w-md shadow-xs">
+                  পোলো শার্টটির প্রাইস ৫৫০ টাকা। ঢাকার ভেতরে ডেলিভারি চার্জ ৮০ টাকা (১-২ দিনে পৌঁছে যাবে)। অর্ডার কনফার্ম করতে আপনার সাইজ, নাম ও ঠিকানা পাঠিয়ে দিন 😊
+                </div>
+                <div className="w-7 h-7 rounded-full bg-[#FEF3C7] text-[#92400E] font-bold text-xs flex items-center justify-center shrink-0 border border-[#FDE68A]">
+                  AI
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-24 px-6 md:px-10 border-t border-[#222] bg-[#0A0A0A] relative overflow-hidden">
-        {/* Glow behind features */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-amber-500/10 blur-[120px] rounded-full pointer-events-none" />
-
-        <div className="max-w-6xl mx-auto relative z-10">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4 text-[#EDEDED]">Everything you need to scale</h2>
-            <p className="text-[#888] text-lg max-w-2xl mx-auto">
-              Built for businesses that want to provide instant, accurate, and human-like customer support 24/7.
+      {/* Features Grid Section */}
+      <section id="features" className="py-16 bg-white border-y border-[#E2E8F0]">
+        <div className="max-w-6xl mx-auto px-6 space-y-12">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-black text-[#0F172A]">
+              আপনার ব্যবসার প্রতিটি ধাপ স্বয়ংক্রিয় করার পূর্ণাঙ্গ টুলস
+            </h2>
+            <p className="text-xs sm:text-sm text-[#475569]">
+              শুধু চ্যাটবট নয়, এটি একটি অটোনোমাস সেলস ও অপারেশন ম্যানেজার
             </p>
           </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="p-8 rounded-2xl bg-gradient-to-br from-[#111] to-[#0A0A0A] border border-[#222] hover:border-[#444] transition-colors shadow-lg">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 flex items-center justify-center mb-6 border border-amber-500/20">
-                <MessageSquare className="w-6 h-6 text-amber-500" />
+            <div className="p-6 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FFFBEB] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+                <Package className="w-5 h-5 text-[#D97706]" />
               </div>
-              <h3 className="text-xl font-semibold mb-3 text-[#EDEDED]">Contextual AI Chat</h3>
-              <p className="text-[#888] leading-relaxed">
-                Mogent AI Engine understands context across multiple messages, providing accurate and natural responses in Bengali or English.
+              <h3 className="text-sm font-bold text-[#0F172A]">প্রোডাক্ট ক্যাটালগ ও লাইভ স্টক</h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                ছবি, প্রাইস এবং স্টক দিয়ে প্রোডাক্ট ক্যাটালগ সেট করুন। এআই স্বয়ংক্রিয়ভাবে স্টক চেক করে কাস্টমারকে ছবি ও বিবরণসহ উত্তর দেবে।
               </p>
             </div>
-            <div className="p-8 rounded-2xl bg-[#111] border border-[#222]">
-              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-6">
-                <Zap className="w-6 h-6 text-white" />
+
+            <div className="p-6 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FFFBEB] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+                <BookOpen className="w-5 h-5 text-[#D97706]" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Instant Lead Capture</h3>
-              <p className="text-[#888] leading-relaxed">
-                Automatically extracts phone numbers, addresses, and order details from chats and organizes them in your CRM.
+              <h3 className="text-sm font-bold text-[#0F172A]">৭-ট্যাব নলেজ বেইস ও AI প্রম্পট</h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                ডেলিভারি চার্জ, রিটার্ন পলিসি, সাধারণ প্রশ্নোত্তর এবং কাস্টম সেলস পারসোনা প্রম্পট যুক্ত করে আপনার এআই-কে ট্রেইন করুন।
               </p>
             </div>
-            <div className="p-8 rounded-2xl bg-[#111] border border-[#222]">
-              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-6">
-                <ShieldCheck className="w-6 h-6 text-white" />
+
+            <div className="p-6 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FFFBEB] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+                <Facebook className="w-5 h-5 text-[#1877F2]" />
               </div>
-              <h3 className="text-xl font-semibold mb-3">Smart Human Takeover</h3>
-              <p className="text-[#888] leading-relaxed">
-                Detects negative sentiment or complex queries and seamlessly pauses the AI to let your human agents take over.
+              <h3 className="text-sm font-bold text-[#0F172A]">ফেসবুক ৩-টগল অটোনোমাস পাওয়ার</h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                এআই চ্যাট রিপ্লাই, কমেন্ট রিপ্লাই এবং প্রাইভেট ইনবক্স রিপ্লাই টগল সুইচের মাধ্যমে মুহূর্তেই লাইভ সক্রিয় করুন।
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FFFBEB] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+                <Globe className="w-5 h-5 text-[#059669]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#0F172A]">ওয়েবসাইট ও সাইটম্যাপ ক্রলার</h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                আপনার ওয়েবসাইট বা সাইটম্যাপ URL দিয়ে দিন, এআই সমস্ত পেজ পড়ে নিজে থেকেই তথ্য শিখে নেবে।
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FFFBEB] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+                <Smartphone className="w-5 h-5 text-[#2563EB]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#0F172A]">টেলিগ্রাম ১-ক্লিক মোবাইল টেকওভার</h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                কাস্টমার রাগ করলে বা জটিল প্রশ্ন থাকলে আপনার টেলিগ্রামে অ্যালার্ট আসবে এবং মোবাইল থেকেই সরাসরি রিপ্লাই দিতে পারবেন।
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#FFFBEB] text-[#92400E] flex items-center justify-center border border-[#FDE68A]">
+                <Users className="w-5 h-5 text-[#7C3AED]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#0F172A]">স্বয়ংক্রিয় কাস্টমার CRM ও অর্ডার লগ</h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                চ্যাটে কাস্টমারের দেওয়া মোবাইল নাম্বার ও ঠিকানা স্বয়ংক্রিয়ভাবে লিডস এবং অর্ডারস টেবিলে সেভ হয়।
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-24 px-6 md:px-10 border-t border-[#222] bg-[#0A0A0A]">
-        <div className="max-w-5xl mx-auto text-center">
-          <div className="mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">Simple, transparent pricing</h2>
-            <p className="text-[#888] text-lg max-w-2xl mx-auto">
-              Start for free, upgrade when you need more power.
+      {/* Pricing Section (Exact Matching Packages) */}
+      <section id="pricing" className="py-20 bg-[#F8FAFC]">
+        <div className="max-w-6xl mx-auto px-6 space-y-12">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-black text-[#0F172A]">
+              সহজ ও সাশ্রয়ী প্যাকেজ
+            </h2>
+            <p className="text-xs sm:text-sm text-[#475569]">
+              আপনার ব্যবসার পরিধির সাথে মানানসই প্ল্যান বেছে নিন
             </p>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto text-left">
-            {/* Free Tier */}
-            <div className="p-8 rounded-3xl bg-[#111] border border-[#222] flex flex-col">
-              <h3 className="text-xl font-semibold mb-2">Starter</h3>
-              <p className="text-[#888] text-sm mb-6">Perfect for small businesses getting started with AI.</p>
-              <div className="mb-8">
-                <span className="text-4xl font-bold">Free</span>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Starter Plan */}
+            <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 flex flex-col justify-between space-y-6 shadow-sm hover:border-[#CBD5E1] transition-all">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-bold text-base text-[#0F172A]">Starter Plan</h3>
+                  <p className="text-xs text-[#64748B] mt-1">একটি ফেসবুক পেজ ও অনলাইন শপের জন্য</p>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-black text-[#0F172A]">৳৯৯৯</span>
+                  <span className="text-xs text-[#64748B]">/মাস</span>
+                </div>
+                <div className="w-full h-px bg-[#F1F5F9]" />
+                <ul className="space-y-2.5 text-xs text-[#334155]">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>১টি ফেসবুক পেজ কানেকশন</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>৫,০০০ স্বয়ংক্রিয় এআই মেসেজ / মাস</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>ফুল প্রোডাক্ট ক্যাটালগ ও FAQ</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>কাস্টমার লিড ও ফোন নম্বর ক্যাপচার</span>
+                  </li>
+                </ul>
               </div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center gap-3 text-sm text-[#EDEDED]">
-                  <CheckCircle2 className="w-4 h-4 text-[#888]" />
-                  Up to 1,000 messages/month
-                </li>
-                <li className="flex items-center gap-3 text-sm text-[#EDEDED]">
-                  <CheckCircle2 className="w-4 h-4 text-[#888]" />
-                  1 Facebook Page
-                </li>
-                <li className="flex items-center gap-3 text-sm text-[#EDEDED]">
-                  <CheckCircle2 className="w-4 h-4 text-[#888]" />
-                  Basic Knowledge Base
-                </li>
-              </ul>
-              <Link href="/dashboard" className="w-full py-3 rounded-lg bg-[#222] hover:bg-[#333] text-white text-center font-medium transition-colors">
-                Get Started
+              <Link
+                href="/register"
+                className="w-full py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] font-bold text-xs text-center transition-all cursor-pointer"
+              >
+                স্টার্টার প্ল্যান নিন
               </Link>
             </div>
 
-            {/* Pro Tier */}
-            <div className="p-8 rounded-3xl bg-white text-black border border-white flex flex-col relative">
-              <div className="absolute -top-3 inset-x-0 flex justify-center">
-                <span className="bg-[#111] text-white text-xs font-semibold px-3 py-1 rounded-full border border-[#333]">Most Popular</span>
+            {/* Pro Growth Plan */}
+            <div className="bg-white rounded-2xl border-2 border-[#F59E0B] p-6 flex flex-col justify-between space-y-6 shadow-lg shadow-[#F59E0B]/10 relative">
+              <span className="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-black bg-[#F59E0B] text-black shadow-xs">
+                সর্বাধিক জনপ্রিয়
+              </span>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-bold text-base text-[#0F172A]">Pro Growth Plan</h3>
+                  <p className="text-xs text-[#64748B] mt-1">গ্রোথ ব্র্যান্ড ও মাল্টি-পেজ ব্যবসার জন্য</p>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-black text-[#0F172A]">৳২,৪৯৯</span>
+                  <span className="text-xs text-[#64748B]">/মাস</span>
+                </div>
+                <div className="w-full h-px bg-[#F1F5F9]" />
+                <ul className="space-y-2.5 text-xs text-[#334155]">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>সর্বোচ্চ ৫টি ফেসবুক পেজ</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>২৫,০০০ স্বয়ংক্রিয় এআই মেসেজ / মাস</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>WhatsApp ও হটলাইন শেয়ারিং প্রটোকল</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>টেলিগ্রাম ইনস্ট্যান্ট টেকওভার অ্যালার্ট</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>২৪/৭ প্রায়োরিটি সাপোর্ট</span>
+                  </li>
+                </ul>
               </div>
-              <h3 className="text-xl font-semibold mb-2">Professional</h3>
-              <p className="text-[#555] text-sm mb-6">For growing businesses with high message volume.</p>
-              <div className="mb-8 flex items-baseline gap-1">
-                <span className="text-4xl font-bold">৳ 2,000</span>
-                <span className="text-[#555]">/month</span>
+              <Link
+                href="/register"
+                className="w-full py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs text-center transition-all cursor-pointer shadow-sm"
+              >
+                প্রো গ্রোথ শুরু করুন
+              </Link>
+            </div>
+
+            {/* Enterprise VIP Plan */}
+            <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 flex flex-col justify-between space-y-6 shadow-sm hover:border-[#CBD5E1] transition-all">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-bold text-base text-[#0F172A]">Enterprise VIP</h3>
+                  <p className="text-xs text-[#64748B] mt-1">হাই-ভলিউম ব্র্যান্ড ও কর্পোরেট শপের জন্য</p>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-black text-[#0F172A]">৳৫,৯৯৯</span>
+                  <span className="text-xs text-[#64748B]">/মাস</span>
+                </div>
+                <div className="w-full h-px bg-[#F1F5F9]" />
+                <ul className="space-y-2.5 text-xs text-[#334155]">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>সর্বোচ্চ ২০টি ফেসবুক পেজ</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>১,০০,০০০+ এআই মেসেজ কোটা</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>কাস্টম ব্র্যান্ড পারসোনা ফাইন-টিউনিং</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-[#059669] shrink-0" />
+                    <span>ডেডিকেটেড অ্যাকাউন্ট ম্যানেজার</span>
+                  </li>
+                </ul>
               </div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-center gap-3 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  Unlimited Messages
-                </li>
-                <li className="flex items-center gap-3 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  Unlimited Facebook Pages
-                </li>
-                <li className="flex items-center gap-3 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  Advanced CRM & Analytics
-                </li>
-                <li className="flex items-center gap-3 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  Telegram Escalation Alerts
-                </li>
-              </ul>
-              <Link href="/dashboard" className="w-full py-3 rounded-lg bg-black hover:bg-[#222] text-white text-center font-medium transition-colors">
-                Upgrade to Pro
+              <Link
+                href="/register"
+                className="w-full py-2.5 rounded-xl bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A] font-bold text-xs text-center transition-all cursor-pointer"
+              >
+                এন্টারপ্রাইজ যোগাযোগ
               </Link>
             </div>
           </div>
@@ -246,10 +359,15 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-10 border-t border-[#222] bg-[#0A0A0A] text-center">
-        <p className="text-[#555] text-sm">
-          &copy; {new Date().getFullYear()} Mogent Inc. All rights reserved.
-        </p>
+      <footer className="py-8 bg-white border-t border-[#E2E8F0] px-6 text-center text-xs text-[#64748B]">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p>© {new Date().getFullYear()} Mogent AI. সর্বস্বত্ব সংরক্ষিত।</p>
+          <div className="flex items-center gap-6 font-bold text-[#475569]">
+            <Link href="/terms" className="hover:text-[#0F172A]">Terms</Link>
+            <Link href="/privacy" className="hover:text-[#0F172A]">Privacy Policy</Link>
+            <Link href="/data-deletion" className="hover:text-[#0F172A]">Data Deletion</Link>
+          </div>
+        </div>
       </footer>
     </div>
   );

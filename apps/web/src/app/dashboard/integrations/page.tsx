@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Facebook,
   Globe,
@@ -15,6 +16,7 @@ import {
   Smartphone,
   MessageCircle,
   Code,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -311,43 +313,27 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      {/* Extra Mogent Power: Telegram Human Takeover Card */}
-      <div className="bg-white rounded-2xl border border-[#E5E7EB] p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-[#111827] flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-[#F59E0B]" />
-              <span>Telegram Mobile Notification & Human Takeover</span>
-            </h3>
-            <p className="text-xs text-[#6B7280] mt-0.5">
-              Receive live alerts on your phone whenever customer assistance is needed.
-            </p>
-          </div>
+      {/* Extra Mogent Power: Telegram 1-Click Mobile Takeover Card */}
+      <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-[#2563EB]" />
+            <span>টেলিগ্রাম ১-ক্লিক মোবাইল টেকওভার (1-Click Bot Connect)</span>
+          </h3>
+          <p className="text-xs text-[#475569]">
+            কোনো জটিল API টোকেন ছাড়া মাত্র ১-ক্লিকে টেলিগ্রাম বট পেয়ার করুন এবং মোবাইলে লাইভ অ্যালার্ট পান।
+          </p>
         </div>
 
-        <form onSubmit={handleSaveTelegram} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <input
-            type="text"
-            placeholder="Bot Token (from @BotFather)"
-            value={telegramToken}
-            onChange={(e) => setTelegramToken(e.target.value)}
-            className="px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
-          />
-          <input
-            type="text"
-            placeholder="Chat ID (from @userinfobot)"
-            value={telegramChatId}
-            onChange={(e) => setTelegramChatId(e.target.value)}
-            className="px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
-          />
-          <button
-            type="submit"
-            disabled={savingTg}
-            className="px-4 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all cursor-pointer"
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Link
+            href="/dashboard/telegram"
+            className="px-5 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-extrabold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
           >
-            {savingTg ? "Saving..." : tgSaved ? "✓ Saved!" : "Save Telegram"}
-          </button>
-        </form>
+            <Bot className="w-4 h-4" />
+            <span>Connect Telegram Bot (1-Click)</span>
+          </Link>
+        </div>
       </div>
 
       {/* FACEBOOK RIGHT DRAWER (Exact Match to Screenshot 6) */}

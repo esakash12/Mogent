@@ -17,22 +17,22 @@ import {
   Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchBillingStatus, submitPayment, fetchPaymentConfig, validateCouponCode } from "@/lib/api";
+import { fetchBillingStatus, fetchAnalytics, submitPayment, fetchPaymentConfig, validateCouponCode } from "@/lib/api";
 
 const PLANS = [
   {
     id: "STARTER",
     name: "Starter Plan",
     price: "৳৯৯৯",
-    period: "/month",
-    description: "Perfect for single Facebook page automation & growing online sellers.",
+    period: "/মাস",
+    description: "একটি ফেসবুক পেজ ও সাধারণ অনলাইন শপের জন্য সেরা সমাধান।",
     features: [
-      "1 Facebook Page Connection",
-      "5,000 AI Automated Messages / mo",
+      "১টি ফেসবুক পেজ কানেকশন",
+      "৫,০০০ এআই মেসেজ কোটা / মাস",
       "Mogent Engine Ultra (v3.5)",
-      "Advanced FAQ & Product Catalog",
-      "Lead Capture (Name, Phone, Address)",
-      "Standard Priority Support",
+      "প্রোডাক্ট ক্যাটালগ ও FAQ নলেজ বেইস",
+      "কাস্টমার লিড (নাম, ফোন, ঠিকানা) ক্যাপচার",
+      "স্ট্যান্ডার্ড প্রায়োরিটি সাপোর্ট",
     ],
     highlight: false,
   },
@@ -40,34 +40,34 @@ const PLANS = [
     id: "PRO",
     name: "Pro Growth Plan",
     price: "৳২,৪৯৯",
-    period: "/month",
-    description: "Most popular for active e-commerce brands & multi-page stores.",
+    period: "/মাস",
+    description: "গ্রোথ ব্র্যান্ড ও মাল্টি-পেজ ই-কমার্স শপের জন্য সর্বাধিক জনপ্রিয়।",
     features: [
-      "Up to 5 Facebook Pages",
-      "25,000 AI Automated Messages / mo",
-      "Both Main & Backup Models",
-      "WhatsApp & Hotline On-Demand Sharing",
-      "Live Human Agent Handoff & Takeover",
-      "Instant Telegram Escalation Alerts",
-      "Priority 24/7 Support",
+      "সর্বোচ্চ ৫টি ফেসবুক পেজ কানেকশন",
+      "২৫,০০০ এআই মেসেজ কোটা / মাস",
+      "মেইন ও ব্যাকআপ মডেল রোটেটর",
+      "WhatsApp ও হটলাইন শেয়ারিং প্রটোকল",
+      "লাইভ হিউম্যান এজেন্ট হ্যান্ডঅফ ও টেকওভার",
+      "টেলিগ্রাম ইনস্ট্যান্ট ১-ক্লিক অ্যালার্ট",
+      "২৪/৭ প্রায়োরিটি সাপোর্ট",
     ],
     highlight: true,
-    tag: "Most Popular",
+    tag: "সর্বাধিক জনপ্রিয়",
   },
   {
     id: "ENTERPRISE",
     name: "Enterprise VIP",
     price: "৳৫,৯৯৯",
-    period: "/month",
-    description: "For established businesses needing high volume & custom personas.",
+    period: "/মাস",
+    description: "বড় ব্র্যান্ড ও হাই-ভলিউম বিজনেসের জন্য কাস্টম পারসোনা সল্যুশন।",
     features: [
-      "Up to 20 Facebook Pages",
-      "100,000+ AI Automated Messages / mo",
-      "Custom Brand Persona Fine-Tuning",
-      "Automated Order Confirmation & CRM",
-      "Multi-agent Workspace Seats",
-      "Dedicated Account Manager",
-      "Custom SLA & VIP Onboarding",
+      "সর্বোচ্চ ২০টি ফেসবুক পেজ",
+      "১,০০,০০০+ এআই মেসেজ কোটা / মাস",
+      "কাস্টম ব্র্যান্ড পারসোনা ফাইন-টিউনিং",
+      "স্বয়ংক্রিয় অর্ডার কনফার্মেশন ও CRM",
+      "মাল্টি-এজেন্ট টিম অপারেটর সিট",
+      "ডেডিকেটেড অ্যাকাউন্ট ম্যানেজার",
+      "কাস্টম SLA ও ভিআইপি অনবোর্ডিং",
     ],
     highlight: false,
   },
@@ -75,6 +75,7 @@ const PLANS = [
 
 export default function BillingPage() {
   const [billingData, setBillingData] = useState<any>(null);
+  const [totalUsedMessages, setTotalUsedMessages] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>("PRO");
@@ -87,8 +88,9 @@ export default function BillingPage() {
   const loadBilling = async () => {
     setLoading(true);
     try {
-      const data = await fetchBillingStatus();
-      if (data) setBillingData(data);
+      const [bData, aData] = await Promise.all([fetchBillingStatus(), fetchAnalytics()]);
+      if (bData) setBillingData(bData);
+      if (aData?.totalConversations) setTotalUsedMessages(aData.totalConversations);
     } catch (err) {
       console.error("Failed to load billing:", err);
     } finally {
@@ -143,23 +145,26 @@ export default function BillingPage() {
     }
   };
 
+  const msgLimit = billingData?.currentPlanDetails?.msgLimit || 5000;
+  const remainingCredits = Math.max(0, msgLimit - totalUsedMessages);
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-bold text-[#111827] flex items-center gap-2">
+          <h2 className="text-base font-bold text-[#0F172A] flex items-center gap-2">
             <Coins className="w-5 h-5 text-[#F59E0B]" />
-            <span>Subscription & AI Credits</span>
+            <span>সাবস্ক্রিপশন ও এআই ক্রেডিট (Billing & Credits)</span>
           </h2>
-          <p className="text-xs text-[#6B7280]">
-            Manage your store&apos;s AI message quota, connected page limits, and payment subscriptions.
+          <p className="text-xs text-[#475569]">
+            আপনার স্টোরের এআই মেসেজ কোটা, কানেক্টেড পেজ লিমিট এবং পেমেন্ট সাবস্ক্রিপশন ম্যানেজ করুন।
           </p>
         </div>
 
         <button
           onClick={loadBilling}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-[#F9FAFB] border border-[#E5E7EB] text-xs font-semibold text-[#374151] shadow-sm transition-all cursor-pointer w-fit"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-xs font-bold text-[#0F172A] shadow-xs transition-all cursor-pointer w-fit"
         >
           <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin text-[#F59E0B]")} />
           <span>Refresh Status</span>
@@ -167,36 +172,42 @@ export default function BillingPage() {
       </div>
 
       {/* Current Active Plan Card */}
-      <div className="p-6 rounded-2xl bg-white border border-[#E5E7EB] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+      <div className="p-6 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="space-y-2">
           <div className="flex items-center gap-2.5">
-            <span className="text-xs font-semibold text-[#6B7280]">Current Subscription Plan</span>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+            <span className="text-xs font-bold text-[#64748B]">বর্তমান সক্রিয় প্যাকেজ:</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
               {billingData?.currentPlan || "PRO GROWTH"} ACTIVE
             </span>
           </div>
-          <h3 className="text-xl font-black text-[#111827]">
+          <h3 className="text-xl font-black text-[#0F172A]">
             {billingData?.currentPlanDetails?.name || "Pro Growth Plan (25,000 Messages)"}
           </h3>
-          <p className="text-xs text-[#6B7280]">
-            Remaining AI Conversations: <span className="text-[#111827] font-bold">98 / 100</span>
-          </p>
+          <div className="flex items-center gap-4 text-xs font-bold text-[#475569] pt-1">
+            <span>
+              অবশিষ্ট এআই মেসেজ কোটা: <strong className="text-[#059669] font-black">{remainingCredits.toLocaleString()}</strong> / {msgLimit.toLocaleString()}
+            </span>
+            <span>•</span>
+            <span>
+              কানেক্টেড পেজ: <strong className="text-[#0F172A]">{billingData?.connectedPagesCount || 1}</strong> / {billingData?.pageLimit || 5}
+            </span>
+          </div>
         </div>
 
         <button
           onClick={() => handleOpenUpgrade("PRO")}
-          className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer w-fit"
+          className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer w-fit"
         >
           <Zap className="w-4 h-4" />
-          <span>Top-Up / Upgrade Plan</span>
+          <span>রিনিউ / আপগ্রেড প্যাকেজ</span>
         </button>
       </div>
 
       {/* Pricing Cards Grid */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-sm font-bold text-[#111827]">Available Plans</h3>
-          <p className="text-xs text-[#6B7280]">Choose a plan that fits your business message volume</p>
+          <h3 className="text-sm font-bold text-[#0F172A]">সকল প্যাকেজ সমূহ</h3>
+          <p className="text-xs text-[#64748B]">আপনার মেসেজ ভলিউমের ওপর ভিত্তি করে প্ল্যান সিলেক্ট করুন</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -208,31 +219,31 @@ export default function BillingPage() {
                   "p-6 rounded-2xl border flex flex-col justify-between transition-all relative bg-white",
                   p.highlight
                     ? "border-[#F59E0B] shadow-md shadow-[#F59E0B]/10 ring-1 ring-[#F59E0B]"
-                    : "border-[#E5E7EB] hover:border-[#D1D5DB]"
+                    : "border-[#E2E8F0] hover:border-[#CBD5E1]"
                 )}
               >
                 {p.tag && (
-                  <span className="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-bold bg-[#F59E0B] text-black shadow-sm">
+                  <span className="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-black bg-[#F59E0B] text-black shadow-xs">
                     {p.tag}
                   </span>
                 )}
 
                 <div className="space-y-4">
                   <div>
-                    <h4 className="font-bold text-sm text-[#111827]">{p.name}</h4>
-                    <p className="text-xs text-[#6B7280] mt-1 leading-relaxed">{p.description}</p>
+                    <h4 className="font-bold text-sm text-[#0F172A]">{p.name}</h4>
+                    <p className="text-xs text-[#64748B] mt-1 leading-relaxed">{p.description}</p>
                   </div>
 
                   <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-black text-[#111827]">{p.price}</span>
-                    <span className="text-xs text-[#6B7280]">{p.period}</span>
+                    <span className="text-2xl font-black text-[#0F172A]">{p.price}</span>
+                    <span className="text-xs text-[#64748B]">{p.period}</span>
                   </div>
 
-                  <div className="w-full h-[1px] bg-[#F3F4F6] my-4" />
+                  <div className="w-full h-[1px] bg-[#F1F5F9] my-4" />
 
                   <ul className="space-y-2.5">
                     {p.features.map((feat, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-xs text-[#374151]">
+                      <li key={idx} className="flex items-start gap-2 text-xs text-[#334155]">
                         <Check className="w-4 h-4 text-[#059669] shrink-0 mt-0.5" />
                         <span>{feat}</span>
                       </li>
@@ -240,17 +251,17 @@ export default function BillingPage() {
                   </ul>
                 </div>
 
-                <div className="pt-6 mt-6 border-t border-[#F3F4F6]">
+                <div className="pt-6 mt-6 border-t border-[#F1F5F9]">
                   <button
                     onClick={() => handleOpenUpgrade(p.id)}
                     className={cn(
-                      "w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm",
+                      "w-full py-2.5 rounded-xl font-extrabold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs",
                       p.highlight
                         ? "bg-[#F59E0B] hover:bg-[#D97706] text-black"
-                        : "bg-[#F9FAFB] hover:bg-[#F3F4F6] border border-[#E5E7EB] text-[#374151]"
+                        : "bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#0F172A]"
                     )}
                   >
-                    <span>Select {p.name}</span>
+                    <span>{p.name} সিলেক্ট করুন</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -263,66 +274,66 @@ export default function BillingPage() {
       {/* Payment Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in">
-            <h3 className="text-sm font-bold text-[#111827]">
-              Subscribe to {selectedPlan} Plan
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in">
+            <h3 className="text-sm font-bold text-[#0F172A]">
+              {selectedPlan} প্ল্যানে সাবস্ক্রাইব করুন
             </h3>
 
-            <div className="p-3.5 rounded-xl bg-[#FFFDF5] border border-[#FEF3C7] space-y-1">
+            <div className="p-3.5 rounded-xl bg-[#FFFDF5] border border-[#FDE68A] space-y-1">
               <p className="text-xs font-bold text-[#92400E]">Send Money / Merchant Payment:</p>
               <p className="text-xs text-[#78350F]">
-                bKash / Nagad Personal: <span className="font-mono font-bold">01700000000</span>
+                bKash / Nagad Personal: <span className="font-mono font-bold">01711998877</span>
               </p>
             </div>
 
             <form onSubmit={handleSubmitTrx} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">Sender Mobile Number *</label>
+                <label className="block text-xs font-bold text-[#334155] mb-1">প্রেরক মোবাইল নম্বর (Sender Mobile) *</label>
                 <input
                   type="text"
                   required
                   placeholder="017xxxxxxxx"
                   value={senderNumber}
                   onChange={(e) => setSenderNumber(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">Transaction ID (TrxID) *</label>
+                <label className="block text-xs font-bold text-[#334155] mb-1">Transaction ID (TrxID) *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. BL9A7K2M"
                   value={trxId}
                   onChange={(e) => setTrxId(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] text-xs font-mono uppercase focus:outline-none focus:border-[#F59E0B]"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] text-xs font-mono uppercase text-[#0F172A] focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
 
               {feedback && (
                 <div className={cn(
-                  "p-3 rounded-xl text-xs font-medium",
+                  "p-3 rounded-xl text-xs font-bold",
                   feedback.type === "success" ? "bg-[#ECFDF5] text-[#059669]" : "bg-[#FEF2F2] text-[#DC2626]"
                 )}>
                   {feedback.message}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#F3F4F6]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#F1F5F9]">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-xl border text-xs font-semibold text-[#4B5563]"
+                  className="px-4 py-2 rounded-xl border text-xs font-bold text-[#475569]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 rounded-xl bg-[#F59E0B] text-black font-bold text-xs disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-[#F59E0B] text-black font-extrabold text-xs disabled:opacity-50"
                 >
-                  {submitting ? "Verifying..." : "Submit Payment"}
+                  {submitting ? "Verifying..." : "পেমেন্ট নিশ্চিত করুন"}
                 </button>
               </div>
             </form>
