@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -10,6 +10,7 @@ import {
   LogOut,
   Settings,
   ArrowLeft,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -19,6 +20,10 @@ interface PageMeta {
   title: string;
   subtitle: string;
   hasBack?: boolean;
+}
+
+interface HeaderProps {
+  onOpenMobileMenu?: () => void;
 }
 
 const pageMetaMap: Record<string, PageMeta> = {
@@ -98,7 +103,7 @@ const pageMetaMap: Record<string, PageMeta> = {
   },
 };
 
-export function Header() {
+export function Header({ onOpenMobileMenu }: HeaderProps = {}) {
   const [lang, setLang] = useState<"en" | "bn">("bn");
   const [profileOpen, setProfileOpen] = useState(false);
   const [remainingCreditsText, setRemainingCreditsText] = useState<string>("৪,৮৫৪ মেসেজ বাকি");
@@ -123,9 +128,22 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 border-b border-[#E2E8F0] bg-[#FFFFFF] px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-      {/* Left: Page Title & Subtitle */}
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="h-16 border-b border-[#E2E8F0] bg-[#FFFFFF] px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+      {/* Left: Hamburger (Mobile) + Back Button + Page Title & Subtitle */}
+      <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
+        {/* Hamburger Menu button visible ONLY on mobile screens (block md:hidden) */}
+        {onOpenMobileMenu && (
+          <button
+            type="button"
+            onClick={onOpenMobileMenu}
+            className="md:hidden p-2 -ml-1 rounded-xl text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors cursor-pointer shrink-0"
+            aria-label="Open Navigation Menu"
+            title="Open Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
         {currentMeta.hasBack && (
           <button
             onClick={() => router.back()}
@@ -136,7 +154,7 @@ export function Header() {
           </button>
         )}
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-[#0F172A] leading-tight truncate">
+          <h1 className="text-base md:text-lg font-bold text-[#0F172A] leading-tight truncate">
             {currentMeta.title}
           </h1>
           <p className="text-xs text-[#475569] truncate hidden sm:block">

@@ -23,6 +23,7 @@ import {
   Key,
   Shield,
   CheckCircle2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -154,7 +155,12 @@ const adminNavigation: NavItem[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onNavigate?: () => void;
+  className?: string;
+}
+
+export function Sidebar({ onNavigate, className }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, workspace, logout } = useAuth();
   const [pagesList, setPagesList] = useState<any[]>([]);
@@ -180,6 +186,9 @@ export function Sidebar() {
     if (typeof window !== "undefined") {
       localStorage.setItem("mogent_active_page_id", pageId);
       window.dispatchEvent(new CustomEvent("mogent_page_changed", { detail: { pageId } }));
+    }
+    if (onNavigate) {
+      onNavigate();
     }
   };
 
@@ -213,6 +222,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onNavigate}
             className={cn(
               "flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all group",
               active
@@ -241,11 +251,16 @@ export function Sidebar() {
   );
 
   return (
-    <aside className="w-64 border-r border-[#E5E7EB] bg-[#FFFFFF] flex flex-col justify-between select-none h-screen sticky top-0 shadow-[1px_0_4px_rgba(0,0,0,0.02)]">
+    <aside
+      className={cn(
+        "w-64 border-r border-[#E5E7EB] bg-[#FFFFFF] flex flex-col justify-between select-none h-screen sticky top-0 shadow-[1px_0_4px_rgba(0,0,0,0.02)]",
+        className
+      )}
+    >
       <div className="p-4 space-y-4 overflow-y-auto flex-1 scrollbar-none">
-        {/* Brand Logo */}
+        {/* Brand Logo & Mobile Close Button */}
         <div className="flex items-center justify-between px-2 pt-1 pb-2">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/dashboard" onClick={onNavigate} className="flex items-center gap-2.5">
             <span className="text-2xl font-black tracking-tight text-[#EAB308] flex items-center gap-1 font-serif italic">
               Mogent
               <span className="text-xs not-italic font-bold px-1.5 py-0.5 rounded-md bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
@@ -253,6 +268,16 @@ export function Sidebar() {
               </span>
             </span>
           </Link>
+
+          {onNavigate && (
+            <button
+              onClick={onNavigate}
+              className="md:hidden p-1.5 rounded-xl text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] cursor-pointer transition-colors"
+              title="Close Menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Business Selector Pill */}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
@@ -13,13 +13,20 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }>) {
   const { isAuthenticated, isLoading } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push("/login");
     }
   }, [isLoading, isAuthenticated, router]);
+
+  // Auto-close mobile drawer when route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
 
   if (isLoading) {
     return (
@@ -96,15 +103,32 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Left Navigation Sidebar */}
-      <div className="hidden md:flex h-full">
+      {/* Desktop Left Navigation Sidebar */}
+      <div className="hidden md:flex h-full shrink-0">
         <Sidebar />
       </div>
 
+      {/* Mobile Drawer & Semi-transparent Backdrop */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop (click outside to dismiss) */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Smooth Sliding Drawer Panel */}
+          <div className="relative z-50 w-72 max-w-[80vw] h-full bg-white shadow-2xl animate-in slide-in-from-left duration-250 flex flex-col">
+            <Sidebar onNavigate={() => setMobileMenuOpen(false)} className="w-full h-full border-r-0" />
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] relative">
-        <Header />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-8">
+        <Header onOpenMobileMenu={() => setMobileMenuOpen(true)} />
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
           <div className="max-w-[1400px] mx-auto">
             {children}
           </div>
