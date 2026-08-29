@@ -100,9 +100,6 @@ export async function apiRequest<T = any>(
 
     if (res.status === 403) {
       const msg = "Access denied. Insufficient permissions for this action.";
-      if (typeof window !== "undefined") {
-        toast.error("Permission Denied (403)", { description: msg });
-      }
       return {
         success: false,
         error: msg,
@@ -111,9 +108,6 @@ export async function apiRequest<T = any>(
 
     if (res.status >= 500) {
       const msg = `Server error (${res.status}). Please try again later.`;
-      if (typeof window !== "undefined") {
-        toast.error("Internal Server Error (500)", { description: msg });
-      }
       return {
         success: false,
         error: msg,
@@ -127,11 +121,8 @@ export async function apiRequest<T = any>(
 
     return json;
   } catch (err: any) {
-    console.error(`API Error [${endpoint}]:`, err);
-    const networkMsg = err?.message || "Network connection failed. Please check your internet.";
-    if (typeof window !== "undefined") {
-      toast.error("Network Error", { description: networkMsg });
-    }
+    const networkMsg = err?.message || "Network connection failed.";
+    console.warn(`[API Notice] ${endpoint}:`, networkMsg);
     return {
       success: false,
       error: networkMsg,
