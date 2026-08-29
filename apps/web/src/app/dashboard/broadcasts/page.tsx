@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -22,6 +22,7 @@ import {
   triggerFollowupScan,
   fetchContacts,
 } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 type MainTab = "CAMPAIGNS" | "CUSTOMERS" | "TEMPLATES" | "DND";
 type FilterStatus = "ALL" | "DRAFT" | "SENDING" | "COMPLETED";
@@ -41,7 +42,6 @@ export default function CampaignsPage() {
   const [sentCount, setSentCount] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -75,7 +75,6 @@ export default function CampaignsPage() {
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    setStatusMsg(null);
     try {
       const res = await saveFollowupConfig({
         isEnabled,
@@ -84,62 +83,44 @@ export default function CampaignsPage() {
       });
 
       if (res?.success) {
-        setStatusMsg({ type: "success", text: "Automated follow-up settings saved successfully!" });
+        toast.success("Follow-up Rules Saved! ⚙️", {
+          description: `Configured to auto-remind idle customers after ${delayHours} hours.`,
+        });
       } else {
-        setStatusMsg({ type: "error", text: res?.error || "Failed to save follow-up configuration." });
+        toast.error("Failed to save follow-up configuration", {
+          description: res?.error || "Please try again.",
+        });
       }
     } catch (err: any) {
-      setStatusMsg({ type: "error", text: err.message || "Network error." });
+      toast.error("Network error while saving settings");
     } finally {
       setIsSaving(false);
-      setTimeout(() => setStatusMsg(null), 3500);
     }
   };
 
   const handleTriggerFollowup = async () => {
     setIsTriggering(true);
-    setStatusMsg(null);
     try {
       const res = await triggerFollowupScan();
       if (res?.success) {
-        setStatusMsg({
-          type: "success",
-          text: `Scan complete! Dispatched follow-up to ${res.sentCount || 0} idle customer conversations.`,
+        toast.success("Follow-up Scan Completed! 🚀", {
+          description: `Dispatched follow-up reminders to ${res.sentCount || 0} idle customer conversations.`,
         });
         loadData();
       } else {
-        setStatusMsg({ type: "error", text: res?.error || "Failed to trigger scan." });
+        toast.error("Follow-up scan failed", {
+          description: res?.error || "Please check Facebook page connections.",
+        });
       }
     } catch (err: any) {
-      setStatusMsg({ type: "error", text: err.message || "Network error triggering scan." });
+      toast.error("Network error during follow-up scan");
     } finally {
       setIsTriggering(false);
-      setTimeout(() => setStatusMsg(null), 4000);
     }
   };
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Toast Alert */}
-      {statusMsg && (
-        <div
-          className={cn(
-            "p-3.5 rounded-xl flex items-center justify-between text-xs font-bold shadow-sm animate-in fade-in",
-            statusMsg.type === "success"
-              ? "bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669]"
-              : "bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626]"
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{statusMsg.text}</span>
-          </div>
-          <button onClick={() => setStatusMsg(null)} className="cursor-pointer">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Header Description & Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

@@ -254,6 +254,14 @@ export async function toggleConversationMode(conversationId: string, isHumanCont
   return await api.post(`/api/conversations/${conversationId}/toggle-mode`, { isHumanControl });
 }
 
+export async function markSaleCompleted(conversationId: string) {
+  return await api.post(`/api/conversations/${conversationId}/complete-sale`, {});
+}
+
+export async function updateConversationStatus(conversationId: string, status: string) {
+  return await api.patch(`/api/conversations/${conversationId}/status`, { status });
+}
+
 // =============================================================================
 // 4. COMMERCE PRODUCTS & CATALOG SYNC
 // =============================================================================

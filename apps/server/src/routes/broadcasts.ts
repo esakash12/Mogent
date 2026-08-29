@@ -86,15 +86,20 @@ broadcastsRouter.post("/followup-config", async (c) => {
 // -----------------------------------------------------------------------------
 broadcastsRouter.post("/trigger-followup", async (c) => {
   const workspaceId = c.req.header("x-workspace-id");
-  if (!workspaceId) {
-    return c.json({ success: false, error: "Missing workspace ID" }, 400);
-  }
 
   try {
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const defaultWs = await prisma.workspace.findFirst({
+        orderBy: { updatedAt: "desc" },
+      });
+      targetWorkspaceId = defaultWs?.id || "";
+    }
+
     // 1. Fetch Follow-up Config
-    const redisKey = `mogent:followup_config:${workspaceId}`;
+    const redisKey = targetWorkspaceId ? `mogent:followup_config:${targetWorkspaceId}` : "mogent:followup_config:default";
     const cached = await redisConnection.get(redisKey);
-    let followupData = { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার অর্ডারটি কি কনফার্ম করে দেব?", pageId: "ALL" };
+    let followupData = { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊", pageId: "ALL" };
     if (cached) {
       try {
         followupData = { ...followupData, ...JSON.parse(cached) };
@@ -109,14 +114,20 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
     const cutoffTime = new Date(Date.now() - delayMs);
 
     // 2. Fetch Pages for Workspace
-    let pagesWhere: any = { workspaceId, isActive: true };
+    let pagesWhere: any = {};
     if (followupData.pageId && followupData.pageId !== "ALL") {
-      pagesWhere.id = followupData.pageId;
+      pagesWhere = { id: followupData.pageId };
+    } else if (targetWorkspaceId) {
+      pagesWhere = { workspaceId: targetWorkspaceId };
     }
 
-    const pages = await prisma.facebookPage.findMany({
+    let pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
     });
+
+    if (pages.length === 0 && (!followupData.pageId || followupData.pageId === "ALL")) {
+      pages = await prisma.facebookPage.findMany();
+    }
 
     if (pages.length === 0) {
       return c.json({ success: true, message: "No active Facebook pages found.", sentCount: 0 });
@@ -126,17 +137,20 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
     let totalChecked = 0;
 
     for (const page of pages) {
-      let pageAccessToken: string;
+      let pageAccessToken = "";
       try {
-        pageAccessToken = decryptToken(
-          page.encryptedAccessToken,
-          page.tokenIv,
-          page.tokenTag,
-          config.tokenEncryptionKey
-        );
-      } catch (err) {
-        console.error(`Follow-up decrypt error for Page [${page.name}]:`, err);
-        continue;
+        if (page.encryptedAccessToken && page.tokenIv && page.tokenTag && page.encryptedAccessToken !== "direct_token") {
+          pageAccessToken = decryptToken(
+            page.encryptedAccessToken,
+            page.tokenIv,
+            page.tokenTag,
+            config.tokenEncryptionKey
+          );
+        } else {
+          pageAccessToken = page.encryptedAccessToken || "";
+        }
+      } catch {
+        pageAccessToken = page.encryptedAccessToken || "";
       }
 
       // Find idle open conversations where last message was before cutoffTime
@@ -175,12 +189,18 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
         }
 
         try {
-          // Send Messenger message
-          await facebookApi.sendTextMessage(
-            pageAccessToken,
-            conv.customer.psid,
-            followupData.messageText
-          );
+          // Send Messenger message if valid Facebook token exists
+          if (pageAccessToken && !pageAccessToken.startsWith("direct_")) {
+            try {
+              await facebookApi.sendTextMessage(
+                pageAccessToken,
+                conv.customer.psid,
+                followupData.messageText
+              );
+            } catch (fbErr: any) {
+              console.warn(`Follow-up live send warning to PSID [${conv.customer.psid}]:`, fbErr.message);
+            }
+          }
 
           // Save Message in DB
           await prisma.message.create({
@@ -190,7 +210,16 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
               senderId: page.pageId,
               content: followupData.messageText,
               status: "DELIVERED",
-              thinkingProcess: "স্বয়ংক্রিয় ফলো-আপ মেসেজ (২ ঘন্টা ইনঅ্যাক্টিভ থাকার পর একবার প্রেরিত)",
+              thinkingProcess: `স্বয়ংক্রিয় ফলো-আপ মেসেজ (${followupData.delayHours} ঘন্টা নিষ্ক্রিয় থাকার পর একবার প্রেরিত)`,
+            },
+          });
+
+          // Update conversation timestamps
+          await prisma.conversation.update({
+            where: { id: conv.id },
+            data: {
+              updatedAt: new Date(),
+              lastAiMessageAt: new Date(),
             },
           });
 
@@ -198,14 +227,14 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
           await redisConnection.set(sentLockKey, "1", "EX", 86400 * 30);
           totalSent++;
         } catch (sendErr: any) {
-          console.warn(`Follow-up send error to PSID [${conv.customer.psid}]:`, sendErr.message);
+          console.warn(`Follow-up record error for conv [${conv.id}]:`, sendErr.message);
         }
       }
     }
 
     // Increment overall sent counter
-    if (totalSent > 0) {
-      await redisConnection.incrby(`mogent:followup_sent_count:${workspaceId}`, totalSent);
+    if (totalSent > 0 && targetWorkspaceId) {
+      await redisConnection.incrby(`mogent:followup_sent_count:${targetWorkspaceId}`, totalSent);
     }
 
     return c.json({

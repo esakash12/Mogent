@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { prisma, MessageSender, MessageStatus } from "@mogent/database";
+import { prisma, MessageSender, MessageStatus, ConversationStatus } from "@mogent/database";
 import { facebookApi } from "../services/facebook-api";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
@@ -292,6 +292,79 @@ conversationsRouter.post("/:id/toggle-mode", async (c) => {
         console.warn("Failed to dispatch manual takeover Telegram alert:", err.message);
       }
     }
+
+    return c.json({ success: true, data: updated });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// POST /api/conversations/:id/complete-sale - Mark conversation / sale as completed
+conversationsRouter.post("/:id/complete-sale", async (c) => {
+  const { id } = c.req.param();
+  try {
+    const conv = await prisma.conversation.findUnique({
+      where: { id },
+      include: { customer: true, facebookPage: true },
+    });
+
+    if (!conv) {
+      return c.json({ success: false, error: "Conversation not found" }, 404);
+    }
+
+    const updated = await prisma.conversation.update({
+      where: { id },
+      data: {
+        status: ConversationStatus.RESOLVED,
+        isHumanControl: false,
+        updatedAt: new Date(),
+      },
+      include: { customer: true, facebookPage: true },
+    });
+
+    // Tag customer with SALE_COMPLETED / CONFIRMED_BUYER and boost sentiment
+    const existingTags = conv.customer.tags || [];
+    const newTags = Array.from(new Set([...existingTags, "SALE_COMPLETED", "CONFIRMED_BUYER"]));
+
+    await prisma.customer.update({
+      where: { id: conv.customerId },
+      data: {
+        tags: newTags,
+        sentimentScore: 1.0,
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: "Sale marked as completed! Conversation resolved.",
+      data: updated,
+    });
+  } catch (error: any) {
+    console.error("Complete sale error:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// PATCH /api/conversations/:id/status - Update conversation status
+conversationsRouter.patch("/:id/status", async (c) => {
+  const { id } = c.req.param();
+  const body = await c.req.json();
+  const { status } = body;
+
+  try {
+    const validStatuses = ["OPEN", "RESOLVED", "SNOOZED", "HANDOFF_REQUIRED"];
+    if (!validStatuses.includes(status)) {
+      return c.json({ success: false, error: "Invalid status" }, 400);
+    }
+
+    const updated = await prisma.conversation.update({
+      where: { id },
+      data: { 
+        status: status as ConversationStatus,
+        updatedAt: new Date(),
+      },
+      include: { customer: true, facebookPage: true },
+    });
 
     return c.json({ success: true, data: updated });
   } catch (error: any) {
