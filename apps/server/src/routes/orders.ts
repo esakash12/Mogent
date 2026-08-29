@@ -92,165 +92,29 @@ ordersRouter.get("/", async (c) => {
   }
 });
 
+import { createOrder } from "../services/order-service";
+
 // POST /api/orders - Create a new order manually or from chat
 ordersRouter.post("/", async (c) => {
   const workspaceId = c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
-    const {
-      customerId,
-      customerName,
-      customerPhone,
-      phone,
-      deliveryAddress,
-      address,
-      productName,
-      items,
-      totalAmount,
-      amount,
-      paymentMethod,
-      status,
-      pageId,
-    } = body;
 
-    const finalPhone = (customerPhone || phone || "").trim();
-    const finalAddress = (deliveryAddress || address || "").trim();
-    const finalAmount = Number(totalAmount || amount || 0);
-    const finalStatus = status || "CONFIRMED";
-    const finalPaymentMethod = paymentMethod || "COD";
-
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst({
-        orderBy: { updatedAt: "desc" },
-      });
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    let targetCustomerId = customerId;
-
-    if (!targetCustomerId) {
-      // Resolve page
-      let targetPageId = pageId;
-      if (!targetPageId || targetPageId === "ALL") {
-        const page = await prisma.facebookPage.findFirst({
-          where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
-        });
-        targetPageId = page?.id;
-      }
-
-      if (!targetPageId) {
-        const anyPage = await prisma.facebookPage.findFirst();
-        if (anyPage) {
-          targetPageId = anyPage.id;
-        } else if (targetWorkspaceId) {
-          const newPage = await prisma.facebookPage.create({
-            data: {
-              workspaceId: targetWorkspaceId,
-              pageId: `store-${Date.now()}`,
-              name: "Store Orders",
-              category: "Store Orders",
-              encryptedAccessToken: "direct_token",
-              tokenIv: "direct_iv",
-              tokenTag: "direct_tag",
-              verifyToken: "mogent_fb_verify_token_secure",
-            },
-          });
-          targetPageId = newPage.id;
-        } else {
-          return c.json({ success: false, error: "No Facebook page found" }, 404);
-        }
-      }
-
-      const cleanName = (customerName || "").trim();
-      const parts = cleanName.split(" ").filter(Boolean);
-      const firstName = parts[0] || "Customer";
-      const lastName = parts.slice(1).join(" ") || "";
-
-      // Check if existing customer with this phone number exists
-      if (finalPhone) {
-        const existing = await prisma.customer.findFirst({
-          where: {
-            facebookPageId: targetPageId,
-            phoneNumber: finalPhone,
-          },
-        });
-        if (existing) {
-          targetCustomerId = existing.id;
-          if (cleanName || finalAddress) {
-            await prisma.customer.update({
-              where: { id: existing.id },
-              data: {
-                firstName: firstName || existing.firstName,
-                lastName: lastName || existing.lastName,
-                deliveryAddress: finalAddress || existing.deliveryAddress,
-              },
-            });
-          }
-        }
-      }
-
-      if (!targetCustomerId) {
-        const newCustomer = await prisma.customer.create({
-          data: {
-            facebookPageId: targetPageId,
-            psid: `ord-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            firstName,
-            lastName,
-            phoneNumber: finalPhone || null,
-            deliveryAddress: finalAddress || null,
-            sentimentScore: 0.95,
-          },
-        });
-        targetCustomerId = newCustomer.id;
-      }
-    }
-
-    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    let orderItems: any = items;
-    if (!orderItems) {
-      orderItems = [{ name: productName || "Standard Order", quantity: 1, unitPrice: finalAmount }];
-    } else if (typeof orderItems === "string") {
-      orderItems = [{ name: orderItems, quantity: 1, unitPrice: finalAmount }];
-    }
-
-    const createdOrder = await prisma.order.create({
-      data: {
-        customerId: targetCustomerId,
-        orderNumber,
-        items: orderItems,
-        totalAmount: finalAmount,
-        status: finalStatus,
-        customerPhone: finalPhone || null,
-        shippingAddress: finalAddress || null,
-      },
-    });
-
-    await prisma.customer.update({
-      where: { id: targetCustomerId },
-      data: {
-        totalOrders: { increment: 1 },
-        totalSpent: { increment: finalAmount },
-      },
+    const order = await createOrder({
+      ...body,
+      workspaceId,
+      isAiGenerated: false,
     });
 
     return c.json({
       success: true,
-      data: {
-        ...createdOrder,
-        customerName: customerName || "Customer",
-        customerPhone: finalPhone,
-        deliveryAddress: finalAddress,
-        itemsSummary: productName || (Array.isArray(orderItems) ? orderItems.map((i: any) => `${i.name || "Item"} x${i.quantity || 1}`).join(", ") : "1x Order"),
-        paymentMethod: finalPaymentMethod,
-      },
+      data: order,
       message: "Order created successfully!",
     });
   } catch (error: any) {
     console.error("Create order error:", error);
-    return c.json({ success: false, error: error.message }, 500);
+    return c.json({ success: false, error: error.message || "Failed to create order" }, 400);
   }
 });
 

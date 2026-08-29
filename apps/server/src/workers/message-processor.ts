@@ -6,6 +6,7 @@ import { decryptToken, ProcessMessageJobPayload, SendTelegramAlertPayload } from
 import { facebookApi } from "../services/facebook-api";
 import { AiProxyClient } from "../ai-client";
 import { telegramAlertsQueue } from "../queue/message-queue";
+import { createOrder } from "../services/order-service";
 
 const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey);
 
@@ -330,6 +331,38 @@ export function startMessageWorker() {
               where: { id: customer.id },
               data: updateData,
             });
+          }
+
+          // Dual Order Creation: If AI confirms customer order intent with phone or address
+          if (extractedLeadInfo?.orderIntent && (extractedLeadInfo.phone || customer.phoneNumber)) {
+            try {
+              const recentOrder = await prisma.order.findFirst({
+                where: {
+                  customerId: customer.id,
+                  createdAt: { gte: new Date(Date.now() - 30 * 60 * 1000) },
+                },
+              });
+
+              if (!recentOrder) {
+                await createOrder({
+                  workspaceId: page.workspaceId,
+                  customerId: customer.id,
+                  conversationId: conversation.id,
+                  customerName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || undefined,
+                  customerPhone: extractedLeadInfo.phone || customer.phoneNumber || undefined,
+                  deliveryAddress: extractedLeadInfo.deliveryAddress || customer.deliveryAddress || undefined,
+                  productName: "AI Order (Messenger)",
+                  totalAmount: 1000,
+                  paymentMethod: "COD",
+                  status: "CONFIRMED",
+                  pageId: page.id,
+                  isAiGenerated: true,
+                });
+                console.log(`🛍️ AI Agent successfully created order for customer [${customer.id}]`);
+              }
+            } catch (aiOrderErr: any) {
+              console.warn("AI order capture notice:", aiOrderErr.message);
+            }
           }
         }
 

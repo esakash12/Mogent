@@ -14,6 +14,12 @@ import {
   CheckCircle2,
   Clock,
   Zap,
+  FlaskConical,
+  Search,
+  User,
+  Phone,
+  MessageSquare,
+  Facebook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,16 +27,19 @@ import {
   saveFollowupConfig,
   triggerFollowupScan,
   fetchContacts,
+  fetchConversations,
+  sendTestFollowup,
 } from "@/lib/api";
 import { toast } from "@/lib/toast";
 
-type MainTab = "CAMPAIGNS" | "CUSTOMERS" | "TEMPLATES" | "DND";
+type MainTab = "CAMPAIGNS" | "TEST" | "CUSTOMERS" | "TEMPLATES";
 type FilterStatus = "ALL" | "DRAFT" | "SENDING" | "COMPLETED";
 
 export default function CampaignsPage() {
   const [activeTab, setActiveTab] = useState<MainTab>("CAMPAIGNS");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("ALL");
   const [contacts, setContacts] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Follow-up Config State
@@ -43,12 +52,19 @@ export default function CampaignsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false);
 
+  // Test Follow-up Utility State
+  const [selectedConversationId, setSelectedConversationId] = useState<string>("");
+  const [testSearchQuery, setTestSearchQuery] = useState("");
+  const [testCustomMessage, setTestCustomMessage] = useState("");
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [configData, contactsData] = await Promise.all([
+      const [configData, contactsData, convData] = await Promise.all([
         fetchFollowupConfig(),
         fetchContacts(),
+        fetchConversations(),
       ]);
 
       if (configData) {
@@ -60,6 +76,13 @@ export default function CampaignsPage() {
 
       if (contactsData) {
         setContacts(Array.isArray(contactsData) ? contactsData : (contactsData?.data || []));
+      }
+
+      if (Array.isArray(convData)) {
+        setConversations(convData);
+        if (convData.length > 0 && !selectedConversationId) {
+          setSelectedConversationId(convData[0].id);
+        }
       }
     } catch (err) {
       console.error("Failed to load campaigns data:", err);
@@ -119,6 +142,51 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleSendTestFollowup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedConversationId) {
+      toast.error("Please select a target customer conversation to test.");
+      return;
+    }
+
+    const targetConv = conversations.find((c) => c.id === selectedConversationId);
+    const targetName = targetConv?.customerName || "Customer";
+
+    setIsSendingTest(true);
+    try {
+      const res = await sendTestFollowup({
+        conversationId: selectedConversationId,
+        messageText: testCustomMessage.trim() || messageText,
+      });
+
+      if (res?.success) {
+        toast.success("Test Follow-up Delivered! ✉️", {
+          description: `Direct test message logged and sent to ${targetName}.`,
+        });
+      } else {
+        toast.error("Test delivery failed", {
+          description: res?.error || "Unable to send message to selected user.",
+        });
+      }
+    } catch (err: any) {
+      console.error("Test followup error:", err);
+      toast.error("Network error during test delivery");
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
+  const filteredConversations = conversations.filter((c) => {
+    const q = testSearchQuery.toLowerCase();
+    return (
+      c.customerName?.toLowerCase().includes(q) ||
+      c.phone?.toLowerCase().includes(q) ||
+      c.psid?.toLowerCase().includes(q)
+    );
+  });
+
+  const activeSelectedConv = conversations.find((c) => c.id === selectedConversationId);
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header Description & Action */}
@@ -133,22 +201,33 @@ export default function CampaignsPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleTriggerFollowup}
-          disabled={isTriggering}
-          className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs transition-all shadow-sm cursor-pointer w-fit disabled:opacity-50"
-        >
-          {isTriggering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-current" />}
-          <span>{isTriggering ? "Scanning Conversations..." : "রান ফলো-আপ স্ক্যান (Instant Scan)"}</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setActiveTab("TEST")}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#0F172A] font-bold text-xs transition-all shadow-xs cursor-pointer"
+          >
+            <FlaskConical className="w-4 h-4 text-[#F59E0B]" />
+            <span>টেস্ট ফলো-আপ টুল (Test Utility)</span>
+          </button>
+
+          <button
+            onClick={handleTriggerFollowup}
+            disabled={isTriggering}
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs transition-all shadow-sm cursor-pointer w-fit disabled:opacity-50"
+          >
+            {isTriggering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-current" />}
+            <span>{isTriggering ? "Scanning..." : "রান ফলো-আপ স্ক্যান"}</span>
+          </button>
+        </div>
       </div>
 
-      {/* 4 Sub Tabs */}
+      {/* Sub Tabs */}
       <div className="flex items-center gap-1 p-1 rounded-2xl bg-white border border-[#E2E8F0] shadow-sm w-fit overflow-x-auto scrollbar-none">
         {[
-          { id: "CAMPAIGNS", label: "অটো ফলো-আপ ক্যাম্পেইন" },
+          { id: "CAMPAIGNS", label: "অটো ফলো-আপ রুলস" },
+          { id: "TEST", label: "🧪 টেস্ট ফলো-আপ টুল (Test User)" },
           { id: "CUSTOMERS", label: `কাস্টমার অডিয়েন্স (${contacts.length})` },
-          { id: "TEMPLATES", label: "টেমপ্লেট" },
+          { id: "TEMPLATES", label: "মেসেজ টেমপ্লেট" },
         ].map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -156,7 +235,7 @@ export default function CampaignsPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id as MainTab)}
               className={cn(
-                "px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer",
+                "px-4 md:px-5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer",
                 active
                   ? "bg-[#F59E0B] text-black shadow-xs font-black"
                   : "text-[#64748B] hover:text-[#0F172A]"
@@ -256,7 +335,132 @@ export default function CampaignsPage() {
         </div>
       )}
 
-      {/* Tab 2: Customers Audience */}
+      {/* Tab 2: Test Follow-up Tool */}
+      {activeTab === "TEST" && (
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-6">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-[#0F172A]">
+              <FlaskConical className="w-5 h-5 text-[#F59E0B]" />
+              <span>নির্দিষ্ট কাস্টমারকে টেস্ট ফলো-আপ পাঠান (Instant Test Utility)</span>
+            </div>
+            <p className="text-xs text-[#64748B] mt-1">
+              সাধারণ ক্রন-জব বা ঘন্টার পর ঘন্টা অপেক্ষা না করে, ডাটাবেসের যেকোনো নির্দিষ্ট কাস্টমার সিলেক্ট করে তাৎক্ষণিক টেস্ট ফলো-আপ পাঠান।
+            </p>
+          </div>
+
+          <form onSubmit={handleSendTestFollowup} className="space-y-5">
+            {/* Step 1: Customer Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-[#334155]">
+                ১. কাস্টমার / চ্যাট কনভারসেশন সিলেক্ট করুন *
+              </label>
+
+              {/* Search Bar for Selector */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-[#64748B] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="কাস্টমারের নাম বা ফোন নাম্বার দিয়ে সার্চ করুন..."
+                  value={testSearchQuery}
+                  onChange={(e) => setTestSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B]"
+                />
+              </div>
+
+              {/* Scrollable Customer List */}
+              <div className="max-h-48 overflow-y-auto divide-y divide-[#F1F5F9] border border-[#E2E8F0] rounded-xl bg-white scrollbar-thin">
+                {filteredConversations.length > 0 ? (
+                  filteredConversations.map((conv) => {
+                    const isSelected = conv.id === selectedConversationId;
+                    return (
+                      <div
+                        key={conv.id}
+                        onClick={() => setSelectedConversationId(conv.id)}
+                        className={cn(
+                          "p-3 flex items-center justify-between gap-3 cursor-pointer transition-all text-xs",
+                          isSelected
+                            ? "bg-[#FEF3C7]/40 border-l-4 border-[#F59E0B]"
+                            : "hover:bg-[#F8FAFC]"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-[#FEF3C7] text-[#92400E] font-bold text-xs flex items-center justify-center border border-[#FDE68A] shrink-0">
+                            {conv.customerName?.[0] || "C"}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-[#0F172A] truncate">{conv.customerName}</p>
+                            <p className="text-[10px] text-[#64748B] font-mono truncate">
+                              {conv.phone || "Messenger Customer"} • {conv.pageName || "Store Page"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B] text-black shrink-0">
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-6 text-center text-xs text-[#64748B]">
+                    কোনো কাস্টমার কনভারসেশন পাওয়া যায়নি।
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Step 2: Message Content */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-[#334155]">
+                  ২. টেস্ট ফলো-আপ মেসেজ (Custom Test Message)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setTestCustomMessage(messageText)}
+                  className="text-[10px] font-bold text-[#D97706] hover:underline cursor-pointer"
+                >
+                  ডিফল্ট টেমপ্লেট ব্যবহার করুন
+                </button>
+              </div>
+              <textarea
+                rows={3}
+                placeholder={messageText}
+                value={testCustomMessage}
+                onChange={(e) => setTestCustomMessage(e.target.value)}
+                className="w-full p-3.5 rounded-xl border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] leading-relaxed font-medium"
+              />
+            </div>
+
+            {/* Step 3: Selected Target Summary & Send Button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-[#F1F5F9]">
+              <div className="text-xs text-[#64748B]">
+                {activeSelectedConv ? (
+                  <span>
+                    প্রাপক: <strong className="text-[#0F172A]">{activeSelectedConv.customerName}</strong>
+                    {activeSelectedConv.phone && <span className="font-mono text-[#059669] ml-1">({activeSelectedConv.phone})</span>}
+                  </span>
+                ) : (
+                  <span className="text-[#94A3B8]">কোনো কাস্টমার সিলেক্ট করা হয়নি</span>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSendingTest || !selectedConversationId}
+                className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                <span>{isSendingTest ? "Sending Test Follow-up..." : "Send Test Now (তাৎক্ষণিক পাঠান)"}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Tab 3: Customers Audience */}
       {activeTab === "CUSTOMERS" && (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
           <div className="p-4 border-b border-[#F1F5F9] text-xs font-bold text-[#475569]">
@@ -292,7 +496,7 @@ export default function CampaignsPage() {
         </div>
       )}
 
-      {/* Tab 3: Templates */}
+      {/* Tab 4: Templates */}
       {activeTab === "TEMPLATES" && (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-4">
           <h3 className="text-xs font-bold text-[#0F172A]">Pre-built Promotional Templates</h3>
@@ -328,3 +532,4 @@ export default function CampaignsPage() {
     </div>
   );
 }
+

@@ -42,6 +42,7 @@ interface Message {
 
 interface Conversation {
   id: string;
+  customerId?: string;
   customerName: string;
   psid: string;
   avatar?: string;
@@ -229,7 +230,8 @@ export default function LiveInboxPage() {
     setIsSubmittingOrder(true);
     try {
       const orderPayload = {
-        customerId: activeConv.id,
+        customerId: activeConv.customerId || activeConv.id,
+        conversationId: activeConv.id,
         customerName: activeConv.customerName,
         customerPhone: orderForm.customerPhone,
         deliveryAddress: orderForm.deliveryAddress,

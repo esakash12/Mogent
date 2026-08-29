@@ -660,3 +660,11 @@ export async function saveFollowupConfig(data: {
 export async function triggerFollowupScan() {
   return await api.post("/api/broadcasts/trigger-followup", {});
 }
+
+export async function sendTestFollowup(data: {
+  conversationId?: string;
+  customerId?: string;
+  messageText?: string;
+}) {
+  return await api.post("/api/broadcasts/test-followup", data);
+}

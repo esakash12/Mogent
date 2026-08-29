@@ -319,3 +319,100 @@ broadcastsRouter.post("/send", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
+// POST /api/broadcasts/test-followup - Send instantaneous test follow-up to a specific customer/conversation
+broadcastsRouter.post("/test-followup", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { conversationId, customerId, messageText } = body;
+
+    if (!conversationId && !customerId) {
+      return c.json({ success: false, error: "Please select a customer or conversation to test." }, 400);
+    }
+
+    let conversation: any = null;
+    if (conversationId) {
+      conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: { customer: true, facebookPage: true },
+      });
+    }
+
+    if (!conversation && customerId) {
+      conversation = await prisma.conversation.findFirst({
+        where: { customerId },
+        include: { customer: true, facebookPage: true },
+        orderBy: { updatedAt: "desc" },
+      });
+    }
+
+    if (!conversation) {
+      return c.json({ success: false, error: "Conversation or Customer not found." }, 404);
+    }
+
+    const page = conversation.facebookPage;
+    let pageAccessToken = "";
+    if (page?.encryptedAccessToken) {
+      try {
+        pageAccessToken = decryptToken(
+          page.encryptedAccessToken,
+          page.tokenIv,
+          page.tokenTag,
+          config.tokenEncryptionKey
+        );
+      } catch {
+        pageAccessToken = page.encryptedAccessToken;
+      }
+    }
+
+    const finalMessage = (messageText || "").trim() || "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊";
+
+    // 1. Live Send via Facebook Messenger API if available
+    let liveDelivered = false;
+    if (pageAccessToken && !pageAccessToken.startsWith("direct_") && conversation.customer?.psid) {
+      try {
+        await facebookApi.sendTextMessage(pageAccessToken, conversation.customer.psid, finalMessage);
+        liveDelivered = true;
+      } catch (fbErr: any) {
+        console.warn("Live test message send warning:", fbErr.message);
+      }
+    }
+
+    // 2. Save Message to PostgreSQL Database
+    const savedMsg = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        sender: MessageSender.AI,
+        senderId: page?.pageId || "test-moderator",
+        content: finalMessage,
+        status: "DELIVERED",
+        thinkingProcess: "ম্যানুয়াল টেস্ট ফলো-আপ মেসেজ (ড্যাশবোর্ড টেস্ট টুল থেকে তাৎক্ষণিক প্রেরিত)",
+      },
+    });
+
+    // 3. Update Conversation Timestamps
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        updatedAt: new Date(),
+        lastAiMessageAt: new Date(),
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: `Test follow-up successfully sent to ${conversation.customer?.firstName || "Customer"}!`,
+      data: {
+        messageId: savedMsg.id,
+        conversationId: conversation.id,
+        customerName: `${conversation.customer?.firstName || ""} ${conversation.customer?.lastName || ""}`.trim() || "Customer",
+        customerPhone: conversation.customer?.phoneNumber,
+        liveDelivered,
+        sentAt: new Date().toISOString(),
+      },
+    });
+  } catch (error: any) {
+    console.error("Test follow-up error:", error);
+    return c.json({ success: false, error: error.message || "Failed to send test follow-up" }, 500);
+  }
+});

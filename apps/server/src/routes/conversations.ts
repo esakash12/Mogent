@@ -140,6 +140,7 @@ conversationsRouter.get("/", async (c) => {
 
         return {
           id: conv.id,
+          customerId: conv.customerId,
           customerName,
           psid: conv.customer.psid,
           avatar: conv.customer.profilePic || (conv.customer.firstName?.[0] || conv.customer.psid.slice(-2).toUpperCase()),
