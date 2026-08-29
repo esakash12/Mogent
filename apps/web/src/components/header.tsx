@@ -130,13 +130,13 @@ export function Header({ onOpenMobileMenu }: HeaderProps = {}) {
   return (
     <header className="h-16 border-b border-[#E2E8F0] bg-[#FFFFFF] px-4 md:px-8 flex items-center justify-between sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
       {/* Left: Hamburger (Mobile) + Back Button + Page Title & Subtitle */}
-      <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
-        {/* Hamburger Menu button visible ONLY on mobile screens (block md:hidden) */}
+      <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+        {/* Hamburger Menu button visible ONLY on mobile screens */}
         {onOpenMobileMenu && (
           <button
             type="button"
             onClick={onOpenMobileMenu}
-            className="md:hidden p-2 -ml-1 rounded-xl text-[#475569] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors cursor-pointer shrink-0"
+            className="md:hidden p-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] hover:bg-[#FEF3C7] hover:border-[#F59E0B] hover:text-[#92400E] transition-all cursor-pointer shrink-0 shadow-xs active:scale-95"
             aria-label="Open Navigation Menu"
             title="Open Menu"
           >
@@ -154,7 +154,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps = {}) {
           </button>
         )}
         <div className="min-w-0">
-          <h1 className="text-base md:text-lg font-bold text-[#0F172A] leading-tight truncate">
+          <h1 className="text-sm md:text-lg font-bold text-[#0F172A] leading-tight truncate">
             {currentMeta.title}
           </h1>
           <p className="text-xs text-[#475569] truncate hidden sm:block">
@@ -163,32 +163,32 @@ export function Header({ onOpenMobileMenu }: HeaderProps = {}) {
         </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="flex items-center gap-2.5 md:gap-3 shrink-0">
-        {/* Automation Quick Button */}
+      {/* Right Controls (Responsive & Optimized for Mobile) */}
+      <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
+        {/* Automation Quick Button (Hidden on very small mobile, visible on sm+) */}
         <Link
           href="/dashboard/automation"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-sm"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-full bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-xs"
         >
           <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
           <span>✨ অটোমেশন</span>
         </Link>
 
-        {/* Live Remaining Credits Badge */}
+        {/* Live Remaining Credits Badge (Hidden on mobile, visible on md+) */}
         <Link
           href="/dashboard/billing"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-sm"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF5] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-xs font-bold transition-all shadow-xs"
         >
           <Coins className="w-3.5 h-3.5 text-[#D97706]" />
           <span>🪙 {remainingCreditsText}</span>
         </Link>
 
         {/* Language Switcher Toggle */}
-        <div className="flex items-center p-0.5 rounded-full bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-bold">
+        <div className="hidden xs:flex sm:flex items-center p-0.5 rounded-full bg-[#F1F5F9] border border-[#E2E8F0] text-[11px] md:text-xs font-bold">
           <button
             onClick={() => setLang("en")}
             className={cn(
-              "px-2.5 py-0.5 rounded-full transition-all cursor-pointer",
+              "px-2 md:px-2.5 py-0.5 rounded-full transition-all cursor-pointer",
               lang === "en"
                 ? "bg-[#F59E0B] text-black shadow-sm font-black"
                 : "text-[#475569] hover:text-[#0F172A]"
@@ -199,7 +199,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps = {}) {
           <button
             onClick={() => setLang("bn")}
             className={cn(
-              "px-2.5 py-0.5 rounded-full transition-all cursor-pointer",
+              "px-2 md:px-2.5 py-0.5 rounded-full transition-all cursor-pointer",
               lang === "bn"
                 ? "bg-[#F59E0B] text-black shadow-sm font-black"
                 : "text-[#475569] hover:text-[#0F172A]"

@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
-import { Loader2 } from "lucide-react";
+import {
+  LayoutDashboard,
+  MessageSquare,
+  ShoppingBag,
+  Sparkles,
+  Menu,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
   children,
@@ -126,13 +134,77 @@ export default function DashboardLayout({
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] relative">
+      <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] relative pb-16 md:pb-0">
         <Header onOpenMobileMenu={() => setMobileMenuOpen(true)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-8">
           <div className="max-w-[1400px] mx-auto">
             {children}
           </div>
         </main>
+
+        {/* Mobile Bottom Navigation Bar (md:hidden) */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#E2E8F0] px-2 py-1.5 flex items-center justify-around shadow-lg">
+          <Link
+            href="/dashboard"
+            className={cn(
+              "flex flex-col items-center gap-0.5 p-1 rounded-xl text-[10px] font-bold transition-all",
+              pathname === "/dashboard"
+                ? "text-[#F59E0B]"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            )}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            <span>হোম</span>
+          </Link>
+
+          <Link
+            href="/dashboard/inbox"
+            className={cn(
+              "flex flex-col items-center gap-0.5 p-1 rounded-xl text-[10px] font-bold transition-all",
+              pathname.startsWith("/dashboard/inbox")
+                ? "text-[#F59E0B]"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            )}
+          >
+            <MessageSquare className="w-5 h-5" />
+            <span>ইনবক্স</span>
+          </Link>
+
+          <Link
+            href="/dashboard/orders"
+            className={cn(
+              "flex flex-col items-center gap-0.5 p-1 rounded-xl text-[10px] font-bold transition-all",
+              pathname.startsWith("/dashboard/orders")
+                ? "text-[#F59E0B]"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            )}
+          >
+            <ShoppingBag className="w-5 h-5" />
+            <span>অর্ডারস</span>
+          </Link>
+
+          <Link
+            href="/dashboard/automation"
+            className={cn(
+              "flex flex-col items-center gap-0.5 p-1 rounded-xl text-[10px] font-bold transition-all",
+              pathname.startsWith("/dashboard/automation")
+                ? "text-[#F59E0B]"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            )}
+          >
+            <Sparkles className="w-5 h-5" />
+            <span>অটোমেশন</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex flex-col items-center gap-0.5 p-1 rounded-xl text-[10px] font-bold text-[#64748B] hover:text-[#0F172A] transition-all cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
+            <span>মেনুবার</span>
+          </button>
+        </nav>
       </div>
     </div>
   );
