@@ -128,6 +128,7 @@ app.route("/api/knowledge", knowledgeRouter);
 app.route("/api/orders", ordersRouter);
 app.route("/api/automation", automationRouter);
 app.route("/api/broadcasts", broadcastsRouter);
+app.route("/api/campaigns", broadcastsRouter);
 app.route("/api/upload", uploadRouter);
 
 // Mount webhooks on both /webhook and /api/webhook for universal support

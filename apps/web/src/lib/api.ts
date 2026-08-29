@@ -664,6 +664,8 @@ export async function triggerFollowupScan() {
 export async function sendTestFollowup(data: {
   conversationId?: string;
   customerId?: string;
+  customerPhone?: string;
+  phone?: string;
   messageText?: string;
 }) {
   return await api.post("/api/broadcasts/test-followup", data);

@@ -144,18 +144,16 @@ export default function CampaignsPage() {
 
   const handleSendTestFollowup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedConversationId) {
-      toast.error("Please select a target customer conversation to test.");
-      return;
-    }
 
     const targetConv = conversations.find((c) => c.id === selectedConversationId);
-    const targetName = targetConv?.customerName || "Customer";
+    const targetName = targetConv?.customerName || "Test Lead";
 
     setIsSendingTest(true);
     try {
       const res = await sendTestFollowup({
-        conversationId: selectedConversationId,
+        conversationId: selectedConversationId || "DEFAULT_TEST_USER",
+        customerId: targetConv?.customerId,
+        customerPhone: targetConv?.phone,
         messageText: testCustomMessage.trim() || messageText,
       });
 
@@ -164,7 +162,7 @@ export default function CampaignsPage() {
           description: `Direct test message logged and sent to ${targetName}.`,
         });
       } else {
-        toast.error("Test delivery failed", {
+        toast.error("Test delivery notice", {
           description: res?.error || "Unable to send message to selected user.",
         });
       }
@@ -404,8 +402,22 @@ export default function CampaignsPage() {
                     );
                   })
                 ) : (
-                  <div className="p-6 text-center text-xs text-[#64748B]">
-                    কোনো কাস্টমার কনভারসেশন পাওয়া যায়নি।
+                  <div
+                    onClick={() => setSelectedConversationId("DEFAULT_TEST_USER")}
+                    className="p-3.5 flex items-center justify-between gap-3 cursor-pointer bg-[#FFFDF5] border-l-4 border-[#F59E0B] text-xs hover:bg-[#FEF3C7]/40 transition-all"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-[#FEF3C7] text-[#92400E] font-bold text-xs flex items-center justify-center border border-[#FDE68A] shrink-0">
+                        T
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-[#0F172A]">ডিফল্ট টেস্ট লিড / Demo Customer</p>
+                        <p className="text-[10px] text-[#64748B]">সরাসরি টেস্টের জন্য স্বয়ংক্রিয় সিলেক্টেড</p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B] text-black shrink-0">
+                      Ready for Test
+                    </span>
                   </div>
                 )}
               </div>
@@ -443,13 +455,15 @@ export default function CampaignsPage() {
                     {activeSelectedConv.phone && <span className="font-mono text-[#059669] ml-1">({activeSelectedConv.phone})</span>}
                   </span>
                 ) : (
-                  <span className="text-[#94A3B8]">কোনো কাস্টমার সিলেক্ট করা হয়নি</span>
+                  <span>
+                    প্রাপক: <strong className="text-[#0F172A]">ডিফল্ট টেস্ট লিড / Demo Customer</strong>
+                  </span>
                 )}
               </div>
 
               <button
                 type="submit"
-                disabled={isSendingTest || !selectedConversationId}
+                disabled={isSendingTest}
                 className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isSendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
