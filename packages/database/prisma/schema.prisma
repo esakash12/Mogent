@@ -255,6 +255,7 @@ model Customer {
   sentimentScore Float?    // -1.0 (Angry) to +1.0 (Delighted)
   isVip          Boolean   @default(false)
   isBlocked      Boolean   @default(false)
+  channel        String    @default("MESSENGER") // MESSENGER, WHATSAPP, TELEGRAM
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -277,6 +278,7 @@ model Conversation {
   facebookPageId String
   customerId     String
   status         ConversationStatus @default(OPEN)
+  channel        String             @default("MESSENGER") // MESSENGER, WHATSAPP, TELEGRAM
   
   // Handover state
   isHumanControl Boolean            @default(false)

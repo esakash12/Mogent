@@ -3,7 +3,7 @@ import { config } from "../config";
 import { redisConnection } from "../redis";
 import { incomingMessagesQueue } from "../queue/message-queue";
 import { FacebookWebhookBody, ProcessMessageJobPayload } from "@mogent/shared";
-import { prisma } from "@mogent/database";
+import { prisma, MessageSender, MessageStatus } from "@mogent/database";
 
 export const webhookRouter = new Hono();
 
@@ -306,5 +306,126 @@ webhookRouter.post("/telegram", async (c) => {
   } catch (err: any) {
     console.error("Telegram Webhook processing error:", err);
     return c.json({ ok: true }); // Always return 200 to Telegram
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 3. WHATSAPP CLOUD API / TWILIO WEBHOOKS
+// -----------------------------------------------------------------------------
+
+// Verification Handshake
+webhookRouter.get("/whatsapp", handleVerify);
+
+// Ingestion of WhatsApp messages
+webhookRouter.post("/whatsapp", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+
+    // WhatsApp Cloud API payload format
+    if (body.object === "whatsapp_business_account" || body.entry) {
+      for (const entry of body.entry || []) {
+        for (const change of entry.changes || []) {
+          const value = change.value;
+          if (value?.messages) {
+            const contacts = value.contacts || [];
+            const contactMap: Record<string, string> = {};
+            contacts.forEach((ct: any) => {
+              if (ct.wa_id) {
+                contactMap[ct.wa_id] = ct.profile?.name || "WhatsApp Customer";
+              }
+            });
+
+            for (const msg of value.messages) {
+              const fromPhone = msg.from; // e.g. "8801700000000"
+              const text = msg.text?.body || msg.caption || "";
+              const contactName = contactMap[fromPhone] || `+${fromPhone}`;
+              const targetPsid = `wa_${fromPhone}`;
+
+              // Find first available page or default workspace
+              const page = await prisma.facebookPage.findFirst();
+              if (page && text) {
+                let customer = await prisma.customer.findFirst({
+                  where: {
+                    facebookPageId: page.id,
+                    OR: [{ psid: targetPsid }, { phoneNumber: fromPhone }],
+                  },
+                });
+
+                if (!customer) {
+                  customer = await prisma.customer.create({
+                    data: {
+                      facebookPageId: page.id,
+                      psid: targetPsid,
+                      firstName: contactName,
+                      phoneNumber: fromPhone,
+                      channel: "WHATSAPP",
+                      tags: ["WHATSAPP_LEAD"],
+                    },
+                  });
+                } else {
+                  await prisma.customer.update({
+                    where: { id: customer.id },
+                    data: { channel: "WHATSAPP" },
+                  });
+                }
+
+                let conversation = await prisma.conversation.findFirst({
+                  where: { customerId: customer.id, facebookPageId: page.id },
+                });
+
+                if (!conversation) {
+                  conversation = await prisma.conversation.create({
+                    data: {
+                      facebookPageId: page.id,
+                      customerId: customer.id,
+                      status: "OPEN",
+                      channel: "WHATSAPP",
+                    },
+                  });
+                } else {
+                  await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { channel: "WHATSAPP", updatedAt: new Date() },
+                  });
+                }
+
+                // Save Customer Message
+                await prisma.message.create({
+                  data: {
+                    conversationId: conversation.id,
+                    sender: MessageSender.CUSTOMER,
+                    senderId: targetPsid,
+                    content: text,
+                    status: MessageStatus.DELIVERED,
+                  },
+                });
+
+                // Enqueue for Gemini AI Auto-Response if not in human takeover
+                if (!conversation.isHumanControl && page.aiMode !== "OFF") {
+                  await incomingMessagesQueue.add("process-whatsapp-message", {
+                    pageId: page.pageId,
+                    senderId: targetPsid,
+                    recipientId: page.pageId,
+                    messageId: msg.id || `wa_${Date.now()}`,
+                    text,
+                    timestamp: Number(msg.timestamp) * 1000 || Date.now(),
+                    customerProfile: {
+                      first_name: contactName,
+                      last_name: "",
+                      id: targetPsid,
+                    },
+                  } as any);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return c.json({ status: "success" });
+  } catch (err: any) {
+    console.error("WhatsApp webhook error:", err);
+    return c.json({ status: "error", error: err.message }, 500);
   }
 });

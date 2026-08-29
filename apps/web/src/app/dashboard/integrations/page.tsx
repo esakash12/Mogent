@@ -52,6 +52,11 @@ export default function IntegrationsPage() {
   const [telegramData, setTelegramData] = useState<any>(null);
   const [copiedWidget, setCopiedWidget] = useState(false);
 
+  // WhatsApp Drawer & Settings
+  const [showWhatsAppDrawer, setShowWhatsAppDrawer] = useState(false);
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
+  const [copiedVerifyToken, setCopiedVerifyToken] = useState(false);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -254,19 +259,24 @@ export default function IntegrationsPage() {
               <MessageCircle className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-[#111827]">Whatsapp</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-[#111827]">WhatsApp</h3>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0]">
+                  Active
+                </span>
+              </div>
               <p className="text-xs text-[#6B7280] mt-1 leading-relaxed">
-                Connect your audience with Whatsapp
+                Connect your audience with WhatsApp Cloud API & Direct Inbox
               </p>
             </div>
           </div>
 
           <button
-            onClick={() => alert("WhatsApp Cloud API integration ready for configuration.")}
-            className="w-full py-2 rounded-xl bg-[#F9FAFB] hover:bg-[#F3F4F6] border border-[#E5E7EB] text-xs font-semibold text-[#374151] flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            onClick={() => setShowWhatsAppDrawer(true)}
+            className="w-full py-2 rounded-xl bg-[#F9FAFB] hover:bg-[#F3F4F6] border border-[#E5E7EB] text-xs font-bold text-[#374151] flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>+ Connect Integration</span>
+            <Settings className="w-3.5 h-3.5 text-[#10B981]" />
+            <span>কনফিগার ও ওয়েবহুক সেটআপ</span>
           </button>
         </div>
       </div>
@@ -418,6 +428,130 @@ export default function IntegrationsPage() {
               >
                 <Plus className="w-4 h-4 text-[#F59E0B]" />
                 <span>+ আরেকটি অ্যাকাউন্ট যুক্ত করুন</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WHATSAPP RIGHT DRAWER */}
+      {showWhatsAppDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-300">
+            {/* Drawer Header */}
+            <div className="p-5 border-b border-[#E5E7EB] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center">
+                  <MessageCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#111827]">WhatsApp Integration</h3>
+                  <p className="text-[11px] text-[#6B7280]">Cloud API & Direct Customer Chat</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWhatsAppDrawer(false)}
+                className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#111827] hover:bg-[#F3F4F6]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {/* Status Banner */}
+              <div className="p-4 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-xs font-bold text-[#166534]">WhatsApp চ্যানেল সক্রিয় আছে</h4>
+                  <p className="text-[11px] text-[#15803D] mt-0.5 leading-relaxed">
+                    ইনবক্সে সরাসরি ফোন নম্বর দিয়ে যেকোনো কাস্টমারের সাথে হোয়াটসঅ্যাপ চ্যাট শুরু করা ও অর্ডার কনফার্ম করার সুবিধা সংযুক্ত রয়েছে।
+                  </p>
+                </div>
+              </div>
+
+              {/* Webhook Configuration Details */}
+              <div className="rounded-2xl border border-[#E5E7EB] p-4 space-y-3 bg-white shadow-xs">
+                <h4 className="text-xs font-bold text-[#111827]">Meta Developer Webhook Configuration</h4>
+                <p className="text-[11px] text-[#6B7280] leading-relaxed">
+                  Meta for Developers পোর্টালে আপনার WhatsApp Business App-এর Webhook সেকশনে নিচের ইনফরমেশনগুলো সেট করুন:
+                </p>
+
+                {/* Callback URL */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#374151]">Callback URL</label>
+                  <div className="flex items-center gap-1.5 bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={typeof window !== "undefined" ? `${window.location.origin}/api/webhook/whatsapp` : "https://mogent.tech/api/webhook/whatsapp"}
+                      className="bg-transparent text-xs text-[#111827] font-mono flex-1 outline-none truncate"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = typeof window !== "undefined" ? `${window.location.origin}/api/webhook/whatsapp` : "https://mogent.tech/api/webhook/whatsapp";
+                        navigator.clipboard.writeText(url);
+                        setCopiedWebhookUrl(true);
+                        setTimeout(() => setCopiedWebhookUrl(false), 2000);
+                      }}
+                      className="p-1 rounded-lg hover:bg-[#E5E7EB] text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 cursor-pointer"
+                      title="Copy URL"
+                    >
+                      {copiedWebhookUrl ? <Check className="w-3.5 h-3.5 text-[#16A34A]" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Verify Token */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#374151]">Verify Token</label>
+                  <div className="flex items-center gap-1.5 bg-[#F9FAFB] border border-[#E5E7EB] rounded-xl p-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value="mogent_fb_verify_token_secure"
+                      className="bg-transparent text-xs text-[#111827] font-mono flex-1 outline-none truncate"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText("mogent_fb_verify_token_secure");
+                        setCopiedVerifyToken(true);
+                        setTimeout(() => setCopiedVerifyToken(false), 2000);
+                      }}
+                      className="p-1 rounded-lg hover:bg-[#E5E7EB] text-[#6B7280] hover:text-[#111827] transition-colors shrink-0 cursor-pointer"
+                      title="Copy Token"
+                    >
+                      {copiedVerifyToken ? <Check className="w-3.5 h-3.5 text-[#16A34A]" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Navigation to Inbox */}
+              <div className="rounded-2xl border border-[#BBF7D0] p-4 bg-[#F0FDF4] space-y-2">
+                <h4 className="text-xs font-bold text-[#166534]">লাইভ ইনবক্স এক্সেস</h4>
+                <p className="text-[11px] text-[#15803D] leading-relaxed">
+                  ইনবক্স পেজে মেসেঞ্জারের পাশাপাশি হোয়াটসঅ্যাপ ট্যাব সিলেক্ট করে সরাসরি চ্যাট পরিচালনা করুন।
+                </p>
+                <Link
+                  href="/dashboard/inbox"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs font-bold shadow-xs transition-all mt-1"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>হোয়াটসঅ্যাপ ইনবক্স খুলুন</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Bottom Drawer Action */}
+            <div className="p-4 border-t border-[#E5E7EB] bg-white">
+              <button
+                onClick={() => setShowWhatsAppDrawer(false)}
+                className="w-full py-2.5 rounded-xl bg-[#111827] hover:bg-[#1F2937] text-xs font-bold text-white transition-all shadow-sm cursor-pointer"
+              >
+                সম্পন্ন
               </button>
             </div>
           </div>

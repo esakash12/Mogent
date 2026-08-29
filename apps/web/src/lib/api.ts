@@ -249,6 +249,15 @@ export async function markSaleCompleted(conversationId: string) {
   return await api.post(`/api/conversations/${conversationId}/complete-sale`, {});
 }
 
+export async function startWhatsAppConversation(data: {
+  phoneNumber: string;
+  name?: string;
+  initialMessage?: string;
+  facebookPageId?: string;
+}) {
+  return await api.post<any>("/api/conversations/whatsapp/start", data);
+}
+
 export async function updateConversationStatus(conversationId: string, status: string) {
   return await api.patch(`/api/conversations/${conversationId}/status`, { status });
 }

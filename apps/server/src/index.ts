@@ -156,6 +156,16 @@ async function syncDatabaseSchema() {
         EXCEPTION
           WHEN others THEN NULL;
         END;
+        BEGIN
+          ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
       END $$;
     `);
 

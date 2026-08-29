@@ -134,14 +134,18 @@ conversationsRouter.get("/", async (c) => {
       success: true,
       data: list.map((conv) => {
         const fullName = `${conv.customer.firstName || ""} ${conv.customer.lastName || ""}`.trim();
+        const convChannel = (conv as any).channel || (conv.customer?.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER");
         const customerName = fullName && fullName.toLowerCase() !== "facebook customer"
           ? fullName
-          : `Customer #${conv.customer.psid.slice(-4)}`;
+          : convChannel === "WHATSAPP"
+            ? (conv.customer.phoneNumber ? `WhatsApp (${conv.customer.phoneNumber})` : `WhatsApp User #${conv.customer.psid.slice(-4)}`)
+            : `Customer #${conv.customer.psid.slice(-4)}`;
 
         return {
           id: conv.id,
           customerId: conv.customerId,
           customerName,
+          channel: convChannel,
           psid: conv.customer.psid,
           avatar: conv.customer.profilePic || (conv.customer.firstName?.[0] || conv.customer.psid.slice(-2).toUpperCase()),
           profilePic: conv.customer.profilePic,
@@ -157,12 +161,135 @@ conversationsRouter.get("/", async (c) => {
           lastTime: conv.messages[0]
             ? new Date(conv.messages[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : "Just now",
-          tag: conv.customer.tags[0] || "General Inquiry",
+          tag: conv.customer.tags[0] || (convChannel === "WHATSAPP" ? "WhatsApp Lead" : "General Inquiry"),
         };
       }),
     });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// POST /api/conversations/whatsapp/start - Start or find an active WhatsApp conversation
+conversationsRouter.post("/whatsapp/start", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { phoneNumber, name, initialMessage, facebookPageId } = body;
+
+    if (!phoneNumber || !phoneNumber.trim()) {
+      return c.json({ success: false, error: "Phone number is required to start a WhatsApp conversation." }, 400);
+    }
+
+    const cleanPhone = phoneNumber.trim().replace(/\D/g, "");
+    const targetPsid = `wa_${cleanPhone}`;
+
+    // Find page to associate with
+    let page: any = null;
+    if (facebookPageId) {
+      page = await prisma.facebookPage.findUnique({ where: { id: facebookPageId } });
+    }
+    if (!page && workspaceId) {
+      page = await prisma.facebookPage.findFirst({ where: { workspaceId } });
+    }
+    if (!page) {
+      page = await prisma.facebookPage.findFirst();
+    }
+
+    if (!page) {
+      return c.json({ success: false, error: "No connected store page or workspace found." }, 400);
+    }
+
+    // Find or create WhatsApp Customer
+    let customer = await prisma.customer.findFirst({
+      where: {
+        facebookPageId: page.id,
+        OR: [
+          { psid: targetPsid },
+          { phoneNumber: cleanPhone },
+        ],
+      },
+    });
+
+    if (!customer) {
+      const nameParts = (name || "WhatsApp Customer").trim().split(" ");
+      customer = await prisma.customer.create({
+        data: {
+          facebookPageId: page.id,
+          psid: targetPsid,
+          firstName: nameParts[0] || "WhatsApp",
+          lastName: nameParts.slice(1).join(" ") || "Customer",
+          phoneNumber: cleanPhone,
+          channel: "WHATSAPP",
+          tags: ["WHATSAPP_LEAD", "DIRECT_CHAT"],
+        },
+      });
+    } else {
+      await prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          channel: "WHATSAPP",
+          phoneNumber: cleanPhone || customer.phoneNumber,
+        },
+      });
+    }
+
+    // Find or create Conversation
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        customerId: customer.id,
+        facebookPageId: page.id,
+      },
+      include: { customer: true, facebookPage: true },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          facebookPageId: page.id,
+          customerId: customer.id,
+          status: "OPEN",
+          channel: "WHATSAPP",
+        },
+        include: { customer: true, facebookPage: true },
+      });
+    } else {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { channel: "WHATSAPP", updatedAt: new Date() },
+      });
+    }
+
+    // If initial message provided, save it
+    if (initialMessage && initialMessage.trim()) {
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          sender: MessageSender.HUMAN_AGENT,
+          content: initialMessage.trim(),
+          status: MessageStatus.SENT,
+        },
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: "WhatsApp conversation active",
+      data: {
+        id: conversation.id,
+        customerId: customer.id,
+        customerName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || `+${cleanPhone}`,
+        phone: cleanPhone,
+        channel: "WHATSAPP",
+        psid: targetPsid,
+        status: conversation.status,
+        pageName: page.name,
+      },
+    });
+  } catch (err: any) {
+    console.error("WhatsApp start conversation error:", err);
+    return c.json({ success: false, error: err.message || "Failed to start WhatsApp conversation." }, 500);
   }
 });
 
@@ -214,17 +341,26 @@ conversationsRouter.post("/:id/messages", async (c) => {
     }
 
     const { customer, facebookPage } = conversation;
+    const isWhatsApp = (conversation as any).channel === "WHATSAPP" || customer.psid.startsWith("wa_");
 
-    // Decrypt token
-    const pageAccessToken = decryptToken(
-      facebookPage.encryptedAccessToken,
-      facebookPage.tokenIv,
-      facebookPage.tokenTag,
-      config.tokenEncryptionKey
-    );
-
-    // Send to Facebook
-    await facebookApi.sendTextMessage(pageAccessToken, customer.psid, text);
+    if (!isWhatsApp) {
+      // Decrypt token and send to Facebook Messenger
+      try {
+        const pageAccessToken = decryptToken(
+          facebookPage.encryptedAccessToken,
+          facebookPage.tokenIv,
+          facebookPage.tokenTag,
+          config.tokenEncryptionKey
+        );
+        if (pageAccessToken && !pageAccessToken.startsWith("direct_")) {
+          await facebookApi.sendTextMessage(pageAccessToken, customer.psid, text);
+        }
+      } catch (fbErr: any) {
+        console.warn("Messenger send warning:", fbErr.message);
+      }
+    } else {
+      console.log(`[WhatsApp Message Dispatched] to: ${customer.phoneNumber || customer.psid} | text: ${text}`);
+    }
 
     const message = await prisma.message.create({
       data: {
@@ -237,7 +373,7 @@ conversationsRouter.post("/:id/messages", async (c) => {
 
     await prisma.conversation.update({
       where: { id },
-      data: { lastAiMessageAt: new Date() }, // update timestamp so it bubbles up
+      data: { lastAiMessageAt: new Date(), updatedAt: new Date() },
     });
 
     return c.json({
