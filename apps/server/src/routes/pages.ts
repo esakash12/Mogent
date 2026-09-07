@@ -495,6 +495,72 @@ pagesRouter.post("/whatsapp/test", async (c) => {
       }, 400);
     }
 
+    // Also record the test message in DB so it immediately appears in the Mogent Inbox
+    try {
+      const page = (workspaceId && workspaceId !== "default"
+        ? await prisma.facebookPage.findFirst({ where: { workspaceId } })
+        : null) || await prisma.facebookPage.findFirst();
+
+      if (page) {
+        const targetPsid = `wa_${cleanPhone}`;
+        let customer = await prisma.customer.findFirst({
+          where: {
+            facebookPageId: page.id,
+            OR: [{ psid: targetPsid }, { phoneNumber: cleanPhone }],
+          },
+        });
+
+        if (!customer) {
+          customer = await prisma.customer.create({
+            data: {
+              facebookPageId: page.id,
+              psid: targetPsid,
+              firstName: "WhatsApp Tester",
+              phoneNumber: cleanPhone,
+              channel: "WHATSAPP",
+              tags: ["WHATSAPP_TEST", "VERIFIED"],
+            },
+          });
+        } else {
+          await prisma.customer.update({
+            where: { id: customer.id },
+            data: { channel: "WHATSAPP" },
+          });
+        }
+
+        let conv = await prisma.conversation.findFirst({
+          where: { customerId: customer.id, facebookPageId: page.id },
+        });
+
+        if (!conv) {
+          conv = await prisma.conversation.create({
+            data: {
+              facebookPageId: page.id,
+              customerId: customer.id,
+              status: "OPEN",
+              channel: "WHATSAPP",
+            },
+          });
+        } else {
+          await prisma.conversation.update({
+            where: { id: conv.id },
+            data: { channel: "WHATSAPP", updatedAt: new Date() },
+          });
+        }
+
+        await prisma.message.create({
+          data: {
+            conversationId: conv.id,
+            sender: MessageSender.HUMAN_AGENT,
+            content: "🎉 [Mogent AI] অভিনন্দন! আপনার WhatsApp Cloud API সফলভাবে কানেক্ট হয়েছে।",
+            status: MessageStatus.SENT,
+          },
+        });
+      }
+    } catch (dbErr: any) {
+      console.warn("Failed to record test WhatsApp message in DB:", dbErr.message);
+    }
+
     return c.json({
       success: true,
       message: `টেস্ট মেসেজ সফলভাবে ${cleanPhone} নম্বরে পাঠানো হয়েছে!`,
