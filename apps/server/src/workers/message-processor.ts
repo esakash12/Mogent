@@ -146,19 +146,25 @@ export function startMessageWorker() {
         }
       }
 
-      // 6. Save Customer Message in DB
-      await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          mid,
-          sender: "CUSTOMER",
-          senderId: senderPsid,
-          content: text,
-          mediaType,
-          mediaUrl,
-          status: "DELIVERED",
-        },
-      });
+      // 6. Save Customer Message in DB (skip if already saved by webhook)
+      const existingMessage = mid ? await prisma.message.findFirst({
+        where: { conversationId: conversation.id, mid },
+      }) : null;
+
+      if (!existingMessage) {
+        await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            mid,
+            sender: "CUSTOMER",
+            senderId: senderPsid,
+            content: text,
+            mediaType,
+            mediaUrl,
+            status: "DELIVERED",
+          },
+        });
+      }
 
       // Update Conversation Timestamp & Unread
       await prisma.conversation.update({
@@ -170,19 +176,24 @@ export function startMessageWorker() {
       });
 
       // 7. Send "mark_seen" and "typing_on" to Messenger for instant read receipt and typing bubbles
-      await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "mark_seen");
-      await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "typing_on");
+      if (!isWhatsAppRecipient) {
+        await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "mark_seen");
+        await facebookApi.sendTypingIndicator(pageAccessToken, senderPsid, "typing_on");
+      }
 
       // 8. Fetch Context: Chat History & Knowledge Base
       const recentMessages = await prisma.message.findMany({
-        where: { conversationId: conversation.id },
+        where: {
+          conversationId: conversation.id,
+          mid: { not: mid },
+        },
         orderBy: { createdAt: "desc" },
-        take: 15,
+        take: 20,
       });
 
       const history = recentMessages
         .reverse()
-        .filter((m) => m.mid !== mid) // Exclude the current message
+        .filter((m) => m.mid !== mid) // Exclude current message
         .map((m) => {
           let content = m.content || "";
           if (m.sender === MessageSender.HUMAN_AGENT || (m.sender as any) === "HUMAN") {
@@ -211,8 +222,8 @@ export function startMessageWorker() {
         (k) => `[${k.type} - ${k.title}]: ${k.content}`
       );
 
-      // Inject WhatsApp & Business Contacts into Knowledge Context
-      if (page.workspace?.whatsAppNumber) {
+      // Inject WhatsApp & Business Contacts into Knowledge Context ONLY if not on WhatsApp
+      if (!isWhatsAppRecipient && page.workspace?.whatsAppNumber) {
         const cleanDigits = page.workspace.whatsAppNumber.replace(/[^\d]/g, "");
         const waLink = `https://wa.me/${cleanDigits}${
           page.workspace.whatsAppPrefillText
@@ -226,12 +237,22 @@ export function startMessageWorker() {
         );
       }
 
-      // Default system prompt (Real Human Bangladeshi Sales Moderator)
-      const systemPrompt =
-        page.systemPrompt ||
-        `আপনি "${page.businessName || page.name}" ফেসবুক পেজের একজন প্রফেশনাল, অত্যন্ত আন্তরিক ও চটপটে বিক্রয় প্রতিনিধি (Human Sales Moderator)।
+      // Context-aware system prompt
+      const channelHeader = isWhatsAppRecipient
+        ? `[প্ল্যাটফর্ম: অফিসিয়াল WhatsApp Business চ্যাট]`
+        : `[প্ল্যাটফর্ম: ফেসবুক মেসেঞ্জার চ্যাট]`;
+
+      const whatsappInstruction = isWhatsAppRecipient
+        ? `\n[জরুরি নির্দেশনা]: কাস্টমার সরাসরি WhatsApp-এ আপনার সাথে মেসেজিং করছেন। কখনোই কাস্টমারকে "WhatsApp-এ মেসেজ দিন" বা কোনো WhatsApp লিঙ্ক দেবেন না। পূর্ববর্তী চ্যাট ইতিহাস লক্ষ্য করে গ্রাহকের প্রশ্নের সরাসরি, আন্তরিক ও পূর্ণাঙ্গ উত্তর দিন এবং অর্ডার নিশ্চিত করতে নাম, মোবাইল নম্বর ও ডেলিভারি ঠিকানা নিয়ে নিন।`
+        : ``;
+
+      const systemPrompt = `
+${channelHeader}${whatsappInstruction}
+
+${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর একজন প্রফেশনাল, অত্যন্ত আন্তরিক ও চটপটে বিক্রয় প্রতিনিধি (Human Sales Moderator)।
 কখনোই নিজেকে রোবট বা AI বলবেন না। সবসময় সুন্দর ও মিষ্টি বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং হেল্পফুল উত্তর দেবেন।
-কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে সঠিক তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা চেয়ে নিন।`;
+কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে সঠিক তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা চেয়ে নিন।`}
+`.trim();
 
       // 9. Call Dedicated AI Proxy Gateway (with shohag Master Key)
       try {

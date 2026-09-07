@@ -408,10 +408,13 @@ webhookRouter.post("/whatsapp", async (c) => {
                   });
                 }
 
-                // Save Customer Message
+                const messageMid = msg.id || `wa_${Date.now()}`;
+
+                // Save Customer Message with unique mid
                 await prisma.message.create({
                   data: {
                     conversationId: conversation.id,
+                    mid: messageMid,
                     sender: MessageSender.CUSTOMER,
                     senderId: targetPsid,
                     content: text,
@@ -426,8 +429,8 @@ webhookRouter.post("/whatsapp", async (c) => {
                     senderPsid: targetPsid,
                     senderId: targetPsid,
                     recipientId: page.pageId,
-                    mid: msg.id || `wa_${Date.now()}`,
-                    messageId: msg.id || `wa_${Date.now()}`,
+                    mid: messageMid,
+                    messageId: messageMid,
                     text,
                     timestamp: Number(msg.timestamp) * 1000 || Date.now(),
                     customerProfile: {

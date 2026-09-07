@@ -170,36 +170,59 @@ You MUST ALWAYS respond with a valid JSON object strictly matching this schema:
   }
 }`;
 
-    // Format Multi-Turn Chat History
-    const contents: any[] = [];
+    // Format Multi-Turn Chat History ensuring strict alternating turns
+    const rawTurns: { role: "user" | "model"; text: string }[] = [];
+
     if (options.history && options.history.length > 0) {
       for (const msg of options.history) {
-        contents.push({
-          role: msg.role === "user" ? "user" : "model",
-          parts: [{ text: msg.content }],
-        });
+        if (!msg.content || !msg.content.trim()) continue;
+        const role = msg.role === "user" ? "user" : "model";
+        rawTurns.push({ role, text: msg.content.trim() });
       }
     }
 
     // Latest incoming message
-    const currentParts: any[] = [];
-    if (options.latestMessage.text) {
-      currentParts.push({ text: options.latestMessage.text });
-    }
+    let currentText = options.latestMessage.text || "";
     if (options.latestMessage.mediaUrl) {
-      currentParts.push({
-        text: `[User attached a ${options.latestMessage.mediaType || "file"}: ${options.latestMessage.mediaUrl}]`,
+      currentText += ` [User attached a ${options.latestMessage.mediaType || "file"}: ${options.latestMessage.mediaUrl}]`;
+    }
+    if (!currentText.trim()) {
+      currentText = "Hello";
+    }
+    rawTurns.push({ role: "user", text: currentText.trim() });
+
+    // Sanitize turns so they strictly alternate: user -> model -> user -> model -> ... -> user
+    const contents: any[] = [];
+    for (const turn of rawTurns) {
+      if (contents.length === 0) {
+        // First turn MUST be user!
+        if (turn.role === "user") {
+          contents.push({
+            role: "user",
+            parts: [{ text: turn.text }],
+          });
+        }
+      } else {
+        const prevTurn = contents[contents.length - 1];
+        if (prevTurn.role === turn.role) {
+          // Merge consecutive same-role messages so Gemini never gets same role consecutively!
+          prevTurn.parts[0].text += `\n${turn.text}`;
+        } else {
+          contents.push({
+            role: turn.role,
+            parts: [{ text: turn.text }],
+          });
+        }
+      }
+    }
+
+    // Ensure the very last message is user (since the model must reply to the user)
+    if (contents.length === 0 || contents[contents.length - 1].role !== "user") {
+      contents.push({
+        role: "user",
+        parts: [{ text: currentText }],
       });
     }
-
-    if (currentParts.length === 0) {
-      currentParts.push({ text: "Hello" });
-    }
-
-    contents.push({
-      role: "user",
-      parts: currentParts,
-    });
 
     const requestBody = {
       systemInstruction: {
