@@ -16,6 +16,7 @@ export interface GenerateChatReplyInput {
   };
   temperature?: number;
   model?: string;
+  channel?: "WHATSAPP" | "MESSENGER";
 }
 
 export class AiProxyClient {

@@ -33,6 +33,9 @@ export default function AIAutomationSectorPage() {
 
   // --- 0. CUSTOM SYSTEM PROMPT & PERSONA STATE ---
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [whatsappPrompt, setWhatsappPrompt] = useState("");
+  const [channelPromptTab, setChannelPromptTab] = useState<"MESSENGER" | "WHATSAPP">("MESSENGER");
+  const [playgroundChannel, setPlaygroundChannel] = useState<"MESSENGER" | "WHATSAPP">("MESSENGER");
   const [businessName, setBusinessName] = useState("");
   const [promptSaved, setPromptSaved] = useState(false);
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
@@ -69,6 +72,7 @@ export default function AIAutomationSectorPage() {
 
       if (data) {
         if (data.systemPrompt !== undefined) setSystemPrompt(data.systemPrompt || "");
+        if (data.whatsappPrompt !== undefined) setWhatsappPrompt(data.whatsappPrompt || "");
         if (data.businessName !== undefined) setBusinessName(data.businessName || "");
         if (data.items && Array.isArray(data.items)) {
           setKnowledgeItems(data.items);
@@ -156,7 +160,12 @@ export default function AIAutomationSectorPage() {
   const handleSaveSystemPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingPrompt(true);
-    const res = await saveSystemPrompt({ systemPrompt, businessName, pageId: selectedPageId });
+    const res = await saveSystemPrompt({
+      systemPrompt,
+      whatsappPrompt,
+      businessName,
+      pageId: selectedPageId,
+    });
     setIsSavingPrompt(false);
     if (res && (res.success || !res.error)) {
       setPromptSaved(true);
@@ -194,7 +203,8 @@ export default function AIAutomationSectorPage() {
       const res = await testPlaygroundChat(
         q,
         simMessages.map((m) => ({ role: m.role, content: m.content })),
-        selectedPageId
+        selectedPageId,
+        playgroundChannel
       );
 
       if (res.success && res.data) {
@@ -450,6 +460,9 @@ export default function AIAutomationSectorPage() {
       {/* ========================================================================= */}
       {/* TAB: CUSTOM SYSTEM PROMPT & PERSONA INSTRUCTIONS */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* TAB: CUSTOM SYSTEM PROMPT & PERSONA INSTRUCTIONS (DUAL CHANNEL) */}
+      {/* ========================================================================= */}
       {activeTab === "PROMPT" && (
         <form onSubmit={handleSaveSystemPrompt} className="space-y-6 max-w-4xl animate-in fade-in duration-200">
           <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
@@ -461,7 +474,7 @@ export default function AIAutomationSectorPage() {
                 <div>
                   <h3 className="font-bold text-base text-[#EDEDED]">Custom AI System Prompt & Persona</h3>
                   <p className="text-xs text-[#888]">
-                    Provide detailed, multi-paragraph instructions to train Mogent AI on your exact tone, sales technique, and rules.
+                    Messenger ও WhatsApp এর জন্য আলাদা আলাদা প্রম্পট ও নিয়ম নির্ধারণ করুন।
                   </p>
                 </div>
               </div>
@@ -486,59 +499,165 @@ export default function AIAutomationSectorPage() {
               />
             </div>
 
-            {/* Prompt Presets / Quick Inserts */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-[#888]">
-                Quick Templates / Inspiration:
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSystemPrompt(
-                      `আপনি "${businessName || "আমাদের শপ"}" এর একজন অভিজ্ঞ, ভদ্র এবং অত্যন্ত আন্তরিক বাস্তব মানব সেলস মডারেটর।\n\nকাজের নিয়মাবলী:\n১. সবসময় বাংলায় মিষ্টি ভাষায় কথা বলবেন এবং কাস্টমারকে সম্মান দিয়ে "আপনি" সম্বোধন করবেন।\n২. কাস্টমার কোনো প্রোডাক্ট পছন্দ করলে তাকে সাইজ ও কালার সিলেক্ট করতে সহায়তা করবেন।\n৩. অর্ডার কনফার্ম করতে কাস্টমারের কাছে তার নাম, মোবাইল নাম্বার এবং সম্পূর্ণ ডেলিভারি ঠিকানা চাইবেন।\n৪. আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।\n৫. কোনো তথ্য অজানা থাকলে কাস্টমারকে বলবেন যে আমাদের ম্যানেজার শীঘ্রই তার সাথে যোগাযোগ করবেন।`
-                    )
-                  }
-                  className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
-                >
-                  🛍️ E-Commerce Sales Executive (Bangla)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSystemPrompt(
-                      `You are an elite customer support representative for "${businessName || "Our Brand"}".\n\nKey Directives:\n- Maintain a professional, polite, and empathetic tone at all times.\n- Answer customer inquiries concisely based strictly on provided knowledge base.\n- When a lead or inquiry is urgent, collect their phone number for instant manager callback.\n- Do not fabricate facts or pricing not present in the catalog.`
-                    )
-                  }
-                  className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
-                >
-                  👔 Professional Support (English)
-                </button>
-              </div>
+            {/* Channel Persona Switcher */}
+            <div className="flex items-center gap-2 p-1 bg-[#111] border border-[#222] rounded-xl w-fit">
+              <button
+                type="button"
+                onClick={() => setChannelPromptTab("MESSENGER")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                  channelPromptTab === "MESSENGER"
+                    ? "bg-blue-600/20 text-blue-400 border border-blue-500/40 shadow-sm"
+                    : "text-[#888] hover:text-[#EDEDED]"
+                )}
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
+                🔵 Messenger AI প্রম্পট
+              </button>
+              <button
+                type="button"
+                onClick={() => setChannelPromptTab("WHATSAPP")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer",
+                  channelPromptTab === "WHATSAPP"
+                    ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 shadow-sm"
+                    : "text-[#888] hover:text-[#EDEDED]"
+                )}
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                🟢 WhatsApp Masterclass Closer প্রম্পট
+              </button>
             </div>
 
-            {/* Main Detailed Prompt Textarea */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-semibold text-[#EDEDED]">
-                  Full System Instructions (Multi-paragraph supported)
-                </label>
-                <span className="text-[11px] font-mono text-[#666]">
-                  {systemPrompt.length} characters
-                </span>
+            {/* --- MESSENGER TAB --- */}
+            {channelPromptTab === "MESSENGER" && (
+              <div className="space-y-5 animate-in fade-in duration-150">
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#888]">
+                    Messenger Quick Templates:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSystemPrompt(
+                          `আপনি "${businessName || "আমাদের শপ"}" এর একজন অভিজ্ঞ, ভদ্র এবং অত্যন্ত আন্তরিক বাস্তব মানব সেলস মডারেটর।\n\nকাজের নিয়মাবলী:\n১. সবসময় বাংলায় মিষ্টি ভাষায় কথা বলবেন এবং কাস্টমারকে সম্মান দিয়ে "আপনি" সম্বোধন করবেন।\n২. কাস্টমার কোনো প্রোডাক্ট পছন্দ করলে তাকে সাইজ ও কালার সিলেক্ট করতে সহায়তা করবেন।\n৩. অর্ডার কনফার্ম করতে কাস্টমারের কাছে তার নাম, মোবাইল নাম্বার এবং সম্পূর্ণ ডেলিভারি ঠিকানা চাইবেন।\n৪. আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।\n৫. কোনো তথ্য অজানা থাকলে কাস্টমারকে বলবেন যে আমাদের ম্যানেজার শীঘ্রই তার সাথে যোগাযোগ করবেন।`
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                    >
+                      🛍️ E-Commerce Sales Executive (Bangla)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSystemPrompt(
+                          `You are an elite customer support representative for "${businessName || "Our Brand"}".\n\nKey Directives:\n- Maintain a professional, polite, and empathetic tone at all times.\n- Answer customer inquiries concisely based strictly on provided knowledge base.\n- When a lead or inquiry is urgent, collect their phone number for instant manager callback.\n- Do not fabricate facts or pricing not present in the catalog.`
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                    >
+                      👔 Professional Support (English)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-[#EDEDED]">
+                      Facebook Messenger System Instructions
+                    </label>
+                    <span className="text-[11px] font-mono text-[#666]">
+                      {systemPrompt.length} characters
+                    </span>
+                  </div>
+                  <textarea
+                    rows={11}
+                    value={systemPrompt}
+                    onChange={(e) => setSystemPrompt(e.target.value)}
+                    placeholder={`এখানে আপনার ফেসবুক মেসেঞ্জারের জন্য বিস্তারিত প্রম্পট ও নিয়ম লিখুন...\n\nযেমন:\n- আপনি অমুক কোম্পানির সেলস এক্সিকিউটিভ\n- কাস্টমার দাম জানতে চাইলে প্রাইস লিস্ট অনুযায়ী উত্তর দেবেন\n- কাস্টমার প্রোডাক্ট অর্ডার করতে চাইলে ঠিকানা ও ফোন নাম্বার সংগ্রহ করবেন`}
+                    className="w-full p-4 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-blue-500 font-sans leading-relaxed resize-y"
+                  />
+                  <p className="text-[11px] text-[#888]">
+                    💡 <strong>Tip:</strong> ফেসবুক মেসেঞ্জারে কাস্টমারদের সাথে দীর্ঘ কথোপকথন ও অর্ডার বুকিং পরিচালনার জন্য এটি প্রযোজ্য।
+                  </p>
+                </div>
               </div>
-              <textarea
-                rows={12}
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder={`এখানে আপনার AI এর জন্য বিস্তারিত প্রম্পট ও নিয়ম লিখুন...\n\nযেমন:\n- আপনি অমুক কোম্পানির সেলস এক্সিকিউটিভ\n- কাস্টমার নাম্বারের কথা বললে আমাদের হটলাইনে কল দিতে বলবেন\n- কাস্টমার প্রোডাক্ট অর্ডার করতে চাইলে ঠিকানা ও ফোন নাম্বার সংগ্রহ করবেন`}
-                className="w-full p-4 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-purple-500 font-sans leading-relaxed resize-y"
-              />
-              <p className="text-[11px] text-[#888]">
-                💡 <strong>Tip:</strong> You can include any special sales policies, discount limits, return policies, or Bengali conversational style instructions. Mogent AI will follow this prompt strictly on every message.
-              </p>
-            </div>
+            )}
+
+            {/* --- WHATSAPP TAB --- */}
+            {channelPromptTab === "WHATSAPP" && (
+              <div className="space-y-5 animate-in fade-in duration-150">
+                <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-900/30 text-xs text-emerald-300/90 leading-relaxed">
+                  <strong>✨ WhatsApp Masterclass Sales Closer মোড:</strong> আপনি শুধুমাত্র আপনার পণ্যের বেসিক তথ্য, রেট বা নিয়ম দিয়ে দিবেন। AI নিজে থেকেই একজন অভিজ্ঞ বাঙালি শপ ওনার ও সেলস এক্সপার্টের মতো <strong>১-২ লাইনে অত্যন্ত সংক্ষিপ্ত, মিষ্টি ও পয়েন্ট-টু-পয়েন্ট</strong> উত্তর দিয়ে কাস্টমার ক্লোজ করবে।
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-[#888]">
+                    WhatsApp Masterclass Templates:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWhatsappPrompt(
+                          `আপনি "${businessName || "আমাদের শপ"}" এর একজন বাস্তব অভিজ্ঞ সেলস এক্সপার্ট ও শপ ওনার। কাস্টমার মাত্রই WhatsApp এ নক দিয়েছেন।\n\nকাজের মূল নিয়মাবলী:\n১. উত্তর সবসময় খুব ছোট হবে (৯০% রিপ্লাই ১ থেকে ২ টি বাক্যের মধ্যে)। অপ্রয়োজনীয় বড় লম্বা প্যারাগ্রাফ একদম দেবেন না।\n২. কাস্টমার যা জানতে চাইবে আগে হুবহু সেটার সরাসরি উত্তর দিন, তারপর কথা এগিয়ে নেওয়ার জন্য পাল্টা মিষ্টি প্রশ্ন করুন।\n৩. কাস্টমার প্রোডাক্ট বা সার্ভিসের কথা বললে আগে নিশ্চিত করুন (যেমন: "জী স্যার, আপনি কি এটা করতে চাচ্ছেন?")।\n৪. কাস্টমার দাম জানতে চাইলে সংক্ষেপে দাম বলে সাইজ/পরিমাণ জেনে নিন।\n৫. ছবি বা ফাইল দেওয়ার পর ধন্যবাদ দিয়ে ডেলিভারির জন্য নাম ও ঠিকানা চেয়ে অর্ডার ফাইনাল করুন।\n৬. আপনি ইতিমধ্যে WhatsApp এ আছেন, তাই ভুলেও WhatsApp নাম্বার বা লিংক দেবেন না।`
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                    >
+                      ⚡ দ্রুত সেলস ক্লোজার (১-২ লাইনে উত্তর)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWhatsappPrompt(
+                          `আপনি "${businessName || "প্রাইম প্রিন্ট"}" এর প্রধান সেলস এক্সপার্ট। কাস্টমার NID কার্ড, পিভিসি কার্ড বা প্রিন্টিং সার্ভিসের জন্য WhatsApp এ এসেছেন।\n\nকাজের নিয়মাবলী:\n১. কাস্টমার প্রিন্ট করতে চাইলে সরাসরি উত্তর দিন: "জী স্যার, আপনি কি NID কার্ড প্রিন্ট করতে চাচ্ছেন? আপনার NID কার্ডের উভয় পাশের ছবি বা PDF ফাইলটি এখানে পাঠান।"\n২. কাস্টমার ফাইল পাঠালে চেক করে রেগুলার ও প্রিমিয়াম কার্ডের রেট সংক্ষেপে বলুন এবং তার কয়টি কপি লাগবে তা জেনে নিন।\n৩. ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা, ঢাকার বাইরে ১২০ টাকা জানিয়ে সম্পূর্ণ ডেলিভারি ঠিকানা ও সচল মোবাইল নম্বর নিয়ে অর্ডার কনফার্ম করুন।\n৪. প্রতিটি উত্তর মাত্র ১-২ লাইনে বাস্তব মানুষের মতো আন্তরিকভাবে দিন।`
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                    >
+                      🖨️ NID ও প্রিন্টিং সার্ভিস স্পেশালিস্ট
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWhatsappPrompt(
+                          `আপনি "${businessName || "আমাদের ব্র্যান্ড"}" এর একজন প্রো-লেভেল সেলস ক্লোজার।\n\nনিয়মাবলী:\n১. কাস্টমার কোনো প্রোডাক্টের কথা জানতে চাইলে আগে হ্যাঁ/না উত্তর দিয়ে সাইজ বা কালার পছন্দ জিজ্ঞেস করুন।\n২. কাস্টমার পছন্দ করলে সাথে সাথে ডেলিভারি চার্জ (ঢাকার ভেতরে ৬০ টাকা, ঢাকার বাইরে ১২০ টাকা) উল্লেখ করে নাম, মোবাইল নম্বর ও ঠিকানা চেয়ে নিন।\n৩. কোনো তথ্য কাস্টমার আগের মেসেজে দিয়ে দিলে সেটা আর দ্বিতীয়বার জিজ্ঞেস করবেন না।\n৪. সব উত্তর সংক্ষিপ্ত, মিষ্টি ও প্রফেশনাল রাখবেন।`
+                        )
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[11px] text-[#EDEDED] transition-colors"
+                    >
+                      📦 ই-কমার্স সরাসরি অর্ডার কনফার্ম
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-[#EDEDED]">
+                      WhatsApp System Instructions (খালি রাখলে Mogent Master Closer স্বয়ংক্রিয়ভাবে চলবে)
+                    </label>
+                    <span className="text-[11px] font-mono text-[#666]">
+                      {whatsappPrompt.length} characters
+                    </span>
+                  </div>
+                  <textarea
+                    rows={11}
+                    value={whatsappPrompt}
+                    onChange={(e) => setWhatsappPrompt(e.target.value)}
+                    placeholder={`এখানে WhatsApp এর জন্য আপনার বেসিক নিয়মাবলী ও পণ্যের রেট লিখে রাখুন...\n\nযেমন:\n- কাস্টমার NID প্রিন্ট করতে চাইলে ছবি চাইতে হবে\n- ১ পিসের দাম ১৫০ টাকা, ২ পিস ২৫০ টাকা\n- ঢাকার ভেতরে ডেলিভারি ৬০ টাকা, বাইরে ১২০ টাকা\n- উত্তর সবসময় ১-২ লাইনে মানুষের মতো মিষ্টি করে দিতে হবে`}
+                    className="w-full p-4 rounded-xl bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-emerald-500 font-sans leading-relaxed resize-y"
+                  />
+                  <p className="text-[11px] text-[#888]">
+                    🛡️ <strong>WhatsApp Guard:</strong> WhatsApp এর জন্য এআই কখনো নিজেকে বট বলবে না, কখনোই "WhatsApp এ মেসেজ দিন" বলবে না, এবং কাস্টমারের পূর্ববর্তী চ্যাট ইতিহাস নিখুঁতভাবে মনে রাখবে।
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end pt-2 border-t border-[#222]">
               <button
@@ -546,7 +665,7 @@ export default function AIAutomationSectorPage() {
                 disabled={isSavingPrompt}
                 className="px-6 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold transition-colors cursor-pointer shadow-lg shadow-purple-500/20 disabled:opacity-50"
               >
-                {isSavingPrompt ? "Saving..." : "Save Custom System Prompt"}
+                {isSavingPrompt ? "Saving All Prompts..." : "Save AI Personas & Prompts"}
               </button>
             </div>
           </div>
@@ -808,19 +927,50 @@ export default function AIAutomationSectorPage() {
       {activeTab === "PLAYGROUND" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[560px] animate-in fade-in duration-200">
           <div className="lg:col-span-2 rounded-2xl border border-[#222] bg-[#0A0A0A] flex flex-col overflow-hidden">
-            <div className="h-10 px-4 border-b border-[#222] flex items-center justify-between bg-[#111]/40 text-xs text-[#888]">
-              <span>Facebook Messenger Sandbox</span>
+            <div className="h-11 px-4 border-b border-[#222] flex items-center justify-between bg-[#111]/60 text-xs text-[#888]">
+              <div className="flex items-center gap-1.5 p-0.5 bg-[#000] border border-[#222] rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setPlaygroundChannel("MESSENGER")}
+                  className={cn(
+                    "px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5 cursor-pointer",
+                    playgroundChannel === "MESSENGER"
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "text-[#888] hover:text-[#EDEDED]"
+                  )}
+                >
+                  <MessageCircle className="w-3 h-3 text-blue-400" />
+                  Messenger
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlaygroundChannel("WHATSAPP")}
+                  className={cn(
+                    "px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5 cursor-pointer",
+                    playgroundChannel === "WHATSAPP"
+                      ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                      : "text-[#888] hover:text-[#EDEDED]"
+                  )}
+                >
+                  <Phone className="w-3 h-3 text-emerald-400" />
+                  WhatsApp
+                </button>
+              </div>
+
               <button
                 onClick={() =>
                   setSimMessages([
                     {
                       role: "model",
-                      content: "আসসালামু আলাইকুম! আমি আপনার AI সহকারী। প্রোডাক্ট অর্ডার বা যেকোনো তথ্যের জন্য আমাকে মেসেজ দিন।",
-                      thinking: "Session reset.",
+                      content:
+                        playgroundChannel === "WHATSAPP"
+                          ? "জী স্যার, বলুন কীভাবে সহযোগিতা করতে পারি?"
+                          : "আসসালামু আলাইকুম! কীভাবে সাহায্য করতে পারি? আপনার অর্ডার বা যেকোনো তথ্যের জন্য বলতে পারেন।",
+                      thinking: `Session reset for ${playgroundChannel}.`,
                     },
                   ])
                 }
-                className="hover:text-white flex items-center gap-1"
+                className="hover:text-white flex items-center gap-1 text-[11px] cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>

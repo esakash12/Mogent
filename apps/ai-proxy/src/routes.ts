@@ -69,6 +69,7 @@ export function createAiProxyRoutes(geminiService: GeminiService, rotator: Gemin
         history: body.history || [],
         latestMessage: body.latestMessage || { text: "" },
         temperature: body.temperature ?? 0.3,
+        channel: body.channel || "MESSENGER",
       });
       const durationMs = Date.now() - startTime;
 

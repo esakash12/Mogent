@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { prisma, KnowledgeType } from "@mogent/database";
+import { redisConnection } from "../redis";
 import { config } from "../config";
 import { AiProxyClient } from "../ai-client";
 
@@ -46,12 +47,18 @@ knowledgeRouter.get("/", async (c) => {
       orderBy: { priority: "desc" },
     });
 
+    let wpPrompt = targetWsId ? await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWsId}`) : null;
+    if (!wpPrompt) {
+      wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
+    }
+
     return c.json({
       success: true,
       data: {
         pageId: targetPage?.id || "ALL",
         pageName: targetPage?.name || "",
         systemPrompt: targetPage?.systemPrompt || "",
+        whatsappPrompt: wpPrompt || "",
         businessName: targetPage?.businessName || targetPage?.name || workspace?.name || "",
         businessDescription: targetPage?.businessDescription || "",
         items: items.map((i) => ({
@@ -82,7 +89,7 @@ knowledgeRouter.post("/system-prompt", async (c) => {
 
   try {
     const body = await c.req.json();
-    const { systemPrompt, businessName, pageId } = body;
+    const { systemPrompt, businessName, pageId, whatsappPrompt } = body;
 
     let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
@@ -94,31 +101,72 @@ knowledgeRouter.post("/system-prompt", async (c) => {
       return c.json({ success: false, error: "No workspace found" }, 404);
     }
 
-    if (pageId && pageId !== "ALL") {
-      // Update specific page
-      await prisma.facebookPage.update({
-        where: { id: pageId },
-        data: {
-          systemPrompt: (systemPrompt || "").trim() || null,
-          businessName: (businessName || "").trim() || null,
-        },
-      });
-    } else {
-      // Update all Facebook Pages under this workspace
-      await prisma.facebookPage.updateMany({
-        where: { workspaceId: targetWorkspaceId },
-        data: {
-          systemPrompt: (systemPrompt || "").trim() || null,
-          businessName: (businessName || "").trim() || null,
-        },
-      });
+    if (systemPrompt !== undefined) {
+      if (pageId && pageId !== "ALL") {
+        // Update specific page
+        await prisma.facebookPage.update({
+          where: { id: pageId },
+          data: {
+            systemPrompt: (systemPrompt || "").trim() || null,
+            businessName: (businessName || "").trim() || null,
+          },
+        });
+      } else {
+        // Update all Facebook Pages under this workspace
+        await prisma.facebookPage.updateMany({
+          where: { workspaceId: targetWorkspaceId },
+          data: {
+            systemPrompt: (systemPrompt || "").trim() || null,
+            businessName: (businessName || "").trim() || null,
+          },
+        });
+      }
+    }
+
+    // Save WhatsApp prompt separately to Redis
+    if (whatsappPrompt !== undefined) {
+      const cleanWp = (whatsappPrompt || "").trim();
+      await Promise.all([
+        redisConnection.set(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`, cleanWp),
+        redisConnection.set("mogent:whatsapp_system_prompt:default", cleanWp),
+      ]);
     }
 
     return c.json({
       success: true,
       message: "Custom System Prompt saved successfully!",
-      data: { systemPrompt, businessName, pageId },
+      data: { systemPrompt, whatsappPrompt, businessName, pageId },
     });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// GET /api/knowledge/whatsapp-prompt
+knowledgeRouter.get("/whatsapp-prompt", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id") || "default";
+  try {
+    let raw = await redisConnection.get(`mogent:whatsapp_system_prompt:${workspaceId}`);
+    if (!raw && workspaceId !== "default") {
+      raw = await redisConnection.get("mogent:whatsapp_system_prompt:default");
+    }
+    return c.json({ success: true, prompt: raw || "" });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// POST /api/knowledge/whatsapp-prompt
+knowledgeRouter.post("/whatsapp-prompt", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id") || "default";
+  try {
+    const body = await c.req.json();
+    const cleanPrompt = (body.prompt || "").trim();
+    await Promise.all([
+      redisConnection.set(`mogent:whatsapp_system_prompt:${workspaceId}`, cleanPrompt),
+      redisConnection.set("mogent:whatsapp_system_prompt:default", cleanPrompt),
+    ]);
+    return c.json({ success: true, message: "WhatsApp prompt saved successfully!", prompt: cleanPrompt });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }
@@ -204,7 +252,7 @@ knowledgeRouter.post("/playground", async (c) => {
 
   try {
     const body = await c.req.json();
-    const { message, history } = body;
+    const { message, history, channel } = body;
 
     if (!message) {
       return c.json({ success: false, error: "Message is required" }, 400);
@@ -238,9 +286,25 @@ knowledgeRouter.post("/playground", async (c) => {
 
     const primaryPage = workspace?.facebookPages?.[0];
 
-    let systemPrompt =
-      primaryPage?.systemPrompt ||
-      `আপনি "${primaryPage?.businessName || workspace?.name || "আমাদের শপ"}" এর একজন অভিজ্ঞ, অত্যন্ত আন্তরিক ও চটপটে বাস্তব মানব বিক্রয় প্রতিনিধি/মডারেটর (Sales Representative)।`;
+    const isWhatsApp = channel === "WHATSAPP";
+    let systemPrompt = "";
+
+    if (isWhatsApp) {
+      let wpPrompt = targetWorkspaceId
+        ? await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`)
+        : null;
+      if (!wpPrompt) {
+        wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
+      }
+      systemPrompt =
+        wpPrompt?.trim() ||
+        `আপনি "${primaryPage?.businessName || workspace?.name || "আমাদের শপ"}" এর একজন বাস্তব অভিজ্ঞ সেলস এক্সপার্ট ও শপ ওনার।
+কাস্টমার মাত্রই WhatsApp এ নক দিয়েছে। আপনার কাজ হলো তার প্রশ্নের সরাসরি ও অত্যন্ত ছোট (১-২ বাক্যে) উত্তর দেওয়া এবং ধাপে ধাপে কথা বলে অর্ডার ক্লোজ করা।`;
+    } else {
+      systemPrompt =
+        primaryPage?.systemPrompt ||
+        `আপনি "${primaryPage?.businessName || workspace?.name || "আমাদের শপ"}" এর একজন অভিজ্ঞ, অত্যন্ত আন্তরিক ও চটপটে বাস্তব মানব বিক্রয় প্রতিনিধি/মডারেটর (Sales Representative)।`;
+    }
 
     const aiRes = await aiClient.generateReply({
       systemPrompt,
@@ -254,12 +318,13 @@ knowledgeRouter.post("/playground", async (c) => {
       },
       temperature: 0.7,
       model: config.aiProxy.defaultModel,
+      channel: isWhatsApp ? "WHATSAPP" : "MESSENGER",
     });
 
     let replyText = aiRes.data.replyText;
     let button: { title: string; url: string } | null = null;
 
-    if (workspace?.whatsAppNumber && replyText) {
+    if (!isWhatsApp && workspace?.whatsAppNumber && replyText) {
       const rawNumber = workspace.whatsAppNumber.trim();
       let cleanDigits = rawNumber.replace(/[^\d]/g, "");
       if (cleanDigits.startsWith("01") && cleanDigits.length === 11) {

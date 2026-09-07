@@ -237,22 +237,34 @@ export function startMessageWorker() {
         );
       }
 
-      // Context-aware system prompt
-      const channelHeader = isWhatsAppRecipient
-        ? `[প্ল্যাটফর্ম: অফিসিয়াল WhatsApp Business চ্যাট]`
-        : `[প্ল্যাটফর্ম: ফেসবুক মেসেঞ্জার চ্যাট]`;
+      // Context-aware system prompt & Channel Separation
+      let systemPrompt = "";
+      if (isWhatsAppRecipient) {
+        let wpCustomPrompt = page.workspaceId
+          ? await redisConnection.get(`mogent:whatsapp_system_prompt:${page.workspaceId}`)
+          : null;
+        if (!wpCustomPrompt) {
+          wpCustomPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
+        }
 
-      const whatsappInstruction = isWhatsAppRecipient
-        ? `\n[জরুরি নির্দেশনা]: কাস্টমার সরাসরি WhatsApp-এ আপনার সাথে মেসেজিং করছেন। কখনোই কাস্টমারকে "WhatsApp-এ মেসেজ দিন" বা কোনো WhatsApp লিঙ্ক দেবেন না। পূর্ববর্তী চ্যাট ইতিহাস লক্ষ্য করে গ্রাহকের প্রশ্নের সরাসরি, আন্তরিক ও পূর্ণাঙ্গ উত্তর দিন এবং অর্ডার নিশ্চিত করতে নাম, মোবাইল নম্বর ও ডেলিভারি ঠিকানা নিয়ে নিন।`
-        : ``;
-
-      const systemPrompt = `
-${channelHeader}${whatsappInstruction}
+        if (wpCustomPrompt && wpCustomPrompt.trim()) {
+          systemPrompt = wpCustomPrompt.trim();
+        } else {
+          // Elite human sales closer default prompt for WhatsApp
+          systemPrompt = `আপনি "${page.businessName || page.name}" এর একজন অত্যন্ত দক্ষ, বাস্তব সেলস এক্সপার্ট ও শপ ওনার।
+কাস্টমার মাত্রই WhatsApp-এ যোগাযোগ করেছেন। আপনার লক্ষ্য কাস্টমারের কথার অত্যন্ত সংক্ষিপ্ত ও সঠিক উত্তর দিয়ে দ্রুত সেলস ক্লোজ করা।
+কখনোই রোবট বা AI এর মতো লম্বা প্যারাগ্রাফ লিখবেন না। ১-২ টি ছোট বাক্যে মানুষের মতো প্রাকৃতিক ও আন্তরিক উত্তর দিন।`;
+        }
+      } else {
+        const channelHeader = `[প্ল্যাটফর্ম: ফেসবুক মেসেঞ্জার চ্যাট]`;
+        systemPrompt = `
+${channelHeader}
 
 ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর একজন প্রফেশনাল, অত্যন্ত আন্তরিক ও চটপটে বিক্রয় প্রতিনিধি (Human Sales Moderator)।
 কখনোই নিজেকে রোবট বা AI বলবেন না। সবসময় সুন্দর ও মিষ্টি বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং হেল্পফুল উত্তর দেবেন।
 কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে সঠিক তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা চেয়ে নিন।`}
 `.trim();
+      }
 
       // 9. Call Dedicated AI Proxy Gateway (with shohag Master Key)
       try {
@@ -267,6 +279,7 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
           },
           temperature: page.aiTemperature,
           model: config.aiProxy.defaultModel,
+          channel: isWhatsAppRecipient ? "WHATSAPP" : "MESSENGER",
         });
 
         const { thinking, replyText, sentimentScore, shouldEscalate, escalationReason, extractedLeadInfo } =

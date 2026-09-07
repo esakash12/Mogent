@@ -30,18 +30,25 @@ export async function saveWhatsAppProtocol(data: {
   return await api.post("/api/knowledge/whatsapp", data);
 }
 
-export async function saveSystemPrompt(data: { systemPrompt: string; businessName?: string; pageId?: string }) {
+export async function saveSystemPrompt(data: {
+  systemPrompt: string;
+  businessName?: string;
+  pageId?: string;
+  whatsappPrompt?: string;
+}) {
   return await api.post("/api/knowledge/system-prompt", data);
 }
 
-export async function testPlaygroundAI(data: { message: string; history?: any[]; pageId?: string }) {
+export async function testPlaygroundAI(data: { message: string; history?: any[]; pageId?: string; channel?: string }) {
   return await api.post("/api/knowledge/playground", data);
 }
 
 export async function testPlaygroundChat(
   message: string,
   history: Array<{ role: string; content: string }>,
-  pageId?: string
+  pageId?: string,
+  channel?: "WHATSAPP" | "MESSENGER"
 ) {
-  return await api.post("/api/knowledge/playground", { message, history, pageId });
+  return await api.post("/api/knowledge/playground", { message, history, pageId, channel });
 }
+
