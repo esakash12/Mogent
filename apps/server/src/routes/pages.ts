@@ -354,7 +354,10 @@ import { redisConnection } from "../redis";
 pagesRouter.get("/whatsapp/config", async (c) => {
   const workspaceId = c.req.header("x-workspace-id") || "default";
   try {
-    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
+    let raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
+    if (!raw && workspaceId !== "default") {
+      raw = await redisConnection.get("mogent:whatsapp_config:default");
+    }
     const saved = raw ? JSON.parse(raw) : {};
 
     return c.json({
@@ -394,10 +397,27 @@ pagesRouter.post("/whatsapp/config", async (c) => {
       updatedAt: new Date().toISOString(),
     };
 
-    await redisConnection.set(
-      `mogent:whatsapp_config:${workspaceId}`,
-      JSON.stringify(configData)
-    );
+    await Promise.all([
+      redisConnection.set(
+        `mogent:whatsapp_config:${workspaceId}`,
+        JSON.stringify(configData)
+      ),
+      redisConnection.set(
+        "mogent:whatsapp_config:default",
+        JSON.stringify(configData)
+      ),
+    ]);
+
+    if (workspaceId && workspaceId !== "default") {
+      try {
+        await prisma.workspace.update({
+          where: { id: workspaceId },
+          data: {
+            whatsAppNumber: configData.phoneNumber || undefined,
+          },
+        });
+      } catch {}
+    }
 
     return c.json({
       success: true,
@@ -419,7 +439,10 @@ pagesRouter.post("/whatsapp/test", async (c) => {
     const body = await c.req.json();
     const { testPhone } = body;
 
-    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
+    let raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
+    if (!raw && workspaceId !== "default") {
+      raw = await redisConnection.get("mogent:whatsapp_config:default");
+    }
     const saved = raw ? JSON.parse(raw) : {};
 
     if (!saved.phoneNumberId || !saved.accessToken) {
@@ -460,9 +483,15 @@ pagesRouter.post("/whatsapp/test", async (c) => {
     const data = await response.json();
 
     if (data.error) {
+      let friendlyError = data.error.message || "Meta API Error";
+      if (friendlyError.includes("Unsupported post request") || friendlyError.includes("does not exist")) {
+        friendlyError = `Meta Error: Phone Number ID '${saved.phoneNumberId}' টি কাজ করছে না। নিশ্চিত করুন আপনি WABA ID না দিয়ে Phone Number ID দিয়েছেন এবং Meta Business Settings -> System Users -> 'Assign Assets'-এ WhatsApp Account যুক্ত করে Manage পারমিশন দিয়েছেন।`;
+      } else if (data.error.code === 190) {
+        friendlyError = "Meta Error: Access Token টি সঠিক নয় বা মেয়াদোত্তীর্ণ। Business Manager System User থেকে তৈরি পার্মানেন্ট টোকেন ব্যবহার করুন।";
+      }
       return c.json({
         success: false,
-        error: data.error.message || "Meta API Error",
+        error: friendlyError,
       }, 400);
     }
 

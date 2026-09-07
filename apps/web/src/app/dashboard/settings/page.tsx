@@ -81,13 +81,27 @@ export default function SettingsSectorPage() {
       if (Array.isArray(members)) {
         setTeamMembers(members);
       }
-      if (waData?.success && waData.data) {
+
+      // Check localStorage first
+      let cachedConfig: any = null;
+      try {
+        if (typeof window !== "undefined") {
+          const raw = localStorage.getItem("mogent_whatsapp_config");
+          if (raw) cachedConfig = JSON.parse(raw);
+        }
+      } catch {}
+
+      const activeConfig = (waData?.success && waData.data && (waData.data.phoneNumberId || waData.data.accessToken))
+        ? waData.data
+        : cachedConfig;
+
+      if (activeConfig) {
         setWhatsAppConfig({
-          phoneNumber: waData.data.phoneNumber || "",
-          phoneNumberId: waData.data.phoneNumberId || "",
-          wabaId: waData.data.wabaId || "",
-          accessToken: waData.data.accessToken || "",
-          autoReplyEnabled: waData.data.autoReplyEnabled ?? true,
+          phoneNumber: activeConfig.phoneNumber || "",
+          phoneNumberId: activeConfig.phoneNumberId || "",
+          wabaId: activeConfig.wabaId || "",
+          accessToken: activeConfig.accessToken || "",
+          autoReplyEnabled: activeConfig.autoReplyEnabled ?? true,
         });
       }
       setLoading(false);
@@ -107,6 +121,13 @@ export default function SettingsSectorPage() {
   const handleSaveWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingWhatsApp(true);
+
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("mogent_whatsapp_config", JSON.stringify(whatsAppConfig));
+      }
+    } catch {}
+
     try {
       const res = await saveWhatsAppConfig(whatsAppConfig);
       if (res?.success) {

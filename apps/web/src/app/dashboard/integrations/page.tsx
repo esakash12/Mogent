@@ -77,6 +77,24 @@ export default function IntegrationsPage() {
 
   const loadData = async () => {
     setLoading(true);
+
+    // Load instantly from localStorage cache if available
+    try {
+      if (typeof window !== "undefined") {
+        const cached = localStorage.getItem("mogent_whatsapp_config");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.phoneNumberId || parsed.accessToken) {
+            setWhatsAppConfig((prev) => ({
+              ...prev,
+              ...parsed,
+              isConnected: Boolean(parsed.phoneNumberId && parsed.accessToken),
+            }));
+          }
+        }
+      }
+    } catch {}
+
     try {
       const [pagesData, tgRes, waRes] = await Promise.all([
         fetchPages(),
@@ -101,11 +119,17 @@ export default function IntegrationsPage() {
         setTelegramData(tgRes.data);
       }
 
-      if (waRes?.success && waRes.data) {
+      if (waRes?.success && waRes.data && (waRes.data.phoneNumberId || waRes.data.accessToken)) {
         setWhatsAppConfig((prev) => ({
           ...prev,
           ...waRes.data,
+          isConnected: Boolean(waRes.data.phoneNumberId && waRes.data.accessToken),
         }));
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("mogent_whatsapp_config", JSON.stringify(waRes.data));
+          }
+        } catch {}
       }
     } catch (err) {
       console.error("Failed to load integrations:", err);
@@ -173,6 +197,23 @@ export default function IntegrationsPage() {
   const handleSaveWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingWhatsApp(true);
+
+    // Save to localStorage immediately so data is never lost on refresh
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(
+          "mogent_whatsapp_config",
+          JSON.stringify({
+            phoneNumber: whatsAppConfig.phoneNumber,
+            phoneNumberId: whatsAppConfig.phoneNumberId,
+            wabaId: whatsAppConfig.wabaId,
+            accessToken: whatsAppConfig.accessToken,
+            autoReplyEnabled: whatsAppConfig.autoReplyEnabled,
+          })
+        );
+      }
+    } catch {}
+
     try {
       const res = await saveWhatsAppConfig({
         phoneNumber: whatsAppConfig.phoneNumber,
@@ -186,7 +227,7 @@ export default function IntegrationsPage() {
         toast.success("WhatsApp কনফিগারেশন সফলভাবে সংরক্ষিত হয়েছে! 🎉");
         setWhatsAppConfig((prev) => ({ ...prev, isConnected: Boolean(prev.phoneNumberId && prev.accessToken) }));
       } else {
-        toast.error("সেভ করা যায়নি", { description: res?.error || "আবার চেষ্টা করুন।" });
+        toast.error("সার্ভার সেভ এরর", { description: res?.error || "আবার চেষ্টা করুন।" });
       }
     } catch (err: any) {
       toast.error("সেভ করতে সমস্যা হয়েছে");
