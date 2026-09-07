@@ -3,7 +3,7 @@ import { config } from "../config";
 import { redisConnection } from "../redis";
 import { incomingMessagesQueue } from "../queue/message-queue";
 import { FacebookWebhookBody, ProcessMessageJobPayload } from "@mogent/shared";
-import { prisma, MessageSender, MessageStatus } from "@mogent/database";
+import { prisma, MessageSender, MessageStatus, AiMode } from "@mogent/database";
 
 export const webhookRouter = new Hono();
 
@@ -341,8 +341,27 @@ webhookRouter.post("/whatsapp", async (c) => {
               const contactName = contactMap[fromPhone] || `+${fromPhone}`;
               const targetPsid = `wa_${fromPhone}`;
 
-              // Find first available page or default workspace
-              const page = await prisma.facebookPage.findFirst();
+              // Find first available page or auto-anchor to workspace
+              let page = await prisma.facebookPage.findFirst();
+              if (!page) {
+                const firstWorkspace = await prisma.workspace.findFirst();
+                if (firstWorkspace) {
+                  page = await prisma.facebookPage.create({
+                    data: {
+                      workspaceId: firstWorkspace.id,
+                      name: "WhatsApp Official",
+                      pageId: `wa_page_${Date.now()}`,
+                      encryptedAccessToken: "direct_whatsapp",
+                      tokenIv: "000000000000000000000000",
+                      tokenTag: "00000000000000000000000000000000",
+                      category: "WhatsApp",
+                      verifyToken: "mogent_fb_verify_token_secure",
+                      aiMode: AiMode.AUTO,
+                    },
+                  });
+                }
+              }
+
               if (page && text) {
                 let customer = await prisma.customer.findFirst({
                   where: {
@@ -404,8 +423,10 @@ webhookRouter.post("/whatsapp", async (c) => {
                 if (!conversation.isHumanControl && page.aiMode !== "OFF") {
                   await incomingMessagesQueue.add("process-whatsapp-message", {
                     pageId: page.pageId,
+                    senderPsid: targetPsid,
                     senderId: targetPsid,
                     recipientId: page.pageId,
+                    mid: msg.id || `wa_${Date.now()}`,
                     messageId: msg.id || `wa_${Date.now()}`,
                     text,
                     timestamp: Number(msg.timestamp) * 1000 || Date.now(),

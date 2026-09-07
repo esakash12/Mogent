@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { prisma, AiMode } from "@mogent/database";
+import { prisma, AiMode, MessageSender, MessageStatus } from "@mogent/database";
 import { encryptToken } from "@mogent/shared";
 import { config } from "../config";
 import crypto from "crypto";

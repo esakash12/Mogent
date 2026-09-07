@@ -40,18 +40,21 @@ export function startMessageWorker() {
         return;
       }
 
-      // 2. Decrypt Facebook Page Access Token
-      let pageAccessToken: string;
-      try {
-        pageAccessToken = decryptToken(
-          page.encryptedAccessToken,
-          page.tokenIv,
-          page.tokenTag,
-          config.tokenEncryptionKey
-        );
-      } catch (decryptErr) {
-        console.error(`❌ Failed to decrypt access token for Page [${page.name}]:`, decryptErr);
-        return;
+      // 2. Decrypt Facebook Page Access Token (if not pure WhatsApp)
+      let pageAccessToken = "";
+      const isWhatsAppRecipient = senderPsid?.startsWith("wa_");
+      if (!isWhatsAppRecipient) {
+        try {
+          pageAccessToken = decryptToken(
+            page.encryptedAccessToken,
+            page.tokenIv,
+            page.tokenTag,
+            config.tokenEncryptionKey
+          );
+        } catch (decryptErr) {
+          console.error(`❌ Failed to decrypt access token for Page [${page.name}]:`, decryptErr);
+          return;
+        }
       }
 
       // 3. Find or Create Customer
@@ -286,18 +289,46 @@ export function startMessageWorker() {
           }
         }
 
-        // 10. Send Reply to Customer via Facebook Messenger Send API
+        // 10. Send Reply to Customer via Facebook Messenger or WhatsApp Cloud API
         if (finalReplyText && page.aiMode !== "MANUAL") {
-          if (waButtonUrl) {
-            await facebookApi.sendButtonMessage(pageAccessToken, senderPsid, finalReplyText, [
-              {
-                type: "web_url",
-                url: waButtonUrl,
-                title: "WhatsApp এ চ্যাট",
-              },
-            ]);
+          if (isWhatsAppRecipient) {
+            try {
+              const wsId = page.workspaceId || "default";
+              let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
+              if (!raw) raw = await redisConnection.get("mogent:whatsapp_config:default");
+              const saved = raw ? JSON.parse(raw) : null;
+              if (saved?.phoneNumberId && saved?.accessToken) {
+                const cleanPhone = senderPsid.replace("wa_", "").replace(/\D/g, "");
+                await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${saved.accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: cleanPhone,
+                    type: "text",
+                    text: { body: finalReplyText },
+                  }),
+                });
+                console.log(`✅ [WhatsApp AI Reply Dispatched] to: ${cleanPhone}`);
+              }
+            } catch (waErr: any) {
+              console.warn("AI WhatsApp dispatch error:", waErr.message);
+            }
           } else {
-            await facebookApi.sendTextMessage(pageAccessToken, senderPsid, finalReplyText);
+            if (waButtonUrl) {
+              await facebookApi.sendButtonMessage(pageAccessToken, senderPsid, finalReplyText, [
+                {
+                  type: "web_url",
+                  url: waButtonUrl,
+                  title: "WhatsApp এ চ্যাট",
+                },
+              ]);
+            } else {
+              await facebookApi.sendTextMessage(pageAccessToken, senderPsid, finalReplyText);
+            }
           }
 
           // Save AI Message to DB

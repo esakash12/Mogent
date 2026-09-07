@@ -56,7 +56,13 @@ export class ConversationService {
     }
 
     const list = await prisma.conversation.findMany({
-      where: { facebookPageId: { in: pageIds } },
+      where: {
+        OR: [
+          { facebookPageId: { in: pageIds } },
+          { channel: "WHATSAPP" },
+          { customer: { psid: { startsWith: "wa_" } } },
+        ],
+      },
       include: {
         customer: true,
         facebookPage: true,
@@ -207,7 +213,32 @@ export class ConversationService {
         console.warn("Messenger send warning:", fbErr.message);
       }
     } else {
-      console.log(`[WhatsApp Message Dispatched] to: ${customer.phoneNumber || customer.psid} | text: ${text}`);
+      try {
+        const wsId = facebookPage?.workspaceId || "default";
+        let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
+        if (!raw) raw = await redisConnection.get("mogent:whatsapp_config:default");
+        const saved = raw ? JSON.parse(raw) : null;
+        if (saved?.phoneNumberId && saved?.accessToken) {
+          const cleanPhone = (customer.phoneNumber || customer.psid.replace("wa_", "")).replace(/\D/g, "");
+          if (cleanPhone) {
+            await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${saved.accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                messaging_product: "whatsapp",
+                to: cleanPhone,
+                type: "text",
+                text: { body: text },
+              }),
+            });
+          }
+        }
+      } catch (waErr: any) {
+        console.warn("WhatsApp dispatch error:", waErr.message);
+      }
     }
 
     const message = await prisma.message.create({
