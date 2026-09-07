@@ -49,3 +49,23 @@ export async function updatePageSettings(
 export async function deletePage(pageId: string) {
   return await api.delete(`/api/pages/${pageId}`);
 }
+
+export async function fetchWhatsAppConfig() {
+  const res = await api.get("/api/pages/whatsapp/config");
+  return res.success ? res.data : null;
+}
+
+export async function saveWhatsAppConfig(data: {
+  phoneNumber?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+  accessToken?: string;
+  autoReplyEnabled?: boolean;
+}) {
+  return await api.post("/api/pages/whatsapp/config", data);
+}
+
+export async function testWhatsAppConnection(data: { testPhone?: string }) {
+  return await api.post("/api/pages/whatsapp/test", data);
+}
+

@@ -345,3 +345,135 @@ pagesRouter.delete("/:id", async (c) => {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
+
+// -----------------------------------------------------------------------------
+// 8. GET WHATSAPP CONFIGURATION
+// -----------------------------------------------------------------------------
+import { redisConnection } from "../redis";
+
+pagesRouter.get("/whatsapp/config", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id") || "default";
+  try {
+    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
+    const saved = raw ? JSON.parse(raw) : {};
+
+    return c.json({
+      success: true,
+      data: {
+        phoneNumber: saved.phoneNumber || "",
+        phoneNumberId: saved.phoneNumberId || "",
+        wabaId: saved.wabaId || "",
+        accessToken: saved.accessToken || "",
+        autoReplyEnabled: saved.autoReplyEnabled ?? true,
+        webhookUrl: "https://api.mogent.tech/api/webhook/whatsapp",
+        verifyToken: "mogent_fb_verify_token_secure",
+        isConnected: Boolean(saved.phoneNumberId && saved.accessToken),
+      },
+    });
+  } catch (error: any) {
+    console.error("Error fetching WhatsApp config:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 9. SAVE WHATSAPP CONFIGURATION
+// -----------------------------------------------------------------------------
+pagesRouter.post("/whatsapp/config", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id") || "default";
+  try {
+    const body = await c.req.json();
+    const { phoneNumber, phoneNumberId, wabaId, accessToken, autoReplyEnabled } = body;
+
+    const configData = {
+      phoneNumber: (phoneNumber || "").trim(),
+      phoneNumberId: (phoneNumberId || "").trim(),
+      wabaId: (wabaId || "").trim(),
+      accessToken: (accessToken || "").trim(),
+      autoReplyEnabled: autoReplyEnabled ?? true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await redisConnection.set(
+      `mogent:whatsapp_config:${workspaceId}`,
+      JSON.stringify(configData)
+    );
+
+    return c.json({
+      success: true,
+      message: "WhatsApp configuration saved successfully!",
+      data: configData,
+    });
+  } catch (error: any) {
+    console.error("Error saving WhatsApp config:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 10. TEST WHATSAPP CONNECTION / MESSAGE
+// -----------------------------------------------------------------------------
+pagesRouter.post("/whatsapp/test", async (c) => {
+  const workspaceId = c.req.header("x-workspace-id") || "default";
+  try {
+    const body = await c.req.json();
+    const { testPhone } = body;
+
+    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
+    const saved = raw ? JSON.parse(raw) : {};
+
+    if (!saved.phoneNumberId || !saved.accessToken) {
+      return c.json({
+        success: false,
+        error: "Phone Number ID এবং Access Token সংরক্ষণ করা হয়নি। অনুগ্রহ করে আগে সেটিংস সেভ করুন।",
+      }, 400);
+    }
+
+    const cleanPhone = (testPhone || saved.phoneNumber || "").replace(/\D/g, "");
+    if (!cleanPhone) {
+      return c.json({
+        success: false,
+        error: "টেস্ট করার জন্য একটি কাস্টমার ফোন নম্বর লিখুন।",
+      }, 400);
+    }
+
+    // Call WhatsApp Cloud API
+    const response = await fetch(
+      `https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${saved.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: cleanPhone,
+          type: "text",
+          text: {
+            body: "🎉 [Mogent AI] অভিনন্দন! আপনার WhatsApp Cloud API সফলভাবে কানেক্ট হয়েছে।",
+          },
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.error) {
+      return c.json({
+        success: false,
+        error: data.error.message || "Meta API Error",
+      }, 400);
+    }
+
+    return c.json({
+      success: true,
+      message: `টেস্ট মেসেজ সফলভাবে ${cleanPhone} নম্বরে পাঠানো হয়েছে!`,
+      data,
+    });
+  } catch (error: any) {
+    console.error("Error sending test WhatsApp message:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
