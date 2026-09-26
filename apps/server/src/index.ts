@@ -205,7 +205,21 @@ async function syncDatabaseSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS "coupons_code_key" ON "coupons"("code");
     `);
 
-    console.log("✅ PostgreSQL database schema synchronized successfully!");
+    // 3. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "idx_conversations_page_updated" ON "conversations"("facebookPageId", "updatedAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_conversations_page_status" ON "conversations"("facebookPageId", "status");
+      CREATE INDEX IF NOT EXISTS "idx_conversations_updated_at" ON "conversations"("updatedAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_messages_conversation_created" ON "messages"("conversationId", "createdAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_customers_page_updated" ON "customers"("facebookPageId", "updatedAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_customers_phone" ON "customers"("phoneNumber");
+      CREATE INDEX IF NOT EXISTS "idx_orders_customer_created" ON "orders"("customerId", "createdAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_orders_status" ON "orders"("status");
+      CREATE INDEX IF NOT EXISTS "idx_products_workspace_stock" ON "products"("workspaceId", "inStock");
+      CREATE INDEX IF NOT EXISTS "idx_facebook_pages_workspace" ON "facebook_pages"("workspaceId");
+    `);
+
+    console.log("✅ PostgreSQL database schema & performance indexes synchronized successfully!");
   } catch (err: any) {
     console.warn("⚠️ PostgreSQL schema auto-sync notice:", err.message);
   }

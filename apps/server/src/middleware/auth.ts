@@ -20,6 +20,28 @@ export interface AuthUser {
   isAdmin?: boolean;
 }
 
+// High-performance in-memory cache for workspace memberships (3 minutes TTL)
+interface AuthCacheItem {
+  isValid: boolean;
+  resolvedWorkspaceId: string;
+  expiresAt: number;
+}
+const memberCache = new Map<string, AuthCacheItem>();
+const adminCheckCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+export function invalidateAuthCache(userId?: string) {
+  if (userId) {
+    for (const key of memberCache.keys()) {
+      if (key.startsWith(`${userId}:`)) memberCache.delete(key);
+    }
+    adminCheckCache.delete(userId);
+  } else {
+    memberCache.clear();
+    adminCheckCache.clear();
+  }
+}
+
 export async function authMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header("Authorization");
   const workspaceHeader = c.req.header("x-workspace-id");
@@ -51,33 +73,49 @@ export async function authMiddleware(c: Context, next: Next) {
 
     // Multi-tenant permission guard: non-admins must actually belong to targetWorkspaceId
     if (!payload.isAdmin && payload.role !== "SUPER_ADMIN") {
-      if (targetWorkspaceId) {
-        const member = await prisma.workspaceMember.findUnique({
-          where: {
-            workspaceId_userId: {
-              workspaceId: targetWorkspaceId,
-              userId: payload.userId,
-            },
-          },
-        });
+      const now = Date.now();
+      const cacheKey = `${payload.userId}:${targetWorkspaceId || "DEFAULT"}`;
+      const cached = memberCache.get(cacheKey);
 
-        if (!member) {
-          // If header requested an unauthorized workspace, fall back to their valid workspace
-          const validMember = await prisma.workspaceMember.findFirst({
+      if (cached && cached.expiresAt > now) {
+        if (!cached.isValid) {
+          return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
+        }
+        targetWorkspaceId = cached.resolvedWorkspaceId;
+      } else {
+        if (targetWorkspaceId) {
+          const member = await prisma.workspaceMember.findUnique({
+            where: {
+              workspaceId_userId: {
+                workspaceId: targetWorkspaceId,
+                userId: payload.userId,
+              },
+            },
+          });
+
+          if (!member) {
+            // If header requested an unauthorized workspace, fall back to their valid workspace
+            const validMember = await prisma.workspaceMember.findFirst({
+              where: { userId: payload.userId },
+            });
+            if (validMember) {
+              targetWorkspaceId = validMember.workspaceId;
+              memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
+            } else {
+              memberCache.set(cacheKey, { isValid: false, resolvedWorkspaceId: "", expiresAt: now + CACHE_TTL_MS });
+              return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
+            }
+          } else {
+            memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
+          }
+        } else {
+          const firstMember = await prisma.workspaceMember.findFirst({
             where: { userId: payload.userId },
           });
-          if (validMember) {
-            targetWorkspaceId = validMember.workspaceId;
-          } else {
-            return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
+          if (firstMember) {
+            targetWorkspaceId = firstMember.workspaceId;
+            memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
           }
-        }
-      } else {
-        const firstMember = await prisma.workspaceMember.findFirst({
-          where: { userId: payload.userId },
-        });
-        if (firstMember) {
-          targetWorkspaceId = firstMember.workspaceId;
         }
       }
     }
@@ -126,14 +164,18 @@ export async function adminAuthMiddleware(c: Context, next: Next) {
 
     let isAuthorizedAdmin = payload.isAdmin === true || payload.role === "SUPER_ADMIN";
 
-    if (!isAuthorizedAdmin) {
-      // Double check in database in case permissions were updated
-      const user = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        select: { isAdmin: true },
-      });
-      if (user?.isAdmin) {
-        isAuthorizedAdmin = true;
+    if (!isAuthorizedAdmin && payload.userId) {
+      const now = Date.now();
+      const cached = adminCheckCache.get(payload.userId);
+      if (cached && cached.expiresAt > now) {
+        isAuthorizedAdmin = cached.isAdmin;
+      } else {
+        const user = await prisma.user.findUnique({
+          where: { id: payload.userId },
+          select: { isAdmin: true },
+        });
+        isAuthorizedAdmin = Boolean(user?.isAdmin);
+        adminCheckCache.set(payload.userId, { isAdmin: isAuthorizedAdmin, expiresAt: now + CACHE_TTL_MS });
       }
     }
 

@@ -76,11 +76,16 @@ export function useInbox() {
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isFetchingRef = useRef(false);
 
   const loadData = useCallback(async (isBackground = false) => {
+    if (isFetchingRef.current) return;
+    if (typeof document !== "undefined" && document.hidden && isBackground) return;
+
+    isFetchingRef.current = true;
     if (!isBackground) setLoading(true);
     try {
-      const data = await fetchConversations();
+      const data = await fetchConversations({ limit: 40 });
       if (Array.isArray(data)) {
         setConversations(data);
         if (data.length > 0) {
@@ -92,14 +97,36 @@ export function useInbox() {
     } catch (err) {
       console.error("Failed to load live inbox:", err);
     } finally {
+      isFetchingRef.current = false;
       if (!isBackground) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => loadData(true), 6000);
-    return () => clearInterval(interval);
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        loadData(true);
+      }
+    }, 10000);
+
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        loadData(true);
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
   }, [loadData]);
 
   useEffect(() => {

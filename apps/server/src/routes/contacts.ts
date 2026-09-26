@@ -12,6 +12,10 @@ contactsRouter.get("/", async (c) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
   const filter = c.req.query("filter"); // ALL, PHONE, PURCHASED, COMPLAINT
   const pageId = c.req.query("pageId");
+  const search = (c.req.query("search") || "").trim();
+  const isAll = c.req.query("all") === "true";
+  const limitParam = c.req.query("limit");
+  const limit = isAll ? undefined : (limitParam ? parseInt(limitParam) : 50);
 
   try {
     if (!workspaceId) {
@@ -46,11 +50,39 @@ contactsRouter.get("/", async (c) => {
       });
     }
 
-    const customers = await prisma.customer.findMany({
-      where: { facebookPageId: { in: pageIds } },
-      include: { facebookPage: true },
-      orderBy: { updatedAt: "desc" },
-    });
+    const where: any = {
+      facebookPageId: { in: pageIds },
+    };
+
+    if (filter === "PHONE") {
+      where.phoneNumber = { not: null };
+    } else if (filter === "PURCHASED") {
+      where.totalOrders = { gt: 0 };
+    } else if (filter === "COMPLAINT") {
+      where.sentimentScore = { lt: 0 };
+    }
+
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: "insensitive" } },
+        { lastName: { contains: search, mode: "insensitive" } },
+        { phoneNumber: { contains: search } },
+        { psid: { contains: search } },
+        { deliveryAddress: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const [totalCount, verifiedPhonesCount, confirmedBuyersCount, customers] = await Promise.all([
+      prisma.customer.count({ where: { facebookPageId: { in: pageIds } } }),
+      prisma.customer.count({ where: { facebookPageId: { in: pageIds }, phoneNumber: { not: null } } }),
+      prisma.customer.count({ where: { facebookPageId: { in: pageIds }, totalOrders: { gt: 0 } } }),
+      prisma.customer.findMany({
+        where,
+        include: { facebookPage: { select: { id: true, name: true } } },
+        orderBy: { updatedAt: "desc" },
+        take: limit,
+      }),
+    ]);
 
     const mapped = customers.map((cust) => {
       let sentimentTag: "HIGH_INTENT" | "PURCHASED" | "INQUIRY" | "COMPLAINT" = "INQUIRY";
@@ -84,19 +116,12 @@ contactsRouter.get("/", async (c) => {
       };
     });
 
-    const filtered = mapped.filter((item) => {
-      if (filter === "PHONE") return Boolean(item.phone);
-      if (filter === "PURCHASED") return item.sentiment === "PURCHASED";
-      if (filter === "COMPLAINT") return item.sentiment === "COMPLAINT";
-      return true;
-    });
-
     return c.json({
       success: true,
-      data: filtered,
-      totalCount: customers.length,
-      verifiedPhonesCount: customers.filter((cust) => Boolean(cust.phoneNumber)).length,
-      confirmedBuyersCount: customers.filter((cust) => cust.totalOrders > 0).length,
+      data: mapped,
+      totalCount,
+      verifiedPhonesCount,
+      confirmedBuyersCount,
     });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);

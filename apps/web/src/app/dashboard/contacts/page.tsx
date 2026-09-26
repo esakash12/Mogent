@@ -112,51 +112,61 @@ export default function ContactsPage() {
         )
       : 0;
 
-  const handleExportCSV = () => {
-    const listToExport = filteredContacts.length > 0 ? filteredContacts : contacts;
-    if (listToExport.length === 0) return;
+  const [isExporting, setIsExporting] = useState(false);
 
-    const headers = [
-      "Customer Name",
-      "Phone Number",
-      "Delivery Address",
-      "Orders Count",
-      "Total Spent (BDT)",
-      "Sentiment",
-      "Facebook Page",
-      "PSID",
-      "Last Active",
-    ];
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetchContacts({ all: true, pageId: selectedPageFilter !== "ALL" ? selectedPageFilter : undefined });
+      const listToExport = res?.data && Array.isArray(res.data) && res.data.length > 0 ? res.data : (filteredContacts.length > 0 ? filteredContacts : contacts);
+      if (listToExport.length === 0) return;
 
-    const escape = (val: any) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+      const headers = [
+        "Customer Name",
+        "Phone Number",
+        "Delivery Address",
+        "Orders Count",
+        "Total Spent (BDT)",
+        "Sentiment",
+        "Facebook Page",
+        "PSID",
+        "Last Active",
+      ];
 
-    const rows = listToExport.map((c) =>
-      [
-        escape(c.name || "Customer"),
-        escape(c.phone || ""),
-        escape(c.address || ""),
-        c.ordersCount || 0,
-        c.totalSpent || 0,
-        escape(c.sentiment || "INQUIRY"),
-        escape(c.pageName || ""),
-        escape(c.psid || ""),
-        escape(c.lastActive || ""),
-      ].join(",")
-    );
+      const escape = (val: any) => `"${String(val ?? "").replace(/"/g, '""')}"`;
 
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute(
-      "download",
-      `mogent_contacts_${selectedPageFilter !== "ALL" ? `${selectedPageFilter}_` : ""}${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const rows = listToExport.map((c) =>
+        [
+          escape(c.name || "Customer"),
+          escape(c.phone || ""),
+          escape(c.address || ""),
+          c.ordersCount || 0,
+          c.totalSpent || 0,
+          escape(c.sentiment || "INQUIRY"),
+          escape(c.pageName || ""),
+          escape(c.psid || ""),
+          escape(c.lastActive || ""),
+        ].join(",")
+      );
+
+      const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `mogent_contacts_${selectedPageFilter !== "ALL" ? `${selectedPageFilter}_` : ""}${new Date().toISOString().slice(0, 10)}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (

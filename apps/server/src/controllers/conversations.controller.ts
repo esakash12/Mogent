@@ -8,9 +8,25 @@ export class ConversationsController {
   static async list(c: Context) {
     const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     const filterPageId = c.req.query("pageId");
+    const channel = c.req.query("channel");
+    const limitParam = c.req.query("limit");
+    const skipParam = c.req.query("skip");
+    const search = c.req.query("search");
+    const all = c.req.query("all") === "true";
+
+    const limit = limitParam ? parseInt(limitParam) : undefined;
+    const skip = skipParam ? parseInt(skipParam) : undefined;
 
     try {
-      const data = await ConversationService.listConversations({ workspaceId, filterPageId });
+      const data = await ConversationService.listConversations({
+        workspaceId,
+        filterPageId,
+        channel,
+        limit,
+        skip,
+        search,
+        all,
+      });
       return c.json({ success: true, data });
     } catch (error: any) {
       console.error("List conversations error:", error);

@@ -267,6 +267,7 @@ model Customer {
 
   @@unique([facebookPageId, psid])
   @@index([phoneNumber])
+  @@index([facebookPageId, updatedAt])
   @@map("customers")
 }
 
@@ -297,6 +298,8 @@ model Conversation {
   escalations  EscalationEvent[]
 
   @@index([facebookPageId, status])
+  @@index([facebookPageId, updatedAt])
+  @@index([updatedAt])
   @@index([lastCustomerMessageAt])
   @@map("conversations")
 }
@@ -449,6 +452,8 @@ model Order {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
+  @@index([customerId, createdAt])
+  @@index([status])
   @@map("orders")
 }
 

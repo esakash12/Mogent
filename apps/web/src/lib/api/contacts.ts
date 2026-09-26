@@ -1,9 +1,29 @@
 import { api } from "./client";
 
-export async function fetchContacts(filter?: string, pageId?: string) {
+export interface FetchContactsOptions {
+  filter?: string;
+  pageId?: string;
+  search?: string;
+  all?: boolean;
+  limit?: number;
+}
+
+export async function fetchContacts(
+  filterOrOptions?: string | FetchContactsOptions,
+  pageIdArg?: string
+) {
   const params = new URLSearchParams();
-  if (filter && filter !== "ALL") params.append("filter", filter);
-  if (pageId && pageId !== "ALL") params.append("pageId", pageId);
+
+  if (typeof filterOrOptions === "object" && filterOrOptions !== null) {
+    if (filterOrOptions.filter && filterOrOptions.filter !== "ALL") params.append("filter", filterOrOptions.filter);
+    if (filterOrOptions.pageId && filterOrOptions.pageId !== "ALL") params.append("pageId", filterOrOptions.pageId);
+    if (filterOrOptions.search) params.append("search", filterOrOptions.search);
+    if (filterOrOptions.all) params.append("all", "true");
+    if (filterOrOptions.limit) params.append("limit", filterOrOptions.limit.toString());
+  } else {
+    if (filterOrOptions && filterOrOptions !== "ALL") params.append("filter", filterOrOptions);
+    if (pageIdArg && pageIdArg !== "ALL") params.append("pageId", pageIdArg);
+  }
 
   const endpoint = `/api/contacts${params.toString() ? `?${params.toString()}` : ""}`;
   return await api.get(endpoint);

@@ -12,6 +12,9 @@ productsRouter.use("*", authMiddleware);
 // GET /api/products - List products for active workspace
 productsRouter.get("/", async (c) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  const limitParam = c.req.query("limit");
+  const isAll = c.req.query("all") === "true";
+  const limit = isAll ? undefined : (limitParam ? parseInt(limitParam) : 100);
 
   try {
     if (!workspaceId) {
@@ -21,6 +24,7 @@ productsRouter.get("/", async (c) => {
     const products = await prisma.product.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
+      take: limit,
     });
 
     return c.json({

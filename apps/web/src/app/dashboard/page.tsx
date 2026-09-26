@@ -17,14 +17,11 @@ import {
   Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchAnalytics, fetchPages, fetchProducts, fetchContacts, fetchOrders } from "@/lib/api";
+import { fetchAnalytics, fetchPages } from "@/lib/api";
 
 export default function DashboardOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [pages, setPages] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
 
   const [metrics, setMetrics] = useState({
     totalConversations: 0,
@@ -43,41 +40,23 @@ export default function DashboardOverviewPage() {
     Promise.all([
       fetchAnalytics(),
       fetchPages(),
-      fetchProducts(),
-      fetchContacts(),
-      fetchOrders(),
     ])
-      .then(([analyticsData, pageList, prodList, contList, orderList]) => {
+      .then(([analyticsData, pageList]) => {
         const pagesArr = Array.isArray(pageList) ? pageList : [];
-        const prodArr = Array.isArray(prodList) ? prodList : [];
-        const contArr = Array.isArray(contList) ? contList : (contList?.data || []);
-        const orderArr = Array.isArray(orderList) ? orderList : [];
-
         setPages(pagesArr);
-        setProducts(prodArr);
-        setContacts(contArr);
-        setOrders(orderArr);
 
-        const totalConv = analyticsData?.totalConversations ?? contArr.length;
+        const totalConv = analyticsData?.totalConversations ?? 0;
         const aiResolved = analyticsData?.aiResolutionRate
           ? Math.round((totalConv * analyticsData.aiResolutionRate) / 100)
           : totalConv;
 
-        let totalRev = 0;
-        for (const o of orderArr) {
-          totalRev += parseFloat(o.totalAmount || "0") || 0;
-        }
-
-        const totalRevenue = analyticsData?.totalRevenue !== undefined ? analyticsData.totalRevenue : totalRev;
-        const totalOrders = analyticsData?.confirmedOrdersCount !== undefined ? analyticsData.confirmedOrdersCount : orderArr.length;
-
         setMetrics({
           totalConversations: totalConv,
           aiResponses: aiResolved,
-          totalContacts: contArr.length,
-          pendingHandoff: analyticsData?.pendingHandoff || 0,
-          totalOrders,
-          totalRevenue,
+          totalContacts: analyticsData?.totalContacts ?? 0,
+          pendingHandoff: analyticsData?.pendingHandoff ?? 0,
+          totalOrders: analyticsData?.confirmedOrdersCount ?? 0,
+          totalRevenue: analyticsData?.totalRevenue ?? 0,
           avgResponseTime: "1.2s",
           activePages: pagesArr.length,
         });

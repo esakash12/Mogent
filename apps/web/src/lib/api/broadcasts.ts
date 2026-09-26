@@ -29,6 +29,6 @@ export async function sendTestFollowup(data: {
 }
 
 export async function fetchAnalytics() {
-  const res = await api.get("/api/dashboard/analytics", { cache: "no-store" });
+  const res = await api.get("/api/dashboard/analytics");
   return res.success ? res.data : null;
 }

@@ -103,21 +103,38 @@ export default function LeadsPage() {
     }
   };
 
-  const handleExportCSV = () => {
-    if (leads.length === 0) return;
-    let csv = "Name,Phone,Address,Sentiment,Orders,Total Spent,Page\n";
-    for (const l of leads) {
-      csv += `"${l.name || ""}","${l.phone || ""}","${(l.address || "").replace(/"/g, '""')}","${l.sentiment || ""}","${l.ordersCount || 0}","${l.totalSpent || 0}","${l.pageName || ""}"\n`;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    toast.info("Preparing complete CSV export...");
+    try {
+      const res = await fetchContacts({ all: true });
+      const exportList = res?.data && Array.isArray(res.data) ? res.data : leads;
+
+      if (!exportList || exportList.length === 0) {
+        toast.error("No contacts to export");
+        return;
+      }
+
+      let csv = "Name,Phone,Address,Sentiment,Orders,Total Spent,Page\n";
+      for (const l of exportList) {
+        csv += `"${l.name || ""}","${l.phone || ""}","${(l.address || "").replace(/"/g, '""')}","${l.sentiment || ""}","${l.ordersCount || 0}","${l.totalSpent || 0}","${l.pageName || ""}"\n`;
+      }
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mogent_leads_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success("CSV Export Ready", { description: `Exported all ${exportList.length} customer records` });
+    } catch (err: any) {
+      toast.error("CSV Export Failed", { description: err.message });
+    } finally {
+      setIsExporting(false);
     }
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mogent_leads_${Date.now()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    toast.success("CSV Export Ready", { description: `Exported ${leads.length} customer records` });
   };
 
   const filteredLeads = leads.filter((l) => {
@@ -178,11 +195,11 @@ export default function LeadsPage() {
         <div className="flex items-center gap-2.5">
           <button
             onClick={handleExportCSV}
-            disabled={leads.length === 0}
+            disabled={leads.length === 0 || isExporting}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5 text-[#64748B]" />
-            <span>Export CSV</span>
+            {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F59E0B]" /> : <Download className="w-3.5 h-3.5 text-[#64748B]" />}
+            <span>{isExporting ? "Exporting..." : "Export CSV"}</span>
           </button>
 
           <button

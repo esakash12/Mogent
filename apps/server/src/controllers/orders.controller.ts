@@ -10,6 +10,9 @@ export class OrdersController {
     const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     const statusFilter = c.req.query("status");
     const pageId = c.req.query("pageId");
+    const limitParam = c.req.query("limit");
+    const isAll = c.req.query("all") === "true";
+    const limit = isAll ? undefined : (limitParam ? parseInt(limitParam) : 50);
 
     try {
       if (!workspaceId) {
@@ -23,41 +26,43 @@ export class OrdersController {
 
       const pages = await prisma.facebookPage.findMany({
         where: pagesWhere,
-        select: { id: true, name: true },
+        select: { id: true },
       });
       const pageIds = pages.map((p) => p.id);
 
       if (pageIds.length === 0) {
         return c.json({ success: true, data: [] });
       }
-      const pageMap = new Map(pages.map((p) => [p.id, p.name]));
 
-      const customers = await prisma.customer.findMany({
-        where: { facebookPageId: { in: pageIds } },
-        select: { id: true, firstName: true, lastName: true, phoneNumber: true, deliveryAddress: true, facebookPageId: true },
-      });
-      const customerIds = customers.map((c) => c.id);
-      const customerMap = new Map(customers.map((c) => [c.id, c]));
-
-      if (customerIds.length === 0) {
-        return c.json({ success: true, data: [] });
-      }
-
-      const where: any = { customerId: { in: customerIds } };
+      const where: any = {
+        customer: {
+          facebookPageId: { in: pageIds },
+        },
+      };
       if (statusFilter && statusFilter !== "ALL") {
         where.status = statusFilter;
       }
 
       const orders = await prisma.order.findMany({
         where,
+        include: {
+          customer: {
+            include: {
+              facebookPage: {
+                select: { id: true, name: true },
+              },
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
+        take: limit,
       });
 
       return c.json({
         success: true,
         data: orders.map((o) => {
-          const cust = customerMap.get(o.customerId);
-          const pageName = cust ? pageMap.get(cust.facebookPageId) || "Store Page" : "Store Page";
+          const cust = o.customer;
+          const pageName = cust?.facebookPage?.name || "Store Page";
 
           let itemsSummary = "Standard Item";
           if (typeof o.items === "string") {

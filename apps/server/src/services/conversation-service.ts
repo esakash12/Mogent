@@ -8,6 +8,10 @@ export interface ListConversationsParams {
   workspaceId?: string;
   filterPageId?: string;
   channel?: string;
+  limit?: number;
+  skip?: number;
+  search?: string;
+  all?: boolean;
 }
 
 export interface SendMessageParams {
@@ -25,7 +29,7 @@ export interface StartWhatsAppParams {
 
 export class ConversationService {
   /**
-   * List all conversations for the active workspace with deep participants auto-sync
+   * List conversations for the active workspace with safe pagination and search
    */
   static async listConversations(params: ListConversationsParams) {
     const { workspaceId, filterPageId } = params;
@@ -50,19 +54,43 @@ export class ConversationService {
       return [];
     }
 
+    const isAll = params.all === true;
+    const limit = isAll ? undefined : (params.limit ? Number(params.limit) : 40);
+    const skip = params.skip ? Number(params.skip) : 0;
+    const search = (params.search || "").trim();
+
+    const whereClause: any = {
+      facebookPageId: { in: pageIds },
+    };
+
+    if (params.channel && params.channel !== "ALL") {
+      whereClause.channel = params.channel;
+    }
+
+    if (search) {
+      whereClause.OR = [
+        { customer: { firstName: { contains: search, mode: "insensitive" } } },
+        { customer: { lastName: { contains: search, mode: "insensitive" } } },
+        { customer: { phoneNumber: { contains: search } } },
+        { customer: { psid: { contains: search } } },
+      ];
+    }
+
     const list = await prisma.conversation.findMany({
-      where: {
-        facebookPageId: { in: pageIds },
-      },
+      where: whereClause,
       include: {
         customer: true,
-        facebookPage: true,
+        facebookPage: {
+          select: { id: true, name: true, pageId: true },
+        },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
       },
       orderBy: { updatedAt: "desc" },
+      take: limit,
+      skip: skip > 0 ? skip : undefined,
     });
 
     // Background One-Time Auto-Healing with Redis Lock (Zero repeated overhead)

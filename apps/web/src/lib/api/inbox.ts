@@ -1,7 +1,21 @@
 import { api } from "./client";
 
-export async function fetchConversations(queryString: string = "") {
-  const endpoint = `/api/conversations${queryString ? `?${queryString}` : ""}`;
+export async function fetchConversations(
+  options?: string | { pageId?: string; channel?: string; limit?: number; search?: string; all?: boolean }
+) {
+  let queryStr = "";
+  if (typeof options === "string") {
+    queryStr = options;
+  } else if (options && typeof options === "object") {
+    const params = new URLSearchParams();
+    if (options.pageId && options.pageId !== "ALL") params.append("pageId", options.pageId);
+    if (options.channel && options.channel !== "ALL") params.append("channel", options.channel);
+    if (options.limit) params.append("limit", options.limit.toString());
+    if (options.search) params.append("search", options.search);
+    if (options.all) params.append("all", "true");
+    queryStr = params.toString();
+  }
+  const endpoint = `/api/conversations${queryStr ? `?${queryStr}` : ""}`;
   const res = await api.get<any[]>(endpoint);
   return res.success && Array.isArray(res.data) ? res.data : [];
 }
