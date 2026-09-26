@@ -123,19 +123,22 @@ export function startMessageWorker() {
 
         if (timePassed < timeoutMs) {
           console.log(`👤 Conversation [${conversation.id}] is currently under HUMAN control. AI standing by.`);
-          // Save customer message only
-          await prisma.message.create({
-            data: {
-              conversationId: conversation.id,
-              mid,
-              sender: "CUSTOMER",
-              senderId: senderPsid,
-              content: text,
-              mediaType,
-              mediaUrl,
-              status: "DELIVERED",
-            },
-          });
+          // Save customer message only if not already persisted by webhook
+          const existing = mid ? await prisma.message.findUnique({ where: { mid } }) : null;
+          if (!existing) {
+            await prisma.message.create({
+              data: {
+                conversationId: conversation.id,
+                mid,
+                sender: "CUSTOMER",
+                senderId: senderPsid,
+                content: text,
+                mediaType,
+                mediaUrl,
+                status: "DELIVERED",
+              },
+            });
+          }
           return;
         } else {
           // Timeout reached, restore AI control

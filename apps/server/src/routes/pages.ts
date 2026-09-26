@@ -353,8 +353,36 @@ pagesRouter.get("/whatsapp/config", async (c) => {
   }
 
   try {
+    let saved: any = {};
     const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
-    const saved = raw ? JSON.parse(raw) : {};
+    if (raw) {
+      try {
+        saved = JSON.parse(raw);
+      } catch {}
+    }
+
+    if (!saved?.accessToken && !saved?.phoneNumberId) {
+      // Fallback to PostgreSQL system_settings table
+      const dbSetting = await prisma.systemSetting.findUnique({
+        where: { key: `mogent:whatsapp_config:${workspaceId}` },
+      });
+      if (dbSetting?.value) {
+        try {
+          saved = JSON.parse(dbSetting.value);
+          await redisConnection.set(`mogent:whatsapp_config:${workspaceId}`, dbSetting.value);
+        } catch {}
+      } else {
+        // Fallback to default WhatsApp config
+        const defaultSetting = await prisma.systemSetting.findUnique({
+          where: { key: "mogent:whatsapp_config:default" },
+        });
+        if (defaultSetting?.value) {
+          try {
+            saved = JSON.parse(defaultSetting.value);
+          } catch {}
+        }
+      }
+    }
 
     return c.json({
       success: true,
@@ -397,10 +425,29 @@ pagesRouter.post("/whatsapp/config", async (c) => {
       updatedAt: new Date().toISOString(),
     };
 
+    const configJson = JSON.stringify(configData);
+
+    // Dual-Layer Persistence: Redis Cache + PostgreSQL system_settings Table
     await redisConnection.set(
       `mogent:whatsapp_config:${workspaceId}`,
-      JSON.stringify(configData)
+      configJson
     );
+    await redisConnection.set("mogent:whatsapp_config:default", configJson).catch(() => {});
+
+    try {
+      await prisma.systemSetting.upsert({
+        where: { key: `mogent:whatsapp_config:${workspaceId}` },
+        update: { value: configJson },
+        create: { key: `mogent:whatsapp_config:${workspaceId}`, value: configJson },
+      });
+      await prisma.systemSetting.upsert({
+        where: { key: "mogent:whatsapp_config:default" },
+        update: { value: configJson },
+        create: { key: "mogent:whatsapp_config:default", value: configJson },
+      });
+    } catch (dbErr: any) {
+      console.warn("Could not save WhatsApp config to PostgreSQL system_settings:", dbErr.message);
+    }
 
     // Save reverse lookups in Redis for incoming webhook routing
     if (configData.phoneNumberId) {

@@ -52,7 +52,13 @@ export function useInbox() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [channelTab, setChannelTab] = useState<ChannelTab>("MESSENGER");
+  const [channelTab, setChannelTab] = useState<ChannelTab>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("mogent_inbox_channel_tab");
+      if (saved === "WHATSAPP" || saved === "MESSENGER") return saved;
+    }
+    return "MESSENGER";
+  });
   const [activeTab, setActiveTab] = useState<FilterTab>("ALL");
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -148,6 +154,12 @@ export function useInbox() {
         hasMoreOlderRef.current = data.length >= 30;
         setNewIncomingCount(0);
         if (data.length > 0) {
+          const hasMessenger = data.some((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) !== "WHATSAPP");
+          const hasWhatsApp = data.some((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) === "WHATSAPP");
+          if (!hasMessenger && hasWhatsApp && typeof window !== "undefined" && !localStorage.getItem("mogent_inbox_channel_tab")) {
+            setChannelTab("WHATSAPP");
+          }
+
           if (typeof window !== "undefined" && window.innerWidth >= 768) {
             setSelectedId((prev) => (prev && data.some((c) => c.id === prev) ? prev : data[0].id));
           }
@@ -520,6 +532,9 @@ export function useInbox() {
 
   const handleSwitchChannel = (newChannel: ChannelTab) => {
     setChannelTab(newChannel);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mogent_inbox_channel_tab", newChannel);
+    }
     setNewIncomingCount(0);
     setWindowOffset(0);
     windowOffsetRef.current = 0;

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { config } from "../config";
 import { redisConnection } from "../redis";
 import { incomingMessagesQueue } from "../queue/message-queue";
-import { FacebookWebhookBody, ProcessMessageJobPayload } from "@mogent/shared";
+import { FacebookWebhookBody, ProcessMessageJobPayload, decryptToken } from "@mogent/shared";
 import { prisma, MessageSender, MessageStatus, AiMode } from "@mogent/database";
 import { storageService } from "../services/storage";
 
@@ -435,6 +435,100 @@ async function resolveWhatsAppWorkspace(
   return null;
 }
 
+// Helper to retrieve WhatsApp access token across Redis, PostgreSQL system_settings, and DB records
+async function getWhatsAppAccessToken(targetWorkspaceId?: string): Promise<string | null> {
+  // 1. Check Redis for target workspace
+  if (targetWorkspaceId) {
+    try {
+      const raw = await redisConnection.get(`mogent:whatsapp_config:${targetWorkspaceId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.accessToken) return parsed.accessToken;
+      }
+    } catch {}
+  }
+
+  // 2. Check Redis for default config
+  try {
+    const rawDefault = await redisConnection.get("mogent:whatsapp_config:default");
+    if (rawDefault) {
+      const parsed = JSON.parse(rawDefault);
+      if (parsed.accessToken) return parsed.accessToken;
+    }
+  } catch {}
+
+  // 3. Check PostgreSQL system_settings for target workspace
+  if (targetWorkspaceId) {
+    try {
+      const dbSetting = await prisma.systemSetting.findUnique({
+        where: { key: `mogent:whatsapp_config:${targetWorkspaceId}` },
+      });
+      if (dbSetting?.value) {
+        const parsed = JSON.parse(dbSetting.value);
+        if (parsed.accessToken) {
+          await redisConnection.set(`mogent:whatsapp_config:${targetWorkspaceId}`, dbSetting.value).catch(() => {});
+          return parsed.accessToken;
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Check PostgreSQL system_settings for default
+  try {
+    const dbDefault = await prisma.systemSetting.findUnique({
+      where: { key: "mogent:whatsapp_config:default" },
+    });
+    if (dbDefault?.value) {
+      const parsed = JSON.parse(dbDefault.value);
+      if (parsed.accessToken) return parsed.accessToken;
+    }
+  } catch {}
+
+  // 5. Scan any mogent:whatsapp_config:* keys in Redis
+  try {
+    const keys = await redisConnection.keys("mogent:whatsapp_config:*");
+    for (const k of keys) {
+      const val = await redisConnection.get(k);
+      if (val) {
+        try {
+          const parsed = JSON.parse(val);
+          if (parsed.accessToken) return parsed.accessToken;
+        } catch {}
+      }
+    }
+  } catch {}
+
+  // 6. Check PostgreSQL systemSetting for any whatsapp config
+  try {
+    const anySetting = await prisma.systemSetting.findFirst({
+      where: { key: { startsWith: "mogent:whatsapp_config:" } },
+    });
+    if (anySetting?.value) {
+      const parsed = JSON.parse(anySetting.value);
+      if (parsed.accessToken) return parsed.accessToken;
+    }
+  } catch {}
+
+  // 7. Check FacebookPage table for any WhatsApp page token
+  try {
+    const waPage = await prisma.facebookPage.findFirst({
+      where: {
+        OR: [
+          { category: "WhatsApp" },
+          { name: { contains: "WhatsApp", mode: "insensitive" } },
+        ],
+        NOT: { encryptedAccessToken: "direct_whatsapp" },
+      },
+    });
+    if (waPage?.encryptedAccessToken) {
+      const token = decryptToken(waPage.encryptedAccessToken, waPage.tokenIv, waPage.tokenTag, config.tokenEncryptionKey);
+      if (token) return token;
+    }
+  } catch {}
+
+  return process.env.WHATSAPP_ACCESS_TOKEN || null;
+}
+
 // Helper to perform Two-Step Authenticated Media Download from Meta WhatsApp Graph API
 async function downloadAndStoreWhatsAppMedia(
   mediaId: string,
@@ -443,10 +537,14 @@ async function downloadAndStoreWhatsAppMedia(
   accessToken: string
 ): Promise<{ url: string; mimeType: string } | null> {
   try {
+    const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
     // Step (a): GET media metadata from Graph API with Bearer token
     const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        "User-Agent": browserUserAgent,
+        Accept: "application/json",
       },
     });
     if (!metaRes.ok) {
@@ -462,10 +560,12 @@ async function downloadAndStoreWhatsAppMedia(
     const downloadUrl = metaData.url;
     const mimeType = metaData.mime_type || defaultMimeType;
 
-    // Step (b): GET binary file from media URL ALSO with Bearer token
+    // Step (b): GET binary file from media URL ALSO with Bearer token & browser User-Agent
     const fileRes = await fetch(downloadUrl, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        "User-Agent": browserUserAgent,
+        Accept: "*/*",
       },
     });
     if (!fileRes.ok) {
@@ -475,7 +575,7 @@ async function downloadAndStoreWhatsAppMedia(
 
     const buffer = Buffer.from(await fileRes.arrayBuffer());
 
-    // Upload to Cloudflare R2
+    // Upload to Cloudflare R2 (or graceful fallback to data URL)
     const uploadRes = await storageService.uploadFile(buffer, filename, mimeType, "inbox");
     return {
       url: uploadRes.url,
@@ -527,12 +627,7 @@ webhookRouter.post("/whatsapp", async (c) => {
             }
 
             // Retrieve workspace WhatsApp access token for media downloading
-            let waAccessToken: string | null = null;
-            try {
-              const rawCfg = await redisConnection.get(`mogent:whatsapp_config:${targetWorkspaceId}`);
-              const parsedCfg = rawCfg ? JSON.parse(rawCfg) : null;
-              waAccessToken = parsedCfg?.accessToken || null;
-            } catch {}
+            const waAccessToken = await getWhatsAppAccessToken(targetWorkspaceId);
 
             // Find or create dedicated page strictly scoped to targetWorkspaceId
             let page = await prisma.facebookPage.findFirst({
@@ -663,25 +758,44 @@ webhookRouter.post("/whatsapp", async (c) => {
                 } else {
                   await prisma.conversation.update({
                     where: { id: conversation.id },
-                    data: { channel: "WHATSAPP", updatedAt: new Date() },
+                    data: {
+                      channel: "WHATSAPP",
+                      updatedAt: new Date(),
+                      lastCustomerMessageAt: new Date(Number(msg.timestamp) * 1000 || Date.now()),
+                    },
                   });
                 }
 
-                const messageMid = msg.id || `wa_${Date.now()}`;
+                const messageMid = msg.id || `wa_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-                // Save Customer Message with unique mid
-                await prisma.message.create({
-                  data: {
-                    conversationId: conversation.id,
-                    mid: messageMid,
-                    sender: MessageSender.CUSTOMER,
-                    senderId: targetPsid,
-                    content: text,
-                    mediaType: mediaType as any,
-                    mediaUrl: mediaUrl,
-                    status: MessageStatus.DELIVERED,
-                  },
+                // Safely save Customer Message without unique mid collision
+                const existingMsg = await prisma.message.findUnique({
+                  where: { mid: messageMid },
                 });
+
+                if (!existingMsg) {
+                  await prisma.message.create({
+                    data: {
+                      conversationId: conversation.id,
+                      mid: messageMid,
+                      sender: MessageSender.CUSTOMER,
+                      senderId: targetPsid,
+                      content: text,
+                      mediaType: mediaType as any,
+                      mediaUrl: mediaUrl,
+                      status: MessageStatus.DELIVERED,
+                    },
+                  });
+                } else if (mediaUrl && !existingMsg.mediaUrl) {
+                  await prisma.message.update({
+                    where: { id: existingMsg.id },
+                    data: {
+                      mediaUrl,
+                      mediaType: mediaType as any,
+                      content: text || existingMsg.content,
+                    },
+                  });
+                }
 
                 // Enqueue for Gemini AI Auto-Response if not in human takeover
                 if (!conversation.isHumanControl && page.aiMode !== "OFF") {

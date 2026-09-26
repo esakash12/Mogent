@@ -106,6 +106,9 @@ export async function apiRequest<T = any>(
 
   const customHeaders = (options.headers as Record<string, string>) || {};
   const headers = getHeaders(customHeaders);
+  if (options.body instanceof FormData) {
+    delete headers["Content-Type"];
+  }
   const workspaceHeader = headers["x-workspace-id"] || "";
   const cacheKey = `${method}:${endpoint}:${workspaceHeader}`;
 
@@ -199,21 +202,21 @@ export const api = {
   post: <T = any, B = any>(endpoint: string, body?: B, options?: RequestInit) =>
     apiRequest<T>(endpoint, {
       method: "POST",
-      body: body ? JSON.stringify(body) : undefined,
+      body: (typeof FormData !== "undefined" && body instanceof FormData) ? body : body ? JSON.stringify(body) : undefined,
       ...options,
     }),
 
   put: <T = any, B = any>(endpoint: string, body?: B, options?: RequestInit) =>
     apiRequest<T>(endpoint, {
       method: "PUT",
-      body: body ? JSON.stringify(body) : undefined,
+      body: (typeof FormData !== "undefined" && body instanceof FormData) ? body : body ? JSON.stringify(body) : undefined,
       ...options,
     }),
 
   patch: <T = any, B = any>(endpoint: string, body?: B, options?: RequestInit) =>
     apiRequest<T>(endpoint, {
       method: "PATCH",
-      body: body ? JSON.stringify(body) : undefined,
+      body: (typeof FormData !== "undefined" && body instanceof FormData) ? body : body ? JSON.stringify(body) : undefined,
       ...options,
     }),
 

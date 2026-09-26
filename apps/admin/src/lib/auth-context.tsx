@@ -23,9 +23,9 @@ const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefin
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+  (typeof window !== "undefined" && window.location.hostname !== "localhost" && !window.location.hostname.includes("127.0.0.1")
     ? "https://api.mogent.tech"
-    : "");
+    : "http://localhost:4000");
 
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [admin, setAdmin] = useState<AdminUser | null>(null);

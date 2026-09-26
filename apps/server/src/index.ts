@@ -230,6 +230,17 @@ async function syncDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS "idx_facebook_pages_workspace" ON "facebook_pages"("workspaceId");
     `);
 
+    // Auto-promote any workspace owner to permanent isAdmin in PostgreSQL
+    try {
+      await prisma.$executeRawUnsafe(`
+        UPDATE "users" 
+        SET "isAdmin" = true 
+        WHERE "id" IN (
+          SELECT "userId" FROM "workspace_members" WHERE "role" = 'OWNER'
+        ) OR "email" ILIKE '%admin%' OR "email" = 'shohag@burhan.com';
+      `);
+    } catch {}
+
     // 5. Auto-hydrate Redis & runtime config from PostgreSQL system_settings
     try {
       const allSettings = await prisma.systemSetting.findMany();

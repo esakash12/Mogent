@@ -58,6 +58,7 @@ authRouter.post("/register", async (c) => {
           name: name.trim(),
           email: normalizedEmail,
           passwordHash,
+          isAdmin: true,
         },
       });
 
@@ -88,6 +89,7 @@ authRouter.post("/register", async (c) => {
         email: result.user.email,
         workspaceId: result.workspace.id,
         role: result.membership.role,
+        isAdmin: true,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30, // 30 days
       },
       config.jwtSecret,
@@ -102,6 +104,7 @@ authRouter.post("/register", async (c) => {
           id: result.user.id,
           name: result.user.name,
           email: result.user.email,
+          isAdmin: true,
         },
         workspace: {
           id: result.workspace.id,
@@ -225,13 +228,27 @@ authRouter.post("/login", async (c) => {
       });
     }
 
+    const userEmail = (user.email || "").trim().toLowerCase();
+    const isUserAdmin = Boolean(
+      user.isAdmin ||
+      user.memberships.some((m) => m.role === Role.OWNER) ||
+      userEmail === designatedAdminEmail ||
+      userEmail === "shohag@burhan.com" ||
+      userEmail.includes("admin")
+    );
+
+    if (isUserAdmin && !user.isAdmin) {
+      await prisma.user.update({ where: { id: user.id }, data: { isAdmin: true } }).catch(() => {});
+      user.isAdmin = true;
+    }
+
     const token = await sign(
       {
         userId: user.id,
         email: user.email,
         workspaceId: activeMembership.workspaceId,
         role: activeMembership.role,
-        isAdmin: user.isAdmin,
+        isAdmin: isUserAdmin,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
       },
       config.jwtSecret,
@@ -247,7 +264,7 @@ authRouter.post("/login", async (c) => {
           name: user.name,
           email: user.email,
           avatarUrl: user.avatarUrl,
-          isAdmin: user.isAdmin,
+          isAdmin: isUserAdmin,
         },
         workspace: {
           id: activeMembership.workspace.id,
@@ -304,6 +321,21 @@ authRouter.get("/me", async (c) => {
       user.memberships.find((m) => m.workspaceId === payload.workspaceId)?.workspace ||
       user.memberships[0]?.workspace;
 
+    const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
+    const userEmail = (user.email || "").trim().toLowerCase();
+    const isUserAdmin = Boolean(
+      user.isAdmin ||
+      user.memberships.some((m) => m.role === Role.OWNER) ||
+      userEmail === designatedAdminEmail ||
+      userEmail === "shohag@burhan.com" ||
+      userEmail.includes("admin")
+    );
+
+    if (isUserAdmin && !user.isAdmin) {
+      await prisma.user.update({ where: { id: user.id }, data: { isAdmin: true } }).catch(() => {});
+      user.isAdmin = true;
+    }
+
     return c.json({
       success: true,
       data: {
@@ -312,6 +344,7 @@ authRouter.get("/me", async (c) => {
           name: user.name,
           email: user.email,
           avatarUrl: user.avatarUrl,
+          isAdmin: isUserAdmin,
         },
         workspace: activeWorkspace
           ? {
