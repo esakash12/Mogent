@@ -68,34 +68,39 @@ export default function AdminSettingsPage() {
       : "");
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_admin_token") : "";
-    const headers = { Authorization: `Bearer ${token}` };
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("mogent_admin_token") || localStorage.getItem("mogent_auth_token") || ""
+        : "";
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     Promise.all([
-      fetch(`${API_BASE}/api/admin/meta-config`, { headers }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/admin/telegram-master-config`, { headers }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/admin/cloudflare-config`, { headers }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/admin/payment-config`, { headers }).then((r) => r.json()),
+      fetch(`${API_BASE}/api/admin/meta-config`, { headers }).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/api/admin/telegram-master-config`, { headers }).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/api/admin/cloudflare-config`, { headers }).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/api/admin/payment-config`, { headers }).then((r) => r.json()).catch(() => null),
     ])
       .then(([metaJson, tgJson, cfJson, payJson]) => {
-        if (metaJson.success && metaJson.data) {
+        if (metaJson?.success && metaJson.data) {
           setAppId(metaJson.data.appId || "");
           setAppSecret(metaJson.data.appSecret || "");
           setVerifyToken(metaJson.data.verifyToken || "mogent_fb_verify_token_secure");
+          if (metaJson.data.defaultModel) setDefaultModel(metaJson.data.defaultModel);
+          if (metaJson.data.cooldownSecs !== undefined) setCooldownSecs(String(metaJson.data.cooldownSecs));
         }
-        if (tgJson.success && tgJson.data) {
+        if (tgJson?.success && tgJson.data) {
           setTgBotToken(tgJson.data.botToken || "");
           setTgBotUsername(tgJson.data.botUsername || "MogentAlertBot");
           setTelegramChatId(tgJson.data.adminChatId || "-1002349182390");
         }
-        if (cfJson.success && cfJson.data) {
+        if (cfJson?.success && cfJson.data) {
           setCfAccountId(cfJson.data.accountId || "");
           setCfAccessKeyId(cfJson.data.accessKeyId || "");
           setCfSecretAccessKey(cfJson.data.secretAccessKey || "");
           setCfBucketName(cfJson.data.bucketName || "mogent-assets");
           setCfPublicDomain(cfJson.data.publicDomain || "");
         }
-        if (payJson.success && payJson.data) {
+        if (payJson?.success && payJson.data) {
           setBkashNumber(payJson.data.bkashNumber || "01711998877");
           setBkashType(payJson.data.bkashType || "Personal (Send Money)");
           setNagadNumber(payJson.data.nagadNumber || "01711998877");
@@ -130,7 +135,10 @@ export default function AdminSettingsPage() {
       return;
     }
     setIsVerifyingTg(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_admin_token") : "";
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("mogent_admin_token") || localStorage.getItem("mogent_auth_token") || ""
+        : "";
     try {
       const res = await fetch(`${API_BASE}/api/admin/telegram-master-config`, {
         method: "POST",
@@ -166,18 +174,29 @@ export default function AdminSettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_admin_token") : "";
-    const headers = {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("mogent_admin_token") || localStorage.getItem("mogent_auth_token") || ""
+        : "";
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
     };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
 
     try {
       const [metaRes, tgRes, cfRes, payRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/meta-config`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ appId, appSecret, verifyToken }),
+          body: JSON.stringify({
+            appId,
+            appSecret,
+            verifyToken,
+            defaultModel,
+            cooldownSecs: Number(cooldownSecs) || 60,
+          }),
         }),
         fetch(`${API_BASE}/api/admin/telegram-master-config`, {
           method: "POST",
@@ -214,9 +233,30 @@ export default function AdminSettingsPage() {
         }),
       ]);
 
-      const tgJson = await tgRes.json();
-      if (tgJson.success && tgJson.data?.botUsername) {
+      const [metaJson, tgJson, cfJson, payJson] = await Promise.all([
+        metaRes.json().catch(() => ({ success: metaRes.ok })),
+        tgRes.json().catch(() => ({ success: tgRes.ok })),
+        cfRes.json().catch(() => ({ success: cfRes.ok })),
+        payRes.json().catch(() => ({ success: payRes.ok })),
+      ]);
+
+      const errors: string[] = [];
+      if (!metaRes.ok || !metaJson?.success) errors.push(metaJson?.error || `Meta API error (${metaRes.status})`);
+      if (!cfRes.ok || !cfJson?.success) errors.push(cfJson?.error || `Cloudflare API error (${cfRes.status})`);
+      if (!tgRes.ok || !tgJson?.success) errors.push(tgJson?.error || `Telegram API error (${tgRes.status})`);
+      if (!payRes.ok || !payJson?.success) errors.push(payJson?.error || `Payment API error (${payRes.status})`);
+
+      if (tgJson?.success && tgJson.data?.botUsername) {
         setTgBotUsername(tgJson.data.botUsername);
+      }
+
+      if (errors.length > 0) {
+        console.warn("Some configurations could not be saved:", errors);
+        showToast("error", "Save Notice", errors.join(" • "));
+        if (errors.length === 4) {
+          setIsSaving(false);
+          return;
+        }
       }
 
       setIsSaved(true);

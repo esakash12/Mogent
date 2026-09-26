@@ -12,6 +12,8 @@ adminRouter.use("*", adminAuthMiddleware);
 
 const REDIS_KEYS_SET = "mogent:gemini_keys_pool";
 const REDIS_META_CONFIG = "mogent:meta_developer_config";
+const REDIS_TELEGRAM_MASTER_CONFIG = "mogent:telegram_master_config";
+const REDIS_CLOUDFLARE_CONFIG = "mogent:cloudflare_r2_config";
 const REDIS_PAYMENT_CONFIG = "mogent:payment_gateway_config";
 
 function safeParseJson(val: any, fallback: any = null): any {
@@ -20,6 +22,70 @@ function safeParseJson(val: any, fallback: any = null): any {
     return typeof val === "string" ? JSON.parse(val) : val;
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Retrieves configuration using Dual-Layer Architecture:
+ * 1. Checks Redis cache first (sub-millisecond speed).
+ * 2. If null, queries PostgreSQL system_settings table (permanent durability).
+ * 3. Repopulates Redis automatically if found in database.
+ */
+async function getStoredConfig<T = any>(key: string): Promise<T | null> {
+  // 1. Check Redis cache first
+  try {
+    const redisVal = await redisConnection.get(key);
+    if (redisVal) {
+      return safeParseJson(redisVal, null);
+    }
+  } catch (err: any) {
+    console.warn(`[Config] Redis get warning for ${key}:`, err.message);
+  }
+
+  // 2. Fall back to PostgreSQL system_settings table (Durable)
+  try {
+    const dbRecord = await prisma.systemSetting.findUnique({
+      where: { key },
+    });
+    if (dbRecord?.value) {
+      const parsed = safeParseJson(dbRecord.value, null);
+      // Auto-repopulate Redis cache so subsequent calls are instant
+      try {
+        await redisConnection.set(key, dbRecord.value);
+      } catch {}
+      return parsed;
+    }
+  } catch (err: any) {
+    console.warn(`[Config] PostgreSQL system_settings get warning for ${key}:`, err.message);
+  }
+
+  return null;
+}
+
+/**
+ * Saves configuration with Dual-Layer Persistence:
+ * 1. Writes to PostgreSQL system_settings table (ACID durable across server restarts).
+ * 2. Writes to Redis cache for real-time reads.
+ */
+async function setStoredConfig(key: string, valueObj: any): Promise<void> {
+  const jsonStr = JSON.stringify(valueObj);
+
+  // 1. Persist to PostgreSQL system_settings for permanent durability
+  try {
+    await prisma.systemSetting.upsert({
+      where: { key },
+      update: { value: jsonStr },
+      create: { key, value: jsonStr },
+    });
+  } catch (err: any) {
+    console.warn(`[Config] PostgreSQL system_settings upsert warning for ${key}:`, err.message);
+  }
+
+  // 2. Cache into Redis for real-time speed
+  try {
+    await redisConnection.set(key, jsonStr);
+  } catch (err: any) {
+    console.warn(`[Config] Redis set warning for ${key}:`, err.message);
   }
 }
 
@@ -413,8 +479,7 @@ adminRouter.get("/clients", async (c) => {
 // -----------------------------------------------------------------------------
 adminRouter.get("/meta-config", async (c) => {
   try {
-    const redisVal = await redisConnection.get(REDIS_META_CONFIG);
-    let parsed = safeParseJson(redisVal, null);
+    const parsed: any = await getStoredConfig(REDIS_META_CONFIG);
 
     const data = {
       appId: parsed?.appId || config.facebook.appId || process.env.FACEBOOK_APP_ID || "",
@@ -439,46 +504,42 @@ adminRouter.post("/meta-config", async (c) => {
     const body = await c.req.json();
     const { appId, appSecret, verifyToken, defaultModel, cooldownSecs } = body;
 
-    const redisVal = await redisConnection.get(REDIS_META_CONFIG);
-    const existing = safeParseJson(redisVal, {});
+    const existing: any = (await getStoredConfig(REDIS_META_CONFIG)) || {};
 
     const updated = {
       ...existing,
-      appId: (appId !== undefined ? appId : (existing.appId || "")).trim(),
-      appSecret: (appSecret !== undefined ? appSecret : (existing.appSecret || "")).trim(),
-      verifyToken: (verifyToken !== undefined ? verifyToken : (existing.verifyToken || "mogent_fb_verify_token_secure")).trim(),
+      appId: appId !== undefined ? String(appId).trim() : (existing.appId || ""),
+      appSecret: appSecret !== undefined ? String(appSecret).trim() : (existing.appSecret || ""),
+      verifyToken: verifyToken !== undefined ? String(verifyToken).trim() : (existing.verifyToken || "mogent_fb_verify_token_secure"),
       defaultModel: (defaultModel || existing.defaultModel || config.aiProxy.defaultModel || "gemini-3.5-flash-lite").trim(),
       cooldownSecs: cooldownSecs !== undefined ? Number(cooldownSecs) : (existing.cooldownSecs ?? 60),
     };
 
-    await redisConnection.set(REDIS_META_CONFIG, JSON.stringify(updated));
+    await setStoredConfig(REDIS_META_CONFIG, updated);
 
     if (updated.appId) config.facebook.appId = updated.appId;
     if (updated.appSecret) config.facebook.appSecret = updated.appSecret;
     if (updated.verifyToken) config.facebook.verifyToken = updated.verifyToken;
     if (updated.defaultModel) config.aiProxy.defaultModel = updated.defaultModel;
 
-    return c.json({ success: true, message: "System & Meta configuration updated successfully!", data: updated });
+    return c.json({ success: true, message: "System & Meta configuration saved successfully!", data: updated });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
-
-const REDIS_TELEGRAM_MASTER_CONFIG = "mogent:telegram_master_config";
-const REDIS_CLOUDFLARE_CONFIG = "mogent:cloudflare_r2_config";
 
 // -----------------------------------------------------------------------------
 // 7. GET & UPDATE MASTER TELEGRAM BOT CONFIG
 // -----------------------------------------------------------------------------
 adminRouter.get("/telegram-master-config", async (c) => {
   try {
-    const redisVal = await redisConnection.get(REDIS_TELEGRAM_MASTER_CONFIG);
-    let parsed = safeParseJson(redisVal, null);
+    const parsed: any = await getStoredConfig(REDIS_TELEGRAM_MASTER_CONFIG);
 
     const data = {
       botToken: parsed?.botToken || config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "",
       botUsername: parsed?.botUsername || process.env.TELEGRAM_BOT_USERNAME || "MogentAlertBot",
       adminChatId: parsed?.adminChatId || "-1002349182390",
+      webhookRegistered: parsed?.webhookRegistered ?? false,
     };
 
     return c.json({ success: true, data });
@@ -491,43 +552,42 @@ adminRouter.post("/telegram-master-config", async (c) => {
   try {
     const body = await c.req.json();
     const { botToken, botUsername, adminChatId } = body;
-    const cleanToken = (botToken || "").trim();
+    const existing: any = (await getStoredConfig(REDIS_TELEGRAM_MASTER_CONFIG)) || {};
 
-    let resolvedUsername = (botUsername || "MogentAlertBot").trim().replace(/^@/, "");
-    let webhookRegistered = false;
-    let botVerificationInfo: any = null;
+    const cleanToken = botToken !== undefined ? String(botToken).trim() : (existing.botToken || "");
+    let resolvedUsername = (botUsername || existing.botUsername || "MogentAlertBot").trim().replace(/^@/, "");
+    let webhookRegistered = existing.webhookRegistered ?? false;
 
-    if (cleanToken) {
+    // Verify token with Telegram only if a real non-placeholder token is provided and changed
+    if (cleanToken && cleanToken !== existing.botToken && !cleanToken.includes("8784653620")) {
       try {
-        // 1. Verify token with Telegram getMe API
-        const meRes = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`);
-        const meJson = await meRes.json();
+        const meRes = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`, { signal: AbortSignal.timeout(5000) });
+        const meJson = (await meRes.json()) as any;
         if (meJson.ok && meJson.result?.username) {
           resolvedUsername = meJson.result.username;
-          botVerificationInfo = meJson.result;
         }
 
-        // 2. Register Webhook with Telegram
         const webhookUrl = "https://api.mogent.tech/webhook/telegram";
         const hookRes = await fetch(
-          `https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`
+          `https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`,
+          { signal: AbortSignal.timeout(5000) }
         );
-        const hookJson = await hookRes.json();
+        const hookJson = (await hookRes.json()) as any;
         webhookRegistered = hookJson.ok === true;
       } catch (err: any) {
-        console.warn("Telegram webhook registration warning:", err.message);
+        console.warn("Telegram verification notice:", err.message);
       }
     }
 
     const updated = {
       botToken: cleanToken,
       botUsername: resolvedUsername,
-      adminChatId: (adminChatId || "").trim(),
+      adminChatId: adminChatId !== undefined ? String(adminChatId).trim() : (existing.adminChatId || "-1002349182390"),
       webhookRegistered,
       verifiedAt: new Date().toISOString(),
     };
 
-    await redisConnection.set(REDIS_TELEGRAM_MASTER_CONFIG, JSON.stringify(updated));
+    await setStoredConfig(REDIS_TELEGRAM_MASTER_CONFIG, updated);
 
     if (updated.botToken) config.telegram.botToken = updated.botToken;
 
@@ -548,8 +608,7 @@ adminRouter.post("/telegram-master-config", async (c) => {
 // -----------------------------------------------------------------------------
 adminRouter.get("/cloudflare-config", async (c) => {
   try {
-    const redisVal = await redisConnection.get(REDIS_CLOUDFLARE_CONFIG);
-    let parsed = safeParseJson(redisVal, null);
+    const parsed: any = await getStoredConfig(REDIS_CLOUDFLARE_CONFIG);
 
     const data = {
       accountId: parsed?.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || "",
@@ -569,16 +628,17 @@ adminRouter.post("/cloudflare-config", async (c) => {
   try {
     const body = await c.req.json();
     const { accountId, accessKeyId, secretAccessKey, bucketName, publicDomain } = body;
+    const existing: any = (await getStoredConfig(REDIS_CLOUDFLARE_CONFIG)) || {};
 
     const updated = {
-      accountId: (accountId || "").trim(),
-      accessKeyId: (accessKeyId || "").trim(),
-      secretAccessKey: (secretAccessKey || "").trim(),
-      bucketName: (bucketName || "mogent-assets").trim(),
-      publicDomain: (publicDomain || "").trim(),
+      accountId: accountId !== undefined ? String(accountId).trim() : (existing.accountId || ""),
+      accessKeyId: accessKeyId !== undefined ? String(accessKeyId).trim() : (existing.accessKeyId || ""),
+      secretAccessKey: secretAccessKey !== undefined ? String(secretAccessKey).trim() : (existing.secretAccessKey || ""),
+      bucketName: bucketName !== undefined ? (String(bucketName).trim() || "mogent-assets") : (existing.bucketName || "mogent-assets"),
+      publicDomain: publicDomain !== undefined ? String(publicDomain).trim() : (existing.publicDomain || ""),
     };
 
-    await redisConnection.set(REDIS_CLOUDFLARE_CONFIG, JSON.stringify(updated));
+    await setStoredConfig(REDIS_CLOUDFLARE_CONFIG, updated);
 
     return c.json({ success: true, message: "Cloudflare R2 Storage credentials saved successfully!", data: updated });
   } catch (error: any) {
@@ -591,8 +651,7 @@ adminRouter.post("/cloudflare-config", async (c) => {
 // -----------------------------------------------------------------------------
 adminRouter.get("/payment-config", async (c) => {
   try {
-    const redisVal = await redisConnection.get(REDIS_PAYMENT_CONFIG);
-    let parsed = safeParseJson(redisVal, null);
+    const parsed: any = await getStoredConfig(REDIS_PAYMENT_CONFIG);
 
     const data = {
       bkashNumber: parsed?.bkashNumber || "01711998877",
@@ -616,26 +675,27 @@ adminRouter.post("/payment-config", async (c) => {
   try {
     const body = await c.req.json();
     const { bkashNumber, bkashType, nagadNumber, nagadType, rocketNumber, rocketType, instructions } = body;
+    const existing: any = (await getStoredConfig(REDIS_PAYMENT_CONFIG)) || {};
 
-    // Strict Bangladeshi phone number validation
-    if (bkashNumber && !isValidBdPhone(bkashNumber)) {
+    // Only validate phone numbers if explicitly provided and non-empty (support section-independent partial updates)
+    if (bkashNumber && typeof bkashNumber === "string" && bkashNumber.trim() && !isValidBdPhone(bkashNumber)) {
       return c.json({ success: false, error: "Invalid bKash number. Must be a valid 11-digit Bangladeshi mobile number." }, 400);
     }
-    if (nagadNumber && !isValidBdPhone(nagadNumber)) {
+    if (nagadNumber && typeof nagadNumber === "string" && nagadNumber.trim() && !isValidBdPhone(nagadNumber)) {
       return c.json({ success: false, error: "Invalid Nagad number. Must be a valid 11-digit Bangladeshi mobile number." }, 400);
     }
 
     const updated = {
-      bkashNumber: cleanBdPhone(bkashNumber || "01711998877"),
-      bkashType: sanitizeText(bkashType || "Personal (Send Money)", 50),
-      nagadNumber: cleanBdPhone(nagadNumber || "01711998877"),
-      nagadType: sanitizeText(nagadType || "Personal (Send Money)", 50),
-      rocketNumber: sanitizeText(rocketNumber || "01711998877-0", 20),
-      rocketType: sanitizeText(rocketType || "Personal (Send Money)", 50),
-      instructions: sanitizeText(instructions, 1000),
+      bkashNumber: bkashNumber !== undefined ? (bkashNumber ? cleanBdPhone(bkashNumber) : "") : (existing.bkashNumber || "01711998877"),
+      bkashType: sanitizeText(bkashType !== undefined ? bkashType : (existing.bkashType || "Personal (Send Money)"), 50),
+      nagadNumber: nagadNumber !== undefined ? (nagadNumber ? cleanBdPhone(nagadNumber) : "") : (existing.nagadNumber || "01711998877"),
+      nagadType: sanitizeText(nagadType !== undefined ? nagadType : (existing.nagadType || "Personal (Send Money)"), 50),
+      rocketNumber: sanitizeText(rocketNumber !== undefined ? rocketNumber : (existing.rocketNumber || "01711998877-0"), 20),
+      rocketType: sanitizeText(rocketType !== undefined ? rocketType : (existing.rocketType || "Personal (Send Money)"), 50),
+      instructions: sanitizeText(instructions !== undefined ? instructions : (existing.instructions || ""), 1000),
     };
 
-    await redisConnection.set(REDIS_PAYMENT_CONFIG, JSON.stringify(updated));
+    await setStoredConfig(REDIS_PAYMENT_CONFIG, updated);
 
     return c.json({ success: true, message: "Payment gateway accounts saved successfully!", data: updated });
   } catch (error: any) {

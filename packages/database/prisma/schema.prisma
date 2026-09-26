@@ -564,3 +564,16 @@ model Coupon {
   @@map("coupons")
 }
 
+// ----------------------------------------------------
+// SYSTEM SETTINGS (DURABLE GLOBAL CONFIG PERSISTENCE)
+// ----------------------------------------------------
+
+model SystemSetting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("system_settings")
+}
+

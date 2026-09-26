@@ -205,7 +205,18 @@ async function syncDatabaseSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS "coupons_code_key" ON "coupons"("code");
     `);
 
-    // 3. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
+    // 3. Create system_settings table if it does not exist (Durable Persistence)
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "system_settings" (
+        "key" TEXT NOT NULL,
+        "value" TEXT NOT NULL,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "system_settings_pkey" PRIMARY KEY ("key")
+      );
+    `);
+
+    // 4. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_updated" ON "conversations"("facebookPageId", "updatedAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_status" ON "conversations"("facebookPageId", "status");
@@ -219,6 +230,35 @@ async function syncDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS "idx_facebook_pages_workspace" ON "facebook_pages"("workspaceId");
     `);
 
+    // 5. Auto-hydrate Redis & runtime config from PostgreSQL system_settings
+    try {
+      const allSettings = await prisma.systemSetting.findMany();
+      if (allSettings && allSettings.length > 0) {
+        console.log(`📦 Hydrating ${allSettings.length} system settings from PostgreSQL into Redis & memory...`);
+        for (const item of allSettings) {
+          try {
+            await redisConnection.set(item.key, item.value);
+
+            // Hydrate runtime config object
+            const parsed = JSON.parse(item.value);
+            if (item.key === "mogent:meta_developer_config") {
+              if (parsed.appId) config.facebook.appId = parsed.appId;
+              if (parsed.appSecret) config.facebook.appSecret = parsed.appSecret;
+              if (parsed.verifyToken) config.facebook.verifyToken = parsed.verifyToken;
+              if (parsed.defaultModel) config.aiProxy.defaultModel = parsed.defaultModel;
+            } else if (item.key === "mogent:telegram_master_config") {
+              if (parsed.botToken) config.telegram.botToken = parsed.botToken;
+            }
+          } catch (itemErr: any) {
+            console.warn(`Failed hydrating setting ${item.key}:`, itemErr.message);
+          }
+        }
+        console.log("✅ System settings successfully hydrated into Redis & memory!");
+      }
+    } catch (hydrErr: any) {
+      console.warn("⚠️ System settings hydration notice:", hydrErr.message);
+    }
+
     console.log("✅ PostgreSQL database schema & performance indexes synchronized successfully!");
   } catch (err: any) {
     console.warn("⚠️ PostgreSQL schema auto-sync notice:", err.message);
@@ -230,7 +270,7 @@ async function syncDatabaseSchema() {
 // -----------------------------------------------------------------------------
 async function syncTelegramWebhook() {
   try {
-    let token = config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "8784653620:AAF2Y-Hy3De5YLZ7WFqPVhzE26kHeitddoY";
+    let token = config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
     try {
       const redisVal = await redisConnection.get("mogent:telegram_master_config");
       if (redisVal) {
@@ -239,13 +279,14 @@ async function syncTelegramWebhook() {
       }
     } catch {}
 
-    if (token) {
+    if (token && token.trim() && !token.includes("8784653620")) {
       console.log("🤖 Ensuring Telegram Master Bot Webhook is active...");
       const webhookUrl = "https://api.mogent.tech/webhook/telegram";
       const hookRes = await fetch(
-        `https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`
+        `https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`,
+        { signal: AbortSignal.timeout(5000) }
       );
-      const hookJson = await hookRes.json();
+      const hookJson = (await hookRes.json()) as any;
       if (hookJson.ok) {
         console.log(`✅ Telegram Webhook successfully connected to ${webhookUrl}`);
       } else {

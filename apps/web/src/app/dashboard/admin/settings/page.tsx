@@ -96,14 +96,15 @@ export default function AdminGlobalSettingsPage() {
           setCfBucketName(cfJson.data.bucketName || "mogent-assets");
           setCfPublicDomain(cfJson.data.publicDomain || "");
         }
-        if (payData) {
-          setBkashNumber(payData.bkashNumber || "01711998877");
-          setBkashType(payData.bkashType || "Personal (Send Money)");
-          setNagadNumber(payData.nagadNumber || "01711998877");
-          setNagadType(payData.nagadType || "Personal (Send Money)");
-          setRocketNumber(payData.rocketNumber || "01711998877-0");
-          setRocketType(payData.rocketType || "Personal (Send Money)");
-          setPaymentInstructions(payData.instructions || "");
+        const payConfig = payData?.data || payData;
+        if (payConfig) {
+          setBkashNumber(payConfig.bkashNumber || "01711998877");
+          setBkashType(payConfig.bkashType || "Personal (Send Money)");
+          setNagadNumber(payConfig.nagadNumber || "01711998877");
+          setNagadType(payConfig.nagadType || "Personal (Send Money)");
+          setRocketNumber(payConfig.rocketNumber || "01711998877-0");
+          setRocketType(payConfig.rocketType || "Personal (Send Money)");
+          setPaymentInstructions(payConfig.instructions || "");
         }
         setIsLoading(false);
       })
@@ -160,7 +161,7 @@ export default function AdminGlobalSettingsPage() {
     setIsSaving(true);
 
     try {
-      const [, tgRes] = await Promise.all([
+      const [metaRes, tgRes, cfRes, payRes] = await Promise.all([
         saveAdminMetaConfig({
           appId,
           appSecret,
@@ -191,8 +192,23 @@ export default function AdminGlobalSettingsPage() {
         }),
       ]);
 
+      const errors: string[] = [];
+      if (!metaRes?.success) errors.push(metaRes?.error || "Meta OAuth config failed");
+      if (!cfRes?.success) errors.push(cfRes?.error || "Cloudflare R2 config failed");
+      if (!tgRes?.success) errors.push(tgRes?.error || "Telegram Master Bot config failed");
+      if (!payRes?.success) errors.push(payRes?.error || "Payment gateway config failed");
+
       if (tgRes?.success && tgRes.data?.botUsername) {
         setTgBotUsername(tgRes.data.botUsername);
+      }
+
+      if (errors.length > 0) {
+        console.warn("Some configurations could not be saved:", errors);
+        showToast("error", "Save Notice", errors.join(" • "));
+        if (errors.length === 4) {
+          setIsSaving(false);
+          return;
+        }
       }
 
       setIsSaved(true);
