@@ -81,6 +81,8 @@ export default function AdminGlobalSettingsPage() {
           setAppId(metaJson.data.appId || "");
           setAppSecret(metaJson.data.appSecret || "");
           setVerifyToken(metaJson.data.verifyToken || "mogent_fb_verify_token_secure");
+          if (metaJson.data.defaultModel) setDefaultModel(metaJson.data.defaultModel);
+          if (metaJson.data.cooldownSecs !== undefined) setCooldownSecs(String(metaJson.data.cooldownSecs));
         }
         if (tgJson?.success && tgJson.data) {
           setTgBotToken(tgJson.data.botToken || "");
@@ -159,7 +161,13 @@ export default function AdminGlobalSettingsPage() {
 
     try {
       const [, tgRes] = await Promise.all([
-        saveAdminMetaConfig({ appId, appSecret, verifyToken }),
+        saveAdminMetaConfig({
+          appId,
+          appSecret,
+          verifyToken,
+          defaultModel,
+          cooldownSecs: Number(cooldownSecs) || 60,
+        }),
         saveAdminTelegramMasterConfig({
           botToken: tgBotToken,
           botUsername: tgBotUsername,

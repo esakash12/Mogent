@@ -28,6 +28,7 @@ import {
   fetchWhatsAppConfig,
   saveWhatsAppConfig,
   testWhatsAppConnection,
+  purgeWorkspaceData,
 } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -67,6 +68,7 @@ export default function SettingsSectorPage() {
   // Delete State
   const [deleteMemberItem, setDeleteMemberItem] = useState<any | null>(null);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -188,6 +190,25 @@ export default function SettingsSectorPage() {
     await deleteTeamMember(deleteMemberItem.id);
     setTeamMembers(teamMembers.filter((m) => m.id !== deleteMemberItem.id));
     setDeleteMemberItem(null);
+  };
+
+  const handleConfirmPurgeData = async () => {
+    try {
+      setIsPurging(true);
+      const res = await purgeWorkspaceData();
+      if (res?.success) {
+        toast.success(
+          `Workspace data purged: ${res.data?.deletedConversationsCount ?? 0} conversations, ${res.data?.deletedCustomersCount ?? 0} contacts, and ${res.data?.deletedKnowledgeCount ?? 0} knowledge entries removed.`
+        );
+        setShowDeleteAccountModal(false);
+      } else {
+        toast.error(res?.error || "Failed to purge workspace data.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to purge workspace data.");
+    } finally {
+      setIsPurging(false);
+    }
   };
 
   return (
@@ -591,10 +612,10 @@ export default function SettingsSectorPage() {
       <ConfirmModal
         isOpen={showDeleteAccountModal}
         onClose={() => setShowDeleteAccountModal(false)}
-        onConfirm={() => setShowDeleteAccountModal(false)}
-        title="Delete Workspace Account"
-        description="Are you ABSOLUTELY sure? This action cannot be undone. Please contact support@mogent.ai to complete deletion."
-        confirmText="Confirm"
+        onConfirm={handleConfirmPurgeData}
+        title="Delete Workspace Data"
+        description="Are you ABSOLUTELY sure? This will permanently delete all conversations, contacts, messages, and knowledge base documents in this workspace. This action cannot be undone."
+        confirmText={isPurging ? "Purging..." : "Purge All Data"}
         variant="danger"
       />
     </div>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -25,6 +25,8 @@ import {
   createKnowledgeItem,
   deleteKnowledgeItem,
   saveWhatsAppProtocol,
+  saveAboutInfo,
+  saveKycSettings,
 } from "@/lib/api";
 
 type KnowledgeTab =
@@ -154,6 +156,17 @@ export default function KnowledgeBasePage() {
             { id: "1", question: "ডেলিভারি চার্জ কত?", answer: "ঢাকার ভেতরে ৮০ টাকা এবং ঢাকার বাইরে ১৫০ টাকা।" },
             { id: "2", question: "ক্যাশ অন ডেলিভারি কি আছে?", answer: "হ্যাঁ, সারা বাংলাদেশে ক্যাশ অন ডেলিভারি সুবিধা রয়েছে।" },
           ]);
+        }
+
+        if (data.aboutData) {
+          setAboutData((prev) => ({ ...prev, ...data.aboutData }));
+          if (data.aboutData.businessName) {
+            setBusinessName(data.aboutData.businessName);
+          }
+        }
+
+        if (Array.isArray(data.kycFields) && data.kycFields.length > 0) {
+          setKycFields(data.kycFields);
         }
 
         if (data.whatsAppProtocol) {
@@ -290,6 +303,39 @@ Key Guidelines:
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveAbout = async () => {
+    setSaving(true);
+    try {
+      await saveAboutInfo(aboutData);
+      setBusinessName(aboutData.businessName);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    } catch (err) {
+      console.error("Error saving business about info:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveKyc = async () => {
+    setSaving(true);
+    try {
+      await saveKycSettings({ fields: kycFields });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    } catch (err) {
+      console.error("Error saving KYC settings:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleKycRequired = (id: string) => {
+    setKycFields((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, required: !f.required } : f))
+    );
   };
 
   if (loading) {
@@ -611,15 +657,16 @@ Key Guidelines:
             />
           </div>
 
-          <div className="flex justify-end pt-3 border-t border-[#F1F5F9]">
+          <div className="flex items-center justify-between pt-3 border-t border-[#F1F5F9]">
+            <span className="text-xs text-[#059669] font-bold">
+              {savedSuccess && "✓ Business info saved to database!"}
+            </span>
             <button
-              onClick={() => {
-                setSavedSuccess(true);
-                setTimeout(() => setSavedSuccess(false), 2500);
-              }}
-              className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm cursor-pointer"
+              onClick={handleSaveAbout}
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50"
             >
-              Save Business Info
+              {saving ? "Saving..." : "Save Business Info"}
             </button>
           </div>
         </div>
@@ -704,27 +751,33 @@ Key Guidelines:
                   <p className="text-xs font-bold text-[#0F172A]">{field.label}</p>
                   <p className="text-[11px] text-[#475569]">{field.description}</p>
                 </div>
-                <span className={cn(
-                  "px-3 py-1 rounded-full text-[10px] font-bold border",
-                  field.required
-                    ? "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]"
-                    : "bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]"
-                )}>
-                  {field.required ? "Mandatory" : "Optional"}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleKycRequired(field.id)}
+                  title="Click to toggle Mandatory / Optional"
+                  className={cn(
+                    "px-3 py-1 rounded-full text-[10px] font-bold border transition-all cursor-pointer",
+                    field.required
+                      ? "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0] hover:bg-[#D1FAE5]"
+                      : "bg-[#F1F5F9] text-[#475569] border-[#E2E8F0] hover:bg-[#E2E8F0]"
+                  )}
+                >
+                  {field.required ? "Mandatory (Click to change)" : "Optional (Click to change)"}
+                </button>
               </div>
             ))}
           </div>
 
-          <div className="flex justify-end pt-3 border-t border-[#F1F5F9]">
+          <div className="flex items-center justify-between pt-3 border-t border-[#F1F5F9]">
+            <span className="text-xs text-[#059669] font-bold">
+              {savedSuccess && "✓ Order Capture KYC settings saved to database!"}
+            </span>
             <button
-              onClick={() => {
-                setSavedSuccess(true);
-                setTimeout(() => setSavedSuccess(false), 2500);
-              }}
-              className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm cursor-pointer"
+              onClick={handleSaveKyc}
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50"
             >
-              Save KYC Settings
+              {saving ? "Saving..." : "Save KYC Settings"}
             </button>
           </div>
         </div>

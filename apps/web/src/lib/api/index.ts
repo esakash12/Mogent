@@ -15,3 +15,4 @@ export * from "./billing";
 export * from "./automation";
 export * from "./admin";
 export * from "./broadcasts";
+export * from "./comments";

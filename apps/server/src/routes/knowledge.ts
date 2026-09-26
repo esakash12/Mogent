@@ -51,6 +51,36 @@ knowledgeRouter.get("/", async (c) => {
       wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
     }
 
+    const aboutItem = items.find((i) => i.category === "ABOUT_BUSINESS");
+    let aboutData = {
+      businessName: workspace?.name || targetPage?.businessName || "My Online Store",
+      tagline: "Quality Products with Fast Nationwide Delivery",
+      description: targetPage?.businessDescription || "We are a trusted Bangladeshi e-commerce brand offering genuine premium apparel and accessories.",
+    };
+    if (aboutItem) {
+      try {
+        const parsed = JSON.parse(aboutItem.content);
+        aboutData = { ...aboutData, ...parsed };
+      } catch {}
+    }
+
+    const kycItem = items.find((i) => i.category === "KYC_FIELDS");
+    let kycFields = [
+      { id: "name", label: "Customer Full Name", description: "Mandatory for shipping label", required: true },
+      { id: "phone", label: "Mobile Phone Number", description: "Required for courier OTP and call", required: true },
+      { id: "address", label: "Full Delivery Address", description: "House, Road, Area details", required: true },
+      { id: "city", label: "District / City", description: "Inside or Outside Dhaka detection", required: true },
+      { id: "note", label: "Special Delivery Instructions", description: "Optional customer note", required: false },
+    ];
+    if (kycItem) {
+      try {
+        const parsed = JSON.parse(kycItem.content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          kycFields = parsed;
+        }
+      } catch {}
+    }
+
     return c.json({
       success: true,
       data: {
@@ -60,6 +90,8 @@ knowledgeRouter.get("/", async (c) => {
         whatsappPrompt: wpPrompt || "",
         businessName: targetPage?.businessName || targetPage?.name || workspace?.name || "",
         businessDescription: targetPage?.businessDescription || "",
+        aboutData,
+        kycFields,
         items: items.map((i) => ({
           id: i.id,
           title: i.title,
@@ -197,19 +229,261 @@ knowledgeRouter.post("/", async (c) => {
   }
 });
 
+// POST /api/knowledge/about - Save Business & Brand About Info
+knowledgeRouter.post("/about", async (c) => {
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { businessName, tagline, description } = body;
+
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
+    }
+
+    const aboutPayload = {
+      businessName: (businessName || "").trim() || "My Online Store",
+      tagline: (tagline || "").trim(),
+      description: (description || "").trim(),
+    };
+
+    const existing = await prisma.knowledgeBase.findFirst({
+      where: {
+        workspaceId: targetWorkspaceId,
+        category: "ABOUT_BUSINESS",
+      },
+    });
+
+    if (existing) {
+      await prisma.knowledgeBase.update({
+        where: { id: existing.id },
+        data: {
+          title: `About ${aboutPayload.businessName}`,
+          content: JSON.stringify(aboutPayload),
+        },
+      });
+    } else {
+      await prisma.knowledgeBase.create({
+        data: {
+          workspaceId: targetWorkspaceId,
+          title: `About ${aboutPayload.businessName}`,
+          category: "ABOUT_BUSINESS",
+          content: JSON.stringify(aboutPayload),
+          priority: 8,
+          type: KnowledgeType.POLICY,
+        },
+      });
+    }
+
+    if (aboutPayload.businessName) {
+      await prisma.workspace.update({
+        where: { id: targetWorkspaceId },
+        data: { name: aboutPayload.businessName },
+      });
+      await prisma.facebookPage.updateMany({
+        where: { workspaceId: targetWorkspaceId },
+        data: {
+          businessName: aboutPayload.businessName,
+          businessDescription: aboutPayload.description || null,
+        },
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: "Business information saved successfully!",
+      data: aboutPayload,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// POST /api/knowledge/kyc - Save Order Capture KYC Fields
+knowledgeRouter.post("/kyc", async (c) => {
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { fields } = body;
+
+    if (!Array.isArray(fields)) {
+      return c.json({ success: false, error: "Fields array is required" }, 400);
+    }
+
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
+    }
+
+    const existing = await prisma.knowledgeBase.findFirst({
+      where: {
+        workspaceId: targetWorkspaceId,
+        category: "KYC_FIELDS",
+      },
+    });
+
+    if (existing) {
+      await prisma.knowledgeBase.update({
+        where: { id: existing.id },
+        data: {
+          title: "Order Capture KYC Fields",
+          content: JSON.stringify(fields),
+        },
+      });
+    } else {
+      await prisma.knowledgeBase.create({
+        data: {
+          workspaceId: targetWorkspaceId,
+          title: "Order Capture KYC Fields",
+          category: "KYC_FIELDS",
+          content: JSON.stringify(fields),
+          priority: 8,
+          type: KnowledgeType.POLICY,
+        },
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: "Order Capture KYC settings saved successfully!",
+      data: fields,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Helper for extracting readable text from HTML
+function extractCleanText(html: string): { title: string; text: string } {
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].trim() : "Website Content";
+
+  let cleaned = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+    .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, " ")
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, " ")
+    .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, " ")
+    .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, " ")
+    .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, " ")
+    .replace(/<(?:p|div|h[1-6]|li|tr|section|article)[^>]*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+
+  const text = cleaned
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+
+  return { title, text: text.slice(0, 15000) };
+}
+
+// POST /api/knowledge/crawl - Real Website AI Scraper & Knowledge Indexer
+knowledgeRouter.post("/crawl", async (c) => {
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
+  try {
+    const body = await c.req.json();
+    const { url } = body;
+
+    if (!url || typeof url !== "string") {
+      return c.json({ success: false, error: "Valid URL is required" }, 400);
+    }
+
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
+    }
+
+    const formattedUrl = url.trim().startsWith("http") ? url.trim() : `https://${url.trim()}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const res = await fetch(formattedUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+
+    if (!res.ok) {
+      return c.json({ success: false, error: `Website responded with HTTP status ${res.status}` }, 400);
+    }
+
+    const rawContent = await res.text();
+    let { title, text } = extractCleanText(rawContent);
+
+    if (!text || text.length < 20) {
+      text = `Website source: ${formattedUrl}\nExtracted summary: Page indexed for AI reference.`;
+    }
+
+    const existing = await prisma.knowledgeBase.findFirst({
+      where: {
+        workspaceId: targetWorkspaceId,
+        category: "WEBSITE_CRAWL",
+        title: formattedUrl,
+      },
+    });
+
+    let record: any;
+    const contentToStore = `[Source URL: ${formattedUrl}]\n[Page Title: ${title}]\n\n${text}`;
+
+    if (existing) {
+      record = await prisma.knowledgeBase.update({
+        where: { id: existing.id },
+        data: {
+          content: contentToStore,
+          priority: 6,
+          updatedAt: new Date(),
+        },
+      });
+    } else {
+      record = await prisma.knowledgeBase.create({
+        data: {
+          workspaceId: targetWorkspaceId,
+          title: formattedUrl,
+          category: "WEBSITE_CRAWL",
+          content: contentToStore,
+          priority: 6,
+          type: KnowledgeType.DOCUMENT,
+        },
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: `Website content indexed successfully (${text.length} characters parsed)!`,
+      data: {
+        id: record.id,
+        url: formattedUrl,
+        title,
+        textLength: text.length,
+        pagesCount: 1,
+        snippet: text.slice(0, 250) + "...",
+        createdAt: record.createdAt,
+      },
+    });
+  } catch (error: any) {
+    console.error("Crawler error:", error);
+    return c.json({ success: false, error: error.message || "Failed to crawl target website" }, 500);
+  }
+});
+
 // POST /api/knowledge/whatsapp - Save WhatsApp and Contact sharing protocol
 knowledgeRouter.post("/whatsapp", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
     const { mode, number, hotline, address, prefillText } = body;
-
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
 
     if (!targetWorkspaceId) {
       return c.json({ success: false, error: "Workspace context is required" }, 400);

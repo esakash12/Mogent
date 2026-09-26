@@ -17,6 +17,7 @@ import { ordersRouter } from "./routes/orders";
 import { automationRouter } from "./routes/automation";
 import { broadcastsRouter } from "./routes/broadcasts";
 import { uploadRouter } from "./routes/upload";
+import { commentsRouter } from "./routes/comments";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
 import { createRateLimiter } from "./middleware/rate-limiter";
@@ -130,6 +131,7 @@ app.route("/api/automation", automationRouter);
 app.route("/api/broadcasts", broadcastsRouter);
 app.route("/api/campaigns", broadcastsRouter);
 app.route("/api/upload", uploadRouter);
+app.route("/api/comments", commentsRouter);
 
 // Mount webhooks on both /webhook and /api/webhook for universal support
 app.route("/webhook", webhookRouter);

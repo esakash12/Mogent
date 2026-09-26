@@ -52,3 +52,22 @@ export async function testPlaygroundChat(
   return await api.post("/api/knowledge/playground", { message, history, pageId, channel });
 }
 
+export async function saveAboutInfo(data: {
+  businessName: string;
+  tagline: string;
+  description: string;
+}) {
+  return await api.post("/api/knowledge/about", data);
+}
+
+export async function saveKycSettings(data: {
+  fields: Array<{ id: string; label: string; description: string; required: boolean }>;
+}) {
+  return await api.post("/api/knowledge/kyc", data);
+}
+
+export async function crawlWebsiteUrl(url: string) {
+  return await api.post("/api/knowledge/crawl", { url });
+}
+
+

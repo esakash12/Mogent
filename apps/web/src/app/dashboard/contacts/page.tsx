@@ -112,6 +112,53 @@ export default function ContactsPage() {
         )
       : 0;
 
+  const handleExportCSV = () => {
+    const listToExport = filteredContacts.length > 0 ? filteredContacts : contacts;
+    if (listToExport.length === 0) return;
+
+    const headers = [
+      "Customer Name",
+      "Phone Number",
+      "Delivery Address",
+      "Orders Count",
+      "Total Spent (BDT)",
+      "Sentiment",
+      "Facebook Page",
+      "PSID",
+      "Last Active",
+    ];
+
+    const escape = (val: any) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+
+    const rows = listToExport.map((c) =>
+      [
+        escape(c.name || "Customer"),
+        escape(c.phone || ""),
+        escape(c.address || ""),
+        c.ordersCount || 0,
+        c.totalSpent || 0,
+        escape(c.sentiment || "INQUIRY"),
+        escape(c.pageName || ""),
+        escape(c.psid || ""),
+        escape(c.lastActive || ""),
+      ].join(",")
+    );
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `mogent_contacts_${selectedPageFilter !== "ALL" ? `${selectedPageFilter}_` : ""}${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
@@ -135,11 +182,12 @@ export default function ContactsPage() {
 
         <div className="flex items-center gap-3">
           <button
+            onClick={handleExportCSV}
             disabled={contacts.length === 0}
             className="px-4 py-2.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-semibold text-[#EDEDED] flex items-center gap-2 transition-colors w-fit disabled:opacity-50 cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            <span>Export CSV ({filteredContacts.length})</span>
           </button>
         </div>
       </div>

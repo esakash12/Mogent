@@ -420,6 +420,8 @@ adminRouter.get("/meta-config", async (c) => {
       appId: parsed?.appId || config.facebook.appId || process.env.FACEBOOK_APP_ID || "",
       appSecret: parsed?.appSecret || config.facebook.appSecret || process.env.FACEBOOK_APP_SECRET || "",
       verifyToken: parsed?.verifyToken || config.facebook.verifyToken || "mogent_fb_verify_token_secure",
+      defaultModel: parsed?.defaultModel || config.aiProxy.defaultModel || "gemini-3.5-flash-lite",
+      cooldownSecs: parsed?.cooldownSecs !== undefined ? parsed.cooldownSecs : 60,
       webhookUrl: "https://api.mogent.tech/webhook/facebook",
       privacyUrl: "https://mogent.tech/privacy",
       termsUrl: "https://mogent.tech/terms",
@@ -435,12 +437,18 @@ adminRouter.get("/meta-config", async (c) => {
 adminRouter.post("/meta-config", async (c) => {
   try {
     const body = await c.req.json();
-    const { appId, appSecret, verifyToken } = body;
+    const { appId, appSecret, verifyToken, defaultModel, cooldownSecs } = body;
+
+    const redisVal = await redisConnection.get(REDIS_META_CONFIG);
+    const existing = safeParseJson(redisVal, {});
 
     const updated = {
-      appId: (appId || "").trim(),
-      appSecret: (appSecret || "").trim(),
-      verifyToken: (verifyToken || "mogent_fb_verify_token_secure").trim(),
+      ...existing,
+      appId: (appId !== undefined ? appId : (existing.appId || "")).trim(),
+      appSecret: (appSecret !== undefined ? appSecret : (existing.appSecret || "")).trim(),
+      verifyToken: (verifyToken !== undefined ? verifyToken : (existing.verifyToken || "mogent_fb_verify_token_secure")).trim(),
+      defaultModel: (defaultModel || existing.defaultModel || config.aiProxy.defaultModel || "gemini-3.5-flash-lite").trim(),
+      cooldownSecs: cooldownSecs !== undefined ? Number(cooldownSecs) : (existing.cooldownSecs ?? 60),
     };
 
     await redisConnection.set(REDIS_META_CONFIG, JSON.stringify(updated));
@@ -448,8 +456,9 @@ adminRouter.post("/meta-config", async (c) => {
     if (updated.appId) config.facebook.appId = updated.appId;
     if (updated.appSecret) config.facebook.appSecret = updated.appSecret;
     if (updated.verifyToken) config.facebook.verifyToken = updated.verifyToken;
+    if (updated.defaultModel) config.aiProxy.defaultModel = updated.defaultModel;
 
-    return c.json({ success: true, message: "Meta App configuration updated successfully!", data: updated });
+    return c.json({ success: true, message: "System & Meta configuration updated successfully!", data: updated });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }

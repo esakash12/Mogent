@@ -565,3 +565,54 @@ pagesRouter.post("/whatsapp/test", async (c) => {
   }
 });
 
+// POST /api/pages/purge-data - Danger Zone: Purge workspace conversations, contacts, and knowledge
+pagesRouter.post("/purge-data", async (c) => {
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
+  try {
+    if (!workspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
+    }
+
+    const pages = await prisma.facebookPage.findMany({
+      where: { workspaceId },
+      select: { id: true },
+    });
+    const pageIds = pages.map((p) => p.id);
+
+    let deletedConversationsCount = 0;
+    let deletedCustomersCount = 0;
+    let deletedKnowledgeCount = 0;
+
+    if (pageIds.length > 0) {
+      const convDelete = await prisma.conversation.deleteMany({
+        where: { facebookPageId: { in: pageIds } },
+      });
+      deletedConversationsCount = convDelete.count;
+
+      const custDelete = await prisma.customer.deleteMany({
+        where: { facebookPageId: { in: pageIds } },
+      });
+      deletedCustomersCount = custDelete.count;
+    }
+
+    const kbDelete = await prisma.knowledgeBase.deleteMany({
+      where: { workspaceId },
+    });
+    deletedKnowledgeCount = kbDelete.count;
+
+    return c.json({
+      success: true,
+      message: "Workspace data purged successfully!",
+      data: {
+        deletedConversationsCount,
+        deletedCustomersCount,
+        deletedKnowledgeCount,
+      },
+    });
+  } catch (error: any) {
+    console.error("Purge workspace data error:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+

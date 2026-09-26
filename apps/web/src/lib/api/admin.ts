@@ -87,7 +87,13 @@ export async function fetchAdminMetaConfig() {
   return await api.get("/api/admin/meta-config");
 }
 
-export async function saveAdminMetaConfig(data: { appId: string; appSecret: string; verifyToken: string }) {
+export async function saveAdminMetaConfig(data: {
+  appId?: string;
+  appSecret?: string;
+  verifyToken?: string;
+  defaultModel?: string;
+  cooldownSecs?: number;
+}) {
   return await api.post("/api/admin/meta-config", data);
 }
 

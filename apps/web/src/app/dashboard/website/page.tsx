@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -11,11 +11,14 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchKnowledgeAndWhatsApp, createKnowledgeItem, deleteKnowledgeItem } from "@/lib/api";
+import { fetchKnowledgeAndWhatsApp, crawlWebsiteUrl, deleteKnowledgeItem } from "@/lib/api";
 
 interface WebsiteItem {
   id: string;
   url: string;
+  title?: string;
+  textLength?: number;
+  snippet?: string;
   pagesCount: number;
   lastCrawled: string;
   status: "INDEXED" | "CRAWLING" | "FAILED";
@@ -26,6 +29,8 @@ export default function WebsiteTrainingPage() {
   const [isCrawling, setIsCrawling] = useState(false);
   const [loading, setLoading] = useState(true);
   const [websites, setWebsites] = useState<WebsiteItem[]>([]);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const loadData = async () => {
     setLoading(true);
@@ -34,13 +39,24 @@ export default function WebsiteTrainingPage() {
       if (data && Array.isArray(data.items)) {
         const siteItems = data.items
           .filter((i: any) => i.category === "WEBSITE_CRAWL" || i.category === "WEBSITE")
-          .map((i: any) => ({
-            id: i.id,
-            url: i.title,
-            pagesCount: 1,
-            lastCrawled: "Active",
-            status: "INDEXED" as const,
-          }));
+          .map((i: any) => {
+            const rawContent = i.content || "";
+            const titleMatch = rawContent.match(/\[Page Title: (.*?)\]/);
+            const cleanSnippet = rawContent
+              .replace(/\[Source URL: .*?\]/, "")
+              .replace(/\[Page Title: .*?\]/, "")
+              .trim();
+            return {
+              id: i.id,
+              url: i.title,
+              title: titleMatch ? titleMatch[1] : undefined,
+              textLength: cleanSnippet.length,
+              snippet: cleanSnippet.slice(0, 180) + (cleanSnippet.length > 180 ? "..." : ""),
+              pagesCount: 1,
+              lastCrawled: "Active",
+              status: "INDEXED" as const,
+            };
+          });
         setWebsites(siteItems);
       }
     } catch (err) {
@@ -58,29 +74,40 @@ export default function WebsiteTrainingPage() {
     e.preventDefault();
     if (!urlInput.trim()) return;
 
-    const formattedUrl = urlInput.startsWith("http") ? urlInput : `https://${urlInput}`;
+    const formattedUrl = urlInput.startsWith("http") ? urlInput.trim() : `https://${urlInput.trim()}`;
     setIsCrawling(true);
+    setErrorMsg("");
+    setSuccessMsg("");
 
     try {
-      const created = await createKnowledgeItem({
-        title: formattedUrl,
-        category: "WEBSITE_CRAWL",
-        content: `Website content indexed for AI training from source: ${formattedUrl}`,
-      });
-
-      setWebsites([
-        {
-          id: created?.id || Date.now().toString(),
-          url: formattedUrl,
-          pagesCount: 1,
-          lastCrawled: "Just now",
-          status: "INDEXED",
-        },
-        ...websites,
-      ]);
-      setUrlInput("");
-    } catch (err) {
+      const res = await crawlWebsiteUrl(formattedUrl);
+      if (res && res.success) {
+        setWebsites([
+          {
+            id: res.data.id || Date.now().toString(),
+            url: formattedUrl,
+            title: res.data.title,
+            textLength: res.data.textLength,
+            snippet: res.data.snippet,
+            pagesCount: 1,
+            lastCrawled: "Just now",
+            status: "INDEXED",
+          },
+          ...websites.filter((w) => w.url !== formattedUrl),
+        ]);
+        setUrlInput("");
+        setSuccessMsg(
+          `✓ "${res.data.title || formattedUrl}" indexed successfully into AI knowledge base (${res.data.textLength} chars)!`
+        );
+        setTimeout(() => setSuccessMsg(""), 5000);
+      } else {
+        setErrorMsg(res?.error || "Failed to crawl target website. Please ensure the URL is publicly reachable.");
+        setTimeout(() => setErrorMsg(""), 5000);
+      }
+    } catch (err: any) {
       console.error("Crawl error:", err);
+      setErrorMsg(err.message || "Connection error while reaching the website.");
+      setTimeout(() => setErrorMsg(""), 5000);
     } finally {
       setIsCrawling(false);
     }
@@ -127,9 +154,22 @@ export default function WebsiteTrainingPage() {
             className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
           >
             {isCrawling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            <span>{isCrawling ? "Crawling Pages..." : "Crawl & Train"}</span>
+            <span>{isCrawling ? "Crawling & Parsing..." : "Crawl & Train"}</span>
           </button>
         </form>
+
+        {successMsg && (
+          <div className="p-3 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-xs font-semibold text-[#065F46] flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-[#059669]" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-xs font-semibold text-[#991B1B] flex items-center gap-2">
+            <span>⚠️ {errorMsg}</span>
+          </div>
+        )}
       </div>
 
       {/* Crawled Sources List */}
@@ -146,22 +186,32 @@ export default function WebsiteTrainingPage() {
         ) : websites.length > 0 ? (
           <div className="divide-y divide-[#F1F5F9]">
             {websites.map((w) => (
-              <div key={w.id} className="p-4 flex items-center justify-between gap-4 hover:bg-[#F8FAFC] transition-colors">
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-bold text-[#0F172A] truncate">{w.url}</p>
+              <div key={w.id} className="p-4 flex items-start justify-between gap-4 hover:bg-[#F8FAFC] transition-colors">
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-xs font-bold text-[#0F172A] truncate">
+                      {w.title || w.url}
+                    </p>
                     <span className="px-2 py-0.5 rounded-md bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] text-[10px] font-bold">
                       ✓ Indexed
                     </span>
+                    {w.textLength ? (
+                      <span className="px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] text-[10px] font-mono">
+                        {w.textLength.toLocaleString()} chars
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="text-[11px] text-[#64748B]">
-                    Connected to AI Knowledge Base • Status: Live
-                  </p>
+                  <p className="text-[11px] text-[#64748B] font-mono truncate">{w.url}</p>
+                  {w.snippet && (
+                    <p className="text-[11px] text-[#334155] line-clamp-2 bg-[#F8FAFC] p-2 rounded-lg border border-[#F1F5F9]">
+                      {w.snippet}
+                    </p>
+                  )}
                 </div>
 
                 <button
                   onClick={() => handleDelete(w.id)}
-                  className="p-2 rounded-xl text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
+                  className="p-2 rounded-xl text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors cursor-pointer shrink-0 mt-0.5"
                   title="Remove Source"
                 >
                   <Trash2 className="w-4 h-4" />

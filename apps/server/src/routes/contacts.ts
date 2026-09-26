@@ -103,6 +103,71 @@ contactsRouter.get("/", async (c) => {
   }
 });
 
+// GET /api/contacts/export - Export contacts as CSV
+contactsRouter.get("/export", async (c) => {
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  const pageId = c.req.query("pageId");
+
+  try {
+    if (!workspaceId) {
+      return c.text("Unauthorized or workspace context missing", 401);
+    }
+
+    let pagesWhere: any = { workspaceId };
+    if (pageId && pageId !== "ALL") {
+      pagesWhere.id = pageId;
+    }
+
+    const pages = await prisma.facebookPage.findMany({
+      where: pagesWhere,
+      select: { id: true, name: true },
+    });
+    const pageIds = pages.map((p) => p.id);
+
+    const customers = pageIds.length > 0
+      ? await prisma.customer.findMany({
+          where: { facebookPageId: { in: pageIds } },
+          include: { facebookPage: true },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+
+    const headers = ["Name", "Phone", "Address", "Orders Count", "Total Spent (BDT)", "Sentiment", "Facebook Page", "PSID", "Last Active"];
+    const rows = customers.map((c) => {
+      let sentiment = "INQUIRY";
+      if (c.totalOrders > 0) sentiment = "PURCHASED";
+      else if ((c.sentimentScore ?? 0) >= 0.7) sentiment = "HIGH_INTENT";
+      else if ((c.sentimentScore ?? 0) < 0) sentiment = "COMPLAINT";
+
+      const escape = (val: any) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+
+      return [
+        escape(`${c.firstName || ""} ${c.lastName || ""}`.trim() || "Customer"),
+        escape(c.phoneNumber || ""),
+        escape(c.deliveryAddress || ""),
+        c.totalOrders || 0,
+        c.totalSpent || 0,
+        escape(sentiment),
+        escape(c.facebookPage?.name || ""),
+        escape(c.psid || ""),
+        escape(c.updatedAt ? new Date(c.updatedAt).toISOString() : ""),
+      ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+
+    return new Response(csvContent, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="mogent_contacts_${new Date().toISOString().slice(0, 10)}.csv"`,
+      },
+    });
+  } catch (error: any) {
+    return c.text(`Export failed: ${error.message}`, 500);
+  }
+});
+
 // POST /api/contacts - Create or update a customer contact/lead
 contactsRouter.post("/", async (c) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");

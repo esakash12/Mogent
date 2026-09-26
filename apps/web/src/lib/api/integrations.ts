@@ -69,3 +69,8 @@ export async function testWhatsAppConnection(data: { testPhone?: string }) {
   return await api.post("/api/pages/whatsapp/test", data);
 }
 
+export async function purgeWorkspaceData() {
+  return await api.post("/api/pages/purge-data", {});
+}
+
+
