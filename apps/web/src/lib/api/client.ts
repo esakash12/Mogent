@@ -132,6 +132,12 @@ export async function apiRequest<T = any>(
         headers,
       });
 
+      const newToken = res.headers.get("x-new-token");
+      if (newToken && typeof window !== "undefined") {
+        localStorage.setItem("mogent_auth_token", newToken);
+        localStorage.setItem("mogent_admin_token", newToken);
+      }
+
       if (res.status === 401) {
         return {
           success: false,

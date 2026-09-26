@@ -74,11 +74,25 @@ export default function AdminSettingsPage() {
         : "";
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
+    const fetchConfig = async (endpoint: string) => {
+      try {
+        const res = await fetch(`${API_BASE}${endpoint}`, { headers });
+        const newToken = res.headers.get("x-new-token");
+        if (newToken && typeof window !== "undefined") {
+          localStorage.setItem("mogent_admin_token", newToken);
+          localStorage.setItem("mogent_auth_token", newToken);
+        }
+        return await res.json();
+      } catch {
+        return null;
+      }
+    };
+
     Promise.all([
-      fetch(`${API_BASE}/api/admin/meta-config`, { headers }).then((r) => r.json()).catch(() => null),
-      fetch(`${API_BASE}/api/admin/telegram-master-config`, { headers }).then((r) => r.json()).catch(() => null),
-      fetch(`${API_BASE}/api/admin/cloudflare-config`, { headers }).then((r) => r.json()).catch(() => null),
-      fetch(`${API_BASE}/api/admin/payment-config`, { headers }).then((r) => r.json()).catch(() => null),
+      fetchConfig("/api/admin/meta-config"),
+      fetchConfig("/api/admin/telegram-master-config"),
+      fetchConfig("/api/admin/cloudflare-config"),
+      fetchConfig("/api/admin/payment-config"),
     ])
       .then(([metaJson, tgJson, cfJson, payJson]) => {
         if (metaJson?.success && metaJson.data) {
@@ -152,6 +166,11 @@ export default function AdminSettingsPage() {
           adminChatId: telegramChatId.trim(),
         }),
       });
+      const newToken = res.headers.get("x-new-token");
+      if (newToken && typeof window !== "undefined") {
+        localStorage.setItem("mogent_admin_token", newToken);
+        localStorage.setItem("mogent_auth_token", newToken);
+      }
       const data = await res.json();
       if (data.success) {
         if (data.data?.botUsername) {
@@ -233,6 +252,18 @@ export default function AdminSettingsPage() {
         }),
       ]);
 
+      const checkAndSaveNewToken = (res: Response) => {
+        const newToken = res.headers.get("x-new-token");
+        if (newToken && typeof window !== "undefined") {
+          localStorage.setItem("mogent_admin_token", newToken);
+          localStorage.setItem("mogent_auth_token", newToken);
+        }
+      };
+      checkAndSaveNewToken(metaRes);
+      checkAndSaveNewToken(tgRes);
+      checkAndSaveNewToken(cfRes);
+      checkAndSaveNewToken(payRes);
+
       const [metaJson, tgJson, cfJson, payJson] = await Promise.all([
         metaRes.json().catch(() => ({ success: metaRes.ok })),
         tgRes.json().catch(() => ({ success: tgRes.ok })),
@@ -252,7 +283,13 @@ export default function AdminSettingsPage() {
 
       if (errors.length > 0) {
         console.warn("Some configurations could not be saved:", errors);
-        showToast("error", "Save Notice", errors.join(" • "));
+        const userFriendlyErrors = errors.map((errStr) => {
+          if (errStr.includes("token (") && errStr.includes("expired")) {
+            return "Admin session expired. Please re-login at /login.";
+          }
+          return errStr;
+        });
+        showToast("error", "Save Notice", userFriendlyErrors.join(" • "));
         if (errors.length === 4) {
           setIsSaving(false);
           return;

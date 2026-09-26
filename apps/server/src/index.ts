@@ -33,7 +33,8 @@ app.use(
   cors({
     origin: "*",
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization", "x-workspace-id", "Accept"],
+    allowHeaders: ["Content-Type", "Authorization", "x-workspace-id", "Accept", "x-admin-secret"],
+    exposeHeaders: ["x-new-token"],
     maxAge: 86400,
   })
 );

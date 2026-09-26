@@ -90,7 +90,7 @@ authRouter.post("/register", async (c) => {
         workspaceId: result.workspace.id,
         role: result.membership.role,
         isAdmin: true,
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30, // 30 days
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365, // 365 days
       },
       config.jwtSecret,
       "HS256"
@@ -249,7 +249,7 @@ authRouter.post("/login", async (c) => {
         workspaceId: activeMembership.workspaceId,
         role: activeMembership.role,
         isAdmin: isUserAdmin,
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365, // 365 days
       },
       config.jwtSecret,
       "HS256"
@@ -662,14 +662,14 @@ authRouter.post("/admin/login", async (c) => {
       return c.json({ success: false, error: "Access Denied: Invalid Super Admin Credentials." }, 401);
     }
 
-    // Issue Secure 7-Day Admin JWT
+    // Issue Secure 365-Day Admin JWT
     const token = await sign(
       {
         userId: adminUserId,
         email: cleanEmail,
         isAdmin: true,
         role: "SUPER_ADMIN",
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365, // 365 days
       },
       config.jwtSecret,
       "HS256"
