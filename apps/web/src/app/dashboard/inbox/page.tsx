@@ -1,8 +1,10 @@
 "use client";
 
-import { Search, Loader2, Send, Phone, Facebook, Plus, ArrowUp } from "lucide-react";
+import { useState, useRef } from "react";
+import { Search, Loader2, Send, Phone, Facebook, Plus, ArrowUp, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useInbox, FilterTab } from "@/hooks/useInbox";
+import { uploadInboxAttachment } from "@/lib/api/inbox";
 import { ChannelTabs } from "@/components/inbox/ChannelTabs";
 import { ConversationItem } from "@/components/inbox/ConversationItem";
 import { ChatHeader } from "@/components/inbox/ChatHeader";
@@ -66,6 +68,78 @@ export default function LiveInboxPage() {
     handleOpenOrderModal,
     handleConfirmOrder,
   } = useInbox();
+
+  // Attachment upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file: File;
+    previewUrl?: string;
+    fileName: string;
+    mediaType: "IMAGE" | "FILE";
+  } | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isImg = file.type.startsWith("image/");
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isImg && !isPdf) {
+      alert("শুধুমাত্র ছবি অথবা PDF ফাইল আপলোড করা যাবে।");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const mediaType: "IMAGE" | "FILE" = isImg ? "IMAGE" : "FILE";
+    const previewUrl = isImg ? URL.createObjectURL(file) : undefined;
+
+    setPendingAttachment({
+      file,
+      previewUrl,
+      fileName: file.name,
+      mediaType,
+    });
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveAttachment = () => {
+    if (pendingAttachment?.previewUrl) {
+      URL.revokeObjectURL(pendingAttachment.previewUrl);
+    }
+    setPendingAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const onSubmitMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if ((!inputText.trim() && !pendingAttachment) || isSending || isUploadingAttachment) return;
+
+    if (pendingAttachment) {
+      try {
+        setIsUploadingAttachment(true);
+        const uploadRes = await uploadInboxAttachment(pendingAttachment.file);
+        if (uploadRes?.success && uploadRes.data?.url) {
+          const mediaUrl = uploadRes.data.url;
+          const mediaType = pendingAttachment.mediaType;
+          const fileName = pendingAttachment.fileName;
+          handleRemoveAttachment();
+          await handleSendMessage(e, { mediaUrl, mediaType, fileName });
+        } else {
+          alert("ফাইল আপলোড করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।");
+        }
+      } catch (err) {
+        console.error("Failed to upload attachment:", err);
+        alert("ফাইল আপলোড করতে সমস্যা হয়েছে।");
+      } finally {
+        setIsUploadingAttachment(false);
+      }
+    } else {
+      await handleSendMessage(e);
+    }
+  };
 
   const isConvWhatsApp =
     activeConv &&
@@ -244,37 +318,106 @@ export default function LiveInboxPage() {
 
           {/* Chat Input */}
           <form
-            onSubmit={handleSendMessage}
-            className="p-3 border-t border-[#E2E8F0] bg-white flex items-center gap-2"
+            onSubmit={onSubmitMessage}
+            className="border-t border-[#E2E8F0] bg-white flex flex-col"
           >
-            <input
-              type="text"
-              placeholder={
-                isConvWhatsApp
-                  ? `Reply via WhatsApp to ${activeConv.customerName}...`
-                  : `Reply as agent to ${activeConv.customerName}...`
-              }
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#F59E0B]"
-            />
-            <button
-              type="submit"
-              disabled={isSending || !inputText.trim()}
-              className={cn(
-                "px-4 md:px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0",
-                isConvWhatsApp
-                  ? "bg-[#25D366] hover:bg-[#1EBE5D] text-white"
-                  : "bg-[#F59E0B] hover:bg-[#D97706] text-black"
-              )}
-            >
-              {isSending ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              <span>Send</span>
-            </button>
+            {/* Pending Attachment Preview Chip */}
+            {pendingAttachment && (
+              <div className="px-3.5 pt-2.5 pb-1 flex items-center gap-2 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <div className="flex items-center gap-2 bg-white border border-[#CBD5E1] rounded-lg px-2.5 py-1.5 text-xs text-[#0F172A] shadow-2xs max-w-sm">
+                  {pendingAttachment.mediaType === "IMAGE" ? (
+                    pendingAttachment.previewUrl ? (
+                      <img
+                        src={pendingAttachment.previewUrl}
+                        alt="Preview"
+                        className="w-7 h-7 rounded object-cover border border-[#E2E8F0]"
+                      />
+                    ) : (
+                      <ImageIcon className="w-4 h-4 text-emerald-600" />
+                    )
+                  ) : (
+                    <FileText className="w-4 h-4 text-red-500" />
+                  )}
+                  <span className="truncate max-w-[180px] font-medium text-xs">
+                    {pendingAttachment.fileName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveAttachment}
+                    disabled={isUploadingAttachment}
+                    className="text-[#64748B] hover:text-red-500 p-0.5 rounded cursor-pointer ml-1 transition-colors"
+                    title="সংযুক্তি সরান"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {isUploadingAttachment && (
+                  <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F59E0B]" />
+                    <span>আপলোড হচ্ছে...</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="p-3 flex items-center gap-2">
+              {/* Hidden File Input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*,application/pdf,.pdf"
+                className="hidden"
+              />
+
+              {/* Attachment Paperclip Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSending || isUploadingAttachment}
+                title="ছবি বা PDF ফাইল যুক্ত করুন"
+                className="p-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+
+              {/* Text Input */}
+              <input
+                type="text"
+                placeholder={
+                  isConvWhatsApp
+                    ? `Reply via WhatsApp to ${activeConv.customerName}...`
+                    : `Reply as agent to ${activeConv.customerName}...`
+                }
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                disabled={isSending || isUploadingAttachment}
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#F59E0B]"
+              />
+
+              {/* Send Button */}
+              <button
+                type="submit"
+                disabled={
+                  isSending ||
+                  isUploadingAttachment ||
+                  (!inputText.trim() && !pendingAttachment)
+                }
+                className={cn(
+                  "px-4 md:px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0",
+                  isConvWhatsApp
+                    ? "bg-[#25D366] hover:bg-[#1EBE5D] text-white"
+                    : "bg-[#F59E0B] hover:bg-[#D97706] text-black"
+                )}
+              >
+                {isSending || isUploadingAttachment ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>Send</span>
+              </button>
+            </div>
           </form>
         </div>
       ) : (

@@ -52,6 +52,44 @@ export class FacebookApiService {
   }
 
   /**
+   * Sends an attachment (image, file/pdf) via Facebook Messenger Send API.
+   */
+  public async sendAttachmentMessage(
+    pageAccessToken: string,
+    recipientPsid: string,
+    type: "image" | "file",
+    url: string
+  ): Promise<any> {
+    const endpoint = `${this.baseUrl}/me/messages?access_token=${pageAccessToken}`;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: recipientPsid },
+        messaging_type: "RESPONSE",
+        message: {
+          attachment: {
+            type,
+            payload: {
+              url,
+              is_reusable: true,
+            },
+          },
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.text();
+      console.warn(`Facebook Send Attachment Warning (${res.status}):`, errorData);
+      return null;
+    }
+
+    return res.json();
+  }
+
+  /**
    * Sends an interactive button template message via Facebook Messenger Send API.
    */
   public async sendButtonMessage(

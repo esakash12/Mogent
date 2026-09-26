@@ -10,12 +10,13 @@ export interface UploadResult {
 
 export class StorageService {
   /**
-   * Uploads an image buffer or file to Cloudflare R2 (or fallback to data URL / local storage)
+   * Uploads an image, PDF or document buffer to Cloudflare R2 (or fallback to data URL)
    */
-  public async uploadImage(
+  public async uploadFile(
     buffer: Buffer,
     filename: string,
-    mimeType: string = "image/jpeg"
+    mimeType: string = "image/jpeg",
+    folder: string = "inbox"
   ): Promise<UploadResult> {
     // 1. Fetch Cloudflare R2 credentials from Redis or Environment
     let cfConfig: any = null;
@@ -32,8 +33,15 @@ export class StorageService {
     const bucketName = cfConfig?.bucketName || process.env.CLOUDFLARE_R2_BUCKET_NAME || "mogent-assets";
     const publicDomain = (cfConfig?.publicDomain || process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || "").replace(/\/$/, "");
 
-    const cleanExt = filename.includes(".") ? filename.split(".").pop() : "jpg";
-    const uniqueKey = `products/${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${cleanExt}`;
+    const cleanExt = filename.includes(".")
+      ? filename.split(".").pop()
+      : mimeType.includes("pdf")
+      ? "pdf"
+      : "jpg";
+    const safeBaseName = filename.includes(".")
+      ? filename.substring(0, filename.lastIndexOf(".")).replace(/[^a-zA-Z0-9_-]/g, "_")
+      : "file";
+    const uniqueKey = `${folder}/${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${safeBaseName}.${cleanExt}`;
 
     // If Cloudflare R2 is configured
     if (accountId && accessKeyId && secretAccessKey) {
@@ -53,6 +61,7 @@ export class StorageService {
             Key: uniqueKey,
             Body: buffer,
             ContentType: mimeType,
+            ContentDisposition: mimeType.includes("pdf") ? `inline; filename="${filename}"` : undefined,
           })
         );
 
@@ -70,7 +79,7 @@ export class StorageService {
       }
     }
 
-    // Fallback: Return data URL so image works seamlessly even without R2 setup
+    // Fallback: Return data URL so media works even without R2 setup
     const base64 = buffer.toString("base64");
     const dataUrl = `data:${mimeType};base64,${base64}`;
 
@@ -79,6 +88,17 @@ export class StorageService {
       key: uniqueKey,
       provider: "DATA_URL",
     };
+  }
+
+  /**
+   * Uploads an image buffer (backward compatibility)
+   */
+  public async uploadImage(
+    buffer: Buffer,
+    filename: string,
+    mimeType: string = "image/jpeg"
+  ): Promise<UploadResult> {
+    return this.uploadFile(buffer, filename, mimeType, "products");
   }
 }
 

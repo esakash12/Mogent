@@ -54,13 +54,19 @@ export class ConversationsController {
     const { id } = c.req.param();
     try {
       const body = await c.req.json();
-      const { text } = body;
+      const { text, mediaUrl, mediaType, fileName } = body;
 
-      if (!text || !text.trim()) {
-        return c.json({ success: false, error: "Text required" }, 400);
+      if ((!text || !text.trim()) && !mediaUrl) {
+        return c.json({ success: false, error: "Text or media attachment required" }, 400);
       }
 
-      const data = await ConversationService.sendMessage({ conversationId: id, text: text.trim() });
+      const data = await ConversationService.sendMessage({
+        conversationId: id,
+        text: text?.trim() || "",
+        mediaUrl,
+        mediaType,
+        fileName,
+      });
       return c.json({ success: true, data });
     } catch (error: any) {
       console.error("Manual send error:", error);

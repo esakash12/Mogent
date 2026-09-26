@@ -26,8 +26,24 @@ export async function fetchMessages(conversationId: string) {
   return res.success && Array.isArray(res.data) ? res.data : [];
 }
 
-export async function sendMessage(conversationId: string, text: string) {
-  return await api.post(`/api/conversations/${conversationId}/messages`, { text });
+export async function sendMessage(
+  conversationId: string,
+  text: string,
+  attachment?: { mediaUrl?: string; mediaType?: "IMAGE" | "FILE" | "TEXT"; fileName?: string }
+) {
+  return await api.post(`/api/conversations/${conversationId}/messages`, {
+    text,
+    mediaUrl: attachment?.mediaUrl,
+    mediaType: attachment?.mediaType,
+    fileName: attachment?.fileName,
+  });
+}
+
+export async function uploadInboxAttachment(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("folder", "inbox");
+  return await api.post<{ url: string; key: string; provider: string; filename: string; mimeType: string }>("/api/upload", formData);
 }
 
 export async function toggleConversationMode(conversationId: string, isHumanControl: boolean) {

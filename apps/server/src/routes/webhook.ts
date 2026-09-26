@@ -4,6 +4,7 @@ import { redisConnection } from "../redis";
 import { incomingMessagesQueue } from "../queue/message-queue";
 import { FacebookWebhookBody, ProcessMessageJobPayload } from "@mogent/shared";
 import { prisma, MessageSender, MessageStatus, AiMode } from "@mogent/database";
+import { storageService } from "../services/storage";
 
 export const webhookRouter = new Hono();
 
@@ -123,7 +124,30 @@ const handleIngest = async (c: any) => {
             }
           } else if (["IMAGE", "AUDIO", "VIDEO", "FILE"].includes(rawType)) {
             mediaType = rawType as any;
-            mediaUrl = firstAttachment.payload?.url;
+            const tempUrl = firstAttachment.payload?.url;
+            if (tempUrl) {
+              try {
+                const ext = rawType === "IMAGE" ? "jpg" : rawType === "FILE" ? "pdf" : "dat";
+                const dlRes = await fetch(tempUrl);
+                if (dlRes.ok) {
+                  const buf = Buffer.from(await dlRes.arrayBuffer());
+                  const r2 = await storageService.uploadFile(
+                    buf,
+                    `messenger_${Date.now()}.${ext}`,
+                    dlRes.headers.get("content-type") || (rawType === "FILE" ? "application/pdf" : "image/jpeg"),
+                    "inbox"
+                  );
+                  mediaUrl = r2.url;
+                } else {
+                  mediaUrl = tempUrl;
+                }
+              } catch {
+                mediaUrl = tempUrl;
+              }
+            }
+            if (!messageText) {
+              messageText = rawType === "IMAGE" ? "[Image]" : "[Attachment]";
+            }
           }
         }
 
@@ -411,6 +435,58 @@ async function resolveWhatsAppWorkspace(
   return null;
 }
 
+// Helper to perform Two-Step Authenticated Media Download from Meta WhatsApp Graph API
+async function downloadAndStoreWhatsAppMedia(
+  mediaId: string,
+  filename: string,
+  defaultMimeType: string,
+  accessToken: string
+): Promise<{ url: string; mimeType: string } | null> {
+  try {
+    // Step (a): GET media metadata from Graph API with Bearer token
+    const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!metaRes.ok) {
+      console.warn(`WhatsApp media metadata fetch failed (${metaRes.status}): ${metaRes.statusText}`);
+      return null;
+    }
+    const metaData = await metaRes.json();
+    if (!metaData || !metaData.url) {
+      console.warn("No download URL in WhatsApp media metadata:", metaData);
+      return null;
+    }
+
+    const downloadUrl = metaData.url;
+    const mimeType = metaData.mime_type || defaultMimeType;
+
+    // Step (b): GET binary file from media URL ALSO with Bearer token
+    const fileRes = await fetch(downloadUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!fileRes.ok) {
+      console.warn(`WhatsApp media binary download failed (${fileRes.status}): ${fileRes.statusText}`);
+      return null;
+    }
+
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+
+    // Upload to Cloudflare R2
+    const uploadRes = await storageService.uploadFile(buffer, filename, mimeType, "inbox");
+    return {
+      url: uploadRes.url,
+      mimeType,
+    };
+  } catch (err: any) {
+    console.warn("Graceful fallback in downloadAndStoreWhatsAppMedia:", err.message);
+    return null;
+  }
+}
+
 // Verification Handshake
 webhookRouter.get("/whatsapp", handleVerify);
 
@@ -450,6 +526,14 @@ webhookRouter.post("/whatsapp", async (c) => {
               continue;
             }
 
+            // Retrieve workspace WhatsApp access token for media downloading
+            let waAccessToken: string | null = null;
+            try {
+              const rawCfg = await redisConnection.get(`mogent:whatsapp_config:${targetWorkspaceId}`);
+              const parsedCfg = rawCfg ? JSON.parse(rawCfg) : null;
+              waAccessToken = parsedCfg?.accessToken || null;
+            } catch {}
+
             // Find or create dedicated page strictly scoped to targetWorkspaceId
             let page = await prisma.facebookPage.findFirst({
               where: {
@@ -486,11 +570,58 @@ webhookRouter.post("/whatsapp", async (c) => {
 
             for (const msg of value.messages) {
               const fromPhone = msg.from; // e.g. "8801700000000"
-              const text = msg.text?.body || msg.caption || "";
+              const msgType = msg.type || "text";
+              let text = msg.text?.body || msg.caption || "";
+              let mediaType: "TEXT" | "IMAGE" | "FILE" = "TEXT";
+              let mediaUrl: string | undefined = undefined;
+              let attachmentFileName: string | undefined = undefined;
+
+              if (msgType === "image" && msg.image) {
+                mediaType = "IMAGE";
+                text = msg.image.caption || text;
+                const mediaId = msg.image.id;
+                attachmentFileName = `whatsapp_img_${Date.now()}.jpg`;
+
+                if (mediaId && waAccessToken) {
+                  const stored = await downloadAndStoreWhatsAppMedia(
+                    mediaId,
+                    attachmentFileName || `whatsapp_img_${Date.now()}.jpg`,
+                    msg.image.mime_type || "image/jpeg",
+                    waAccessToken
+                  );
+                  if (stored) {
+                    mediaUrl = stored.url;
+                  }
+                }
+                if (!text) {
+                  text = "[Image]";
+                }
+              } else if (msgType === "document" && msg.document) {
+                mediaType = "FILE";
+                text = msg.document.caption || text;
+                const mediaId = msg.document.id;
+                attachmentFileName = msg.document.filename || `document_${Date.now()}.pdf`;
+
+                if (mediaId && waAccessToken) {
+                  const stored = await downloadAndStoreWhatsAppMedia(
+                    mediaId,
+                    attachmentFileName || `document_${Date.now()}.pdf`,
+                    msg.document.mime_type || "application/pdf",
+                    waAccessToken
+                  );
+                  if (stored) {
+                    mediaUrl = stored.url;
+                  }
+                }
+                if (!text) {
+                  text = `[Document: ${attachmentFileName}]`;
+                }
+              }
+
               const contactName = contactMap[fromPhone] || `+${fromPhone}`;
               const targetPsid = `wa_${fromPhone}`;
 
-              if (page && text) {
+              if (page && (text || mediaUrl)) {
                 let customer = await prisma.customer.findFirst({
                   where: {
                     facebookPageId: page.id,
@@ -546,6 +677,8 @@ webhookRouter.post("/whatsapp", async (c) => {
                     sender: MessageSender.CUSTOMER,
                     senderId: targetPsid,
                     content: text,
+                    mediaType: mediaType as any,
+                    mediaUrl: mediaUrl,
                     status: MessageStatus.DELIVERED,
                   },
                 });
@@ -560,6 +693,8 @@ webhookRouter.post("/whatsapp", async (c) => {
                     mid: messageMid,
                     messageId: messageMid,
                     text,
+                    mediaType,
+                    mediaUrl,
                     timestamp: Number(msg.timestamp) * 1000 || Date.now(),
                     customerProfile: {
                       first_name: contactName,

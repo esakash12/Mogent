@@ -17,6 +17,9 @@ export interface Message {
   sender: "CUSTOMER" | "AI" | "HUMAN";
   text: string;
   time: string;
+  mediaType?: "TEXT" | "IMAGE" | "FILE" | string;
+  mediaUrl?: string;
+  fileName?: string;
 }
 
 export interface Conversation {
@@ -306,25 +309,37 @@ export function useInbox() {
 
   const activeConv = conversations.find((c) => c.id === selectedId);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim() || !selectedId) return;
+  const handleSendMessage = async (
+    e?: React.FormEvent,
+    attachment?: { mediaUrl: string; mediaType: "IMAGE" | "FILE"; fileName?: string }
+  ) => {
+    if (e) e.preventDefault();
+    if ((!inputText.trim() && !attachment?.mediaUrl) || !selectedId) return;
 
     const textToSend = inputText.trim();
     setInputText("");
     setIsSending(true);
 
+    const fallbackText =
+      textToSend ||
+      (attachment?.mediaType === "FILE"
+        ? `[Document: ${attachment?.fileName || "document.pdf"}]`
+        : "[Image]");
+
     const optimisticMsg: Message = {
       id: Date.now().toString(),
       sender: "HUMAN",
-      text: textToSend,
+      text: fallbackText,
+      mediaType: attachment?.mediaType || "TEXT",
+      mediaUrl: attachment?.mediaUrl,
+      fileName: attachment?.fileName,
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
-      const res = await apiSendMessage(selectedId, textToSend);
+      const res = await apiSendMessage(selectedId, textToSend, attachment);
       if (res?.success && res.data) {
         setMessages((prev) =>
           prev.map((m) => (m.id === optimisticMsg.id ? { ...m, id: res.data.id } : m))

@@ -16,7 +16,10 @@ export interface ListConversationsParams {
 
 export interface SendMessageParams {
   conversationId: string;
-  text: string;
+  text?: string;
+  mediaUrl?: string;
+  mediaType?: "IMAGE" | "FILE" | "TEXT";
+  fileName?: string;
 }
 
 export interface StartWhatsAppParams {
@@ -190,17 +193,19 @@ export class ConversationService {
     return messages.map((m) => ({
       id: m.id,
       sender: m.sender,
-      text: m.content,
+      text: m.content || "",
+      mediaType: m.mediaType,
+      mediaUrl: m.mediaUrl,
       time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       thinking: m.thinkingProcess,
     }));
   }
 
   /**
-   * Send a manual outbound message (Messenger or WhatsApp)
+   * Send a manual outbound message (Messenger or WhatsApp, Text or Media/PDF)
    */
   static async sendMessage(params: SendMessageParams) {
-    const { conversationId, text } = params;
+    const { conversationId, text, mediaUrl, mediaType, fileName } = params;
 
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -216,6 +221,15 @@ export class ConversationService {
 
     const { customer, facebookPage } = conversation;
     const isWhatsApp = (conversation as any).channel === "WHATSAPP" || customer.psid.startsWith("wa_");
+    const cleanText = (text || "").trim();
+    const isMedia = Boolean(mediaUrl);
+    const fallbackContent =
+      cleanText ||
+      (mediaType === "FILE"
+        ? `[Document: ${fileName || "document.pdf"}]`
+        : isMedia
+        ? "[Image]"
+        : "");
 
     if (!isWhatsApp) {
       try {
@@ -226,7 +240,19 @@ export class ConversationService {
           config.tokenEncryptionKey
         );
         if (pageAccessToken && !pageAccessToken.startsWith("direct_")) {
-          await facebookApi.sendTextMessage(pageAccessToken, customer.psid, text);
+          // If media attachment provided, dispatch attachment first
+          if (isMedia && mediaUrl) {
+            await facebookApi.sendAttachmentMessage(
+              pageAccessToken,
+              customer.psid,
+              mediaType === "FILE" ? "file" : "image",
+              mediaUrl
+            );
+          }
+          // If text caption provided, dispatch text
+          if (cleanText) {
+            await facebookApi.sendTextMessage(pageAccessToken, customer.psid, cleanText);
+          }
         }
       } catch (fbErr: any) {
         console.warn("Messenger send warning:", fbErr.message);
@@ -260,19 +286,59 @@ export class ConversationService {
         if (saved?.phoneNumberId && saved?.accessToken) {
           const cleanPhone = (customer.phoneNumber || customer.psid.replace("wa_", "")).replace(/\D/g, "");
           if (cleanPhone) {
-            await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${saved.accessToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: cleanPhone,
-                type: "text",
-                text: { body: text },
-              }),
-            });
+            if (isMedia && mediaUrl) {
+              // Dispatch Image or Document via WhatsApp Cloud API
+              if (mediaType === "FILE") {
+                await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${saved.accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: cleanPhone,
+                    type: "document",
+                    document: {
+                      link: mediaUrl,
+                      caption: cleanText || undefined,
+                      filename: fileName || "document.pdf",
+                    },
+                  }),
+                });
+              } else {
+                await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${saved.accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    to: cleanPhone,
+                    type: "image",
+                    image: {
+                      link: mediaUrl,
+                      caption: cleanText || undefined,
+                    },
+                  }),
+                });
+              }
+            } else if (cleanText) {
+              await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${saved.accessToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  to: cleanPhone,
+                  type: "text",
+                  text: { body: cleanText },
+                }),
+              });
+            }
           }
         }
       } catch (waErr: any) {
@@ -284,7 +350,9 @@ export class ConversationService {
       data: {
         conversationId,
         sender: MessageSender.HUMAN_AGENT,
-        content: text,
+        content: fallbackContent,
+        mediaType: (mediaType as any) || (isMedia ? "IMAGE" : "TEXT"),
+        mediaUrl: mediaUrl || undefined,
         status: MessageStatus.SENT,
       },
     });
