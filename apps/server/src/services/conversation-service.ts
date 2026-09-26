@@ -196,6 +196,7 @@ export class ConversationService {
       text: m.content || "",
       mediaType: m.mediaType,
       mediaUrl: m.mediaUrl,
+      fileName: m.fileName || undefined,
       time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       thinking: m.thinkingProcess,
     }));
@@ -353,6 +354,7 @@ export class ConversationService {
         content: fallbackContent,
         mediaType: (mediaType as any) || (isMedia ? "IMAGE" : "TEXT"),
         mediaUrl: mediaUrl || undefined,
+        fileName: fileName || undefined,
         status: MessageStatus.SENT,
       },
     });
@@ -366,6 +368,9 @@ export class ConversationService {
       id: message.id,
       sender: message.sender,
       text: message.content,
+      mediaType: message.mediaType,
+      mediaUrl: message.mediaUrl,
+      fileName: message.fileName,
       time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
   }
@@ -497,11 +502,39 @@ export class ConversationService {
     }
 
     if (initialMessage && initialMessage.trim()) {
+      const cleanMsg = initialMessage.trim();
+      // Dispatch to WhatsApp Cloud API
+      try {
+        const wsId = workspaceId || page.workspaceId || "default";
+        let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
+        if (!raw && wsId !== "default") {
+          raw = await redisConnection.get("mogent:whatsapp_config:default");
+        }
+        const saved = raw ? JSON.parse(raw) : null;
+        if (saved?.phoneNumberId && saved?.accessToken) {
+          await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${saved.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: cleanPhone,
+              type: "text",
+              text: { body: cleanMsg },
+            }),
+          });
+        }
+      } catch (waErr: any) {
+        console.warn("WhatsApp initialMessage dispatch error:", waErr.message);
+      }
+
       await prisma.message.create({
         data: {
           conversationId: conversation.id,
           sender: MessageSender.HUMAN_AGENT,
-          content: initialMessage.trim(),
+          content: cleanMsg,
           status: MessageStatus.SENT,
         },
       });

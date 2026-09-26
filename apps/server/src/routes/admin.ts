@@ -176,6 +176,13 @@ export const MODEL_TEMPLATES: Record<string, { name: string; category: string; d
   },
 };
 
+export function getModelTemplate(modelName?: string) {
+  if (modelName && MODEL_TEMPLATES[modelName]) {
+    return { model: modelName, template: MODEL_TEMPLATES[modelName] };
+  }
+  return { model: "gemini-3.5-flash-lite", template: MODEL_TEMPLATES["gemini-3.5-flash-lite"] };
+}
+
 // -----------------------------------------------------------------------------
 // 2. GET ALL GEMINI KEYS & LIVE QUOTA METRICS (PRIMARY / SECONDARY / BACKUP)
 // -----------------------------------------------------------------------------
@@ -192,8 +199,7 @@ adminRouter.get("/keys", async (c) => {
       keysList = allRawKeys.map((key, idx) => {
         const masked = `${key.substring(0, 6)}...${key.substring(key.length - 4)}`;
         const role = idx === 0 ? "PRIMARY" : idx === 1 ? "SECONDARY" : "BACKUP";
-        const model = "gemini-3.5-flash-lite";
-        const template = MODEL_TEMPLATES[model];
+        const { model, template } = getModelTemplate("gemini-3.5-flash-lite");
         return {
           id: `k-${idx + 1}`,
           key,
@@ -264,8 +270,7 @@ adminRouter.post("/keys", async (c) => {
     }
 
     const cleanKey = key.trim();
-    const selectedModel = model || "gemini-3.5-flash-lite";
-    const template = MODEL_TEMPLATES[selectedModel] || MODEL_TEMPLATES["gemini-3.5-flash-lite"];
+    const { model: selectedModel, template } = getModelTemplate(model);
     const keyRole = role || "BACKUP";
 
     const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
@@ -487,7 +492,7 @@ adminRouter.get("/meta-config", async (c) => {
       verifyToken: parsed?.verifyToken || config.facebook.verifyToken || "mogent_fb_verify_token_secure",
       defaultModel: parsed?.defaultModel || config.aiProxy.defaultModel || "gemini-3.5-flash-lite",
       cooldownSecs: parsed?.cooldownSecs !== undefined ? parsed.cooldownSecs : 60,
-      webhookUrl: "https://api.mogent.tech/webhook/facebook",
+      webhookUrl: process.env.API_BASE_URL ? `${process.env.API_BASE_URL}/webhook/facebook` : "https://api.mogent.tech/webhook/facebook",
       privacyUrl: "https://mogent.tech/privacy",
       termsUrl: "https://mogent.tech/terms",
       dataDeletionUrl: "https://mogent.tech/data-deletion",

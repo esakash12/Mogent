@@ -109,6 +109,7 @@ const handleIngest = async (c: any) => {
         // Determine media attachments & check for Facebook stickers / likes
         let mediaType: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "FILE" = "TEXT";
         let mediaUrl: string | undefined = undefined;
+        let attachmentFileName: string | undefined = undefined;
         let messageText = message.text || "";
 
         if (message.attachments && message.attachments.length > 0) {
@@ -122,19 +123,25 @@ const handleIngest = async (c: any) => {
             if (!messageText) {
               messageText = "👍";
             }
-          } else if (["IMAGE", "AUDIO", "VIDEO", "FILE"].includes(rawType)) {
-            mediaType = rawType as any;
+          } else if (["IMAGE", "AUDIO", "VIDEO", "FILE", "FALLBACK"].includes(rawType)) {
+            const isDoc = rawType === "FILE" || rawType === "FALLBACK" || (firstAttachment.payload?.url || "").toLowerCase().includes(".pdf");
+            mediaType = (isDoc ? "FILE" : rawType === "IMAGE" ? "IMAGE" : "FILE") as any;
             const tempUrl = firstAttachment.payload?.url;
             if (tempUrl) {
               try {
-                const ext = rawType === "IMAGE" ? "jpg" : rawType === "FILE" ? "pdf" : "dat";
-                const dlRes = await fetch(tempUrl);
+                const ext = isDoc ? "pdf" : rawType === "IMAGE" ? "jpg" : "dat";
+                attachmentFileName = (firstAttachment.payload as any)?.title || `document_${Date.now()}.${ext}`;
+                const dlRes = await fetch(tempUrl, {
+                  headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                  },
+                });
                 if (dlRes.ok) {
                   const buf = Buffer.from(await dlRes.arrayBuffer());
                   const r2 = await storageService.uploadFile(
                     buf,
-                    `messenger_${Date.now()}.${ext}`,
-                    dlRes.headers.get("content-type") || (rawType === "FILE" ? "application/pdf" : "image/jpeg"),
+                    attachmentFileName || `attachment_${Date.now()}.${isDoc ? "pdf" : "jpg"}`,
+                    dlRes.headers.get("content-type") || (isDoc ? "application/pdf" : "image/jpeg"),
                     "inbox"
                   );
                   mediaUrl = r2.url;
@@ -146,7 +153,7 @@ const handleIngest = async (c: any) => {
               }
             }
             if (!messageText) {
-              messageText = rawType === "IMAGE" ? "[Image]" : "[Attachment]";
+              messageText = isDoc ? `[Document: ${attachmentFileName || "file.pdf"}]` : rawType === "IMAGE" ? "[Image]" : "[Attachment]";
             }
           }
         }
@@ -159,6 +166,7 @@ const handleIngest = async (c: any) => {
           timestamp: event.timestamp || Date.now(),
           mediaType,
           mediaUrl,
+          fileName: attachmentFileName,
         };
 
         // Dispatch job to BullMQ queue
@@ -783,6 +791,7 @@ webhookRouter.post("/whatsapp", async (c) => {
                       content: text,
                       mediaType: mediaType as any,
                       mediaUrl: mediaUrl,
+                      fileName: attachmentFileName,
                       status: MessageStatus.DELIVERED,
                     },
                   });
@@ -792,6 +801,7 @@ webhookRouter.post("/whatsapp", async (c) => {
                     data: {
                       mediaUrl,
                       mediaType: mediaType as any,
+                      fileName: attachmentFileName || existingMsg.fileName,
                       content: text || existingMsg.content,
                     },
                   });
@@ -809,6 +819,7 @@ webhookRouter.post("/whatsapp", async (c) => {
                     text,
                     mediaType,
                     mediaUrl,
+                    fileName: attachmentFileName,
                     timestamp: Number(msg.timestamp) * 1000 || Date.now(),
                     customerProfile: {
                       first_name: contactName,

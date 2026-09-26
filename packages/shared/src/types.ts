@@ -59,6 +59,7 @@ export interface ProcessMessageJobPayload {
   text?: string;
   mediaType: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "FILE";
   mediaUrl?: string;
+  fileName?: string;
   timestamp: number;
   rawPayload?: Record<string, unknown>;
 }

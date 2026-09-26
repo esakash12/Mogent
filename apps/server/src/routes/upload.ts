@@ -6,7 +6,7 @@ export const uploadRouter = new Hono();
 
 uploadRouter.use("*", authMiddleware);
 
-// POST /api/upload - Upload Image to Cloudflare R2 / S3
+// POST /api/upload - Unified Upload Endpoint for Images, PDFs, and Documents
 uploadRouter.post("/", async (c) => {
   try {
     const contentType = c.req.header("content-type") || "";
@@ -26,17 +26,21 @@ uploadRouter.post("/", async (c) => {
       const mime = mimeType || "image/jpeg";
 
       const result = await storageService.uploadFile(buffer, name, mime, folder || "inbox");
-      return c.json({ success: true, data: { ...result, filename: name, mimeType: mime } });
+      return c.json({
+        success: true,
+        url: result.url,
+        data: result,
+      });
     }
 
-    // 2. Multipart Form Data
+    // 2. Multipart Form Data (supports 'file' or 'image' field)
     if (contentType.includes("multipart/form-data")) {
       const body = await c.req.parseBody();
-      const file = body["file"];
+      const file = body["file"] || body["image"];
       const folder = (body["folder"] as string) || "inbox";
 
       if (!file || typeof file === "string") {
-        return c.json({ success: false, error: "File is required in 'file' field" }, 400);
+        return c.json({ success: false, error: "File is required in 'file' or 'image' field" }, 400);
       }
 
       const buffer = Buffer.from(await (file as File).arrayBuffer());
@@ -44,12 +48,19 @@ uploadRouter.post("/", async (c) => {
       const mimeType = (file as File).type || "image/jpeg";
 
       const result = await storageService.uploadFile(buffer, filename, mimeType, folder);
-      return c.json({ success: true, data: { ...result, filename, mimeType } });
+      return c.json({
+        success: true,
+        url: result.url,
+        data: result,
+      });
     }
 
-    return c.json({ success: false, error: "Unsupported Content-Type. Use multipart/form-data or application/json" }, 400);
+    return c.json({
+      success: false,
+      error: "Unsupported Content-Type. Use multipart/form-data or application/json",
+    }, 400);
   } catch (error: any) {
     console.error("Upload error:", error);
-    return c.json({ success: false, error: error.message || "Failed to upload image" }, 500);
+    return c.json({ success: false, error: error.message || "Failed to upload file" }, 500);
   }
 });

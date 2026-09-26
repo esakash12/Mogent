@@ -2,16 +2,23 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { redisConnection } from "../redis";
 import { prisma } from "@mogent/database";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 
 export interface UploadResult {
   url: string;
   key: string;
-  provider: "CLOUDFLARE_R2" | "DATA_URL";
+  provider: "CLOUDFLARE_R2" | "LOCAL_SERVER";
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 export class StorageService {
   /**
-   * Uploads an image, PDF or document buffer to Cloudflare R2 (or fallback to data URL)
+   * Uploads an image, PDF or document buffer to Cloudflare R2
+   * If R2 is not configured or unavailable, seamlessly saves to local public uploads
+   * and returns a 100% valid HTTP/HTTPS URL. Zero data URLs policy.
    */
   public async uploadFile(
     buffer: Buffer,
@@ -19,7 +26,9 @@ export class StorageService {
     mimeType: string = "image/jpeg",
     folder: string = "inbox"
   ): Promise<UploadResult> {
-    // 1. Fetch Cloudflare R2 credentials from Redis, PostgreSQL fallback, or Environment
+    const size = buffer.length;
+
+    // 1. Fetch Cloudflare R2 credentials from Redis, PostgreSQL, or Environment
     let cfConfig: any = null;
     try {
       const raw = await redisConnection.get("mogent:cloudflare_r2_config");
@@ -47,16 +56,22 @@ export class StorageService {
     const publicDomain = (cfConfig?.publicDomain || process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || "").replace(/\/$/, "");
 
     const cleanExt = filename.includes(".")
-      ? filename.split(".").pop()
+      ? filename.split(".").pop()?.toLowerCase() || "dat"
       : mimeType.includes("pdf")
       ? "pdf"
+      : mimeType.includes("png")
+      ? "png"
+      : mimeType.includes("webp")
+      ? "webp"
       : "jpg";
+
     const safeBaseName = filename.includes(".")
       ? filename.substring(0, filename.lastIndexOf(".")).replace(/[^a-zA-Z0-9_-]/g, "_")
       : "file";
+
     const uniqueKey = `${folder}/${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${safeBaseName}.${cleanExt}`;
 
-    // If Cloudflare R2 is configured
+    // 2. Try Cloudflare R2 first if credentials exist
     if (accountId && accessKeyId && secretAccessKey) {
       try {
         const s3Client = new S3Client({
@@ -86,21 +101,46 @@ export class StorageService {
           url,
           key: uniqueKey,
           provider: "CLOUDFLARE_R2",
+          filename,
+          mimeType,
+          size,
         };
-      } catch (err) {
-        console.error("Cloudflare R2 Upload error:", err);
+      } catch (err: any) {
+        console.error("Cloudflare R2 Upload error, falling back to local static serving:", err.message);
       }
     }
 
-    // Fallback: Return data URL so media works even without R2 setup
-    const base64 = buffer.toString("base64");
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    // 3. Fallback to Local Public Server Storage (guaranteed valid HTTP/HTTPS URL)
+    try {
+      const uploadsDir = path.join(process.cwd(), "uploads", folder);
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
 
-    return {
-      url: dataUrl,
-      key: uniqueKey,
-      provider: "DATA_URL",
-    };
+      const filePath = path.join(process.cwd(), "uploads", uniqueKey);
+      fs.writeFileSync(filePath, buffer);
+
+      const apiBaseUrl = (
+        process.env.NEXT_PUBLIC_API_URL ||
+        process.env.PUBLIC_API_URL ||
+        process.env.APP_URL ||
+        "http://localhost:4000"
+      ).replace(/\/$/, "");
+
+      const url = `${apiBaseUrl}/uploads/${uniqueKey}`;
+
+      return {
+        url,
+        key: uniqueKey,
+        provider: "LOCAL_SERVER",
+        filename,
+        mimeType,
+        size,
+      };
+    } catch (localErr: any) {
+      console.error("Local storage fallback failure:", localErr);
+      throw new Error(`Failed to store uploaded file: ${localErr.message}`);
+    }
   }
 
   /**

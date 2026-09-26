@@ -40,20 +40,35 @@ export function MessageList({
     <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 scrollbar-thin">
       {messages.map((m) => {
         const isCustomer = m.sender === "CUSTOMER";
+        const isHuman = m.sender === "HUMAN" || m.sender === "HUMAN_AGENT";
+        const isAI = m.sender === "AI";
         const hasMedia = Boolean(m.mediaUrl);
+
         const isPdf =
           m.mediaType === "FILE" ||
+          m.fileName?.toLowerCase().endsWith(".pdf") ||
           m.mediaUrl?.toLowerCase().includes(".pdf") ||
-          m.text?.toLowerCase().includes(".pdf");
+          (Boolean(m.text) && m.text.toLowerCase().includes(".pdf"));
+
         const isImage =
-          m.mediaType === "IMAGE" ||
-          (!isPdf && m.mediaUrl?.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i)) ||
-          (!isPdf && hasMedia);
+          !isPdf &&
+          (m.mediaType === "IMAGE" ||
+            Boolean(m.mediaUrl?.match(/\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i)));
+
+        const isOtherFile = hasMedia && !isImage && !isPdf;
 
         const isPurePlaceholder =
           m.text === "[Image]" ||
           m.text === "[Attachment]" ||
           (m.text && m.text.startsWith("[Document:"));
+
+        const displayName =
+          m.fileName ||
+          (m.text?.startsWith("[Document:")
+            ? m.text.replace("[Document:", "").replace("]", "").trim()
+            : m.mediaUrl
+            ? m.mediaUrl.split("/").pop()?.split("?")[0]
+            : "Document");
 
         return (
           <div
@@ -68,7 +83,7 @@ export function MessageList({
                 "p-3 md:p-3.5 rounded-2xl text-xs font-medium leading-relaxed shadow-xs whitespace-pre-wrap overflow-hidden",
                 isCustomer
                   ? "bg-white text-[#0F172A] border border-[#E2E8F0] rounded-tl-xs"
-                  : m.sender === "HUMAN"
+                  : isHuman
                   ? "bg-[#1E293B] text-white rounded-tr-xs"
                   : isWhatsApp
                   ? "bg-[#25D366] text-white font-semibold rounded-tr-xs"
@@ -86,7 +101,7 @@ export function MessageList({
                 >
                   <img
                     src={m.mediaUrl}
-                    alt="Attached media"
+                    alt={displayName || "Attached media"}
                     className="max-h-64 w-full object-cover rounded-xl transition-transform duration-200 group-hover:scale-[1.02]"
                     loading="lazy"
                   />
@@ -94,7 +109,7 @@ export function MessageList({
               )}
 
               {/* PDF / Document Card */}
-              {hasMedia && isPdf && (
+              {hasMedia && (isPdf || isOtherFile) && (
                 <a
                   href={m.mediaUrl}
                   target="_blank"
@@ -105,18 +120,23 @@ export function MessageList({
                       ? "bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800"
                       : "bg-white/10 hover:bg-white/15 border-white/20 text-white"
                   )}
-                  title="পিডিএফ দেখতে বা ডাউনলোড করতে ক্লিক করুন"
+                  title="ফাইল দেখতে বা ডাউনলোড করতে ক্লিক করুন"
                 >
-                  <div className="w-9 h-9 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center shrink-0">
+                  <div
+                    className={cn(
+                      "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                      isPdf ? "bg-red-500/10 text-red-500" : "bg-blue-500/10 text-blue-500"
+                    )}
+                  >
                     <FileText className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <p className="truncate text-xs font-bold leading-tight">
-                      {m.fileName || (m.text?.startsWith("[Document:") ? m.text.replace("[Document:", "").replace("]", "").trim() : "PDF Document")}
+                      {displayName}
                     </p>
                     <span className="text-[10px] opacity-75 inline-flex items-center gap-1 mt-0.5">
                       <Download className="w-2.5 h-2.5" />
-                      <span>পিডিএফ দেখুন / ডাউনলোড</span>
+                      <span>{isPdf ? "পিডিএফ দেখুন / ডাউনলোড" : "ফাইল দেখুন / ডাউনলোড"}</span>
                     </span>
                   </div>
                   <ExternalLink className="w-3.5 h-3.5 opacity-60 shrink-0" />
@@ -131,7 +151,7 @@ export function MessageList({
 
             <div className="flex items-center gap-1.5 mt-1 text-[10px] text-[#64748B]">
               <span>
-                {m.sender === "AI" ? "⚡ AI" : m.sender === "HUMAN" ? "👤 Agent" : "Customer"}
+                {isAI ? "⚡ AI" : isHuman ? "👤 Agent" : "Customer"}
               </span>
               <span>•</span>
               <span>{m.time}</span>

@@ -14,7 +14,7 @@ export function startMessageWorker() {
   const worker = new Worker<ProcessMessageJobPayload>(
     "incoming-messages",
     async (job: Job<ProcessMessageJobPayload>) => {
-      const { pageId, senderPsid, mid, text, mediaType, mediaUrl, timestamp } = job.data;
+      const { pageId, senderPsid, mid, text, mediaType, mediaUrl, fileName, timestamp } = job.data;
 
       console.log(`🤖 Processing message job [${job.id}] for Customer [${senderPsid}] on Page [${pageId}]`);
 
@@ -135,6 +135,7 @@ export function startMessageWorker() {
                 content: text,
                 mediaType,
                 mediaUrl,
+                fileName: fileName || undefined,
                 status: "DELIVERED",
               },
             });
@@ -164,6 +165,7 @@ export function startMessageWorker() {
             content: text,
             mediaType,
             mediaUrl,
+            fileName: fileName || undefined,
             status: "DELIVERED",
           },
         });

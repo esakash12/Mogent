@@ -14,7 +14,7 @@ import { toast } from "@/lib/toast";
 
 export interface Message {
   id: string;
-  sender: "CUSTOMER" | "AI" | "HUMAN";
+  sender: "CUSTOMER" | "AI" | "HUMAN" | "HUMAN_AGENT";
   text: string;
   time: string;
   mediaType?: "TEXT" | "IMAGE" | "FILE" | string;
@@ -313,6 +313,26 @@ export function useInbox() {
       })
       .catch((err) => console.error("Failed to load messages:", err))
       .finally(() => setMessagesLoading(false));
+
+    // Active conversation background polling every 3.5s
+    const activePoll = setInterval(() => {
+      if (typeof document !== "undefined" && !document.hidden && selectedId) {
+        fetchMessages(selectedId)
+          .then((msgs) => {
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              setMessages((prev) => {
+                if (prev.length !== msgs.length || msgs[msgs.length - 1]?.id !== prev[prev.length - 1]?.id) {
+                  return msgs;
+                }
+                return prev;
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    }, 3500);
+
+    return () => clearInterval(activePoll);
   }, [selectedId]);
 
   useEffect(() => {
@@ -340,7 +360,7 @@ export function useInbox() {
 
     const optimisticMsg: Message = {
       id: Date.now().toString(),
-      sender: "HUMAN",
+      sender: "HUMAN_AGENT",
       text: fallbackText,
       mediaType: attachment?.mediaType || "TEXT",
       mediaUrl: attachment?.mediaUrl,
@@ -354,7 +374,7 @@ export function useInbox() {
       const res = await apiSendMessage(selectedId, textToSend, attachment);
       if (res?.success && res.data) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === optimisticMsg.id ? { ...m, id: res.data.id } : m))
+          prev.map((m) => (m.id === optimisticMsg.id ? { ...m, ...res.data } : m))
         );
       }
     } catch (err) {

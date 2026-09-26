@@ -24,6 +24,8 @@ import { createRateLimiter } from "./middleware/rate-limiter";
 import { AiProxyClient } from "./ai-client";
 import { prisma } from "@mogent/database";
 import { redisConnection } from "./redis";
+import fs from "fs";
+import path from "path";
 
 const app = new Hono();
 
@@ -134,6 +136,38 @@ app.route("/api/campaigns", broadcastsRouter);
 app.route("/api/upload", uploadRouter);
 app.route("/api/comments", commentsRouter);
 
+// Public Static Media Handler for Local Fallback Storage
+app.get("/uploads/*", async (c) => {
+  const relPath = c.req.path.replace(/^\/uploads\//, "");
+  const safePath = path.normalize(relPath).replace(/^(\.\.[\/\\])+/, "");
+  const fullPath = path.join(process.cwd(), "uploads", safePath);
+
+  if (!fs.existsSync(fullPath)) {
+    return c.text("File not found", 404);
+  }
+
+  const ext = path.extname(fullPath).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".mp3": "audio/mpeg",
+    ".mp4": "video/mp4",
+  };
+  const mimeType = mimeMap[ext] || "application/octet-stream";
+
+  const fileData = fs.readFileSync(fullPath);
+  return c.body(fileData, 200, {
+    "Content-Type": mimeType,
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "public, max-age=31536000, immutable",
+  });
+});
+
 // Mount webhooks on both /webhook and /api/webhook for universal support
 app.route("/webhook", webhookRouter);
 app.route("/api/webhook", webhookRouter);
@@ -145,10 +179,69 @@ async function syncDatabaseSchema() {
   try {
     console.log("🔄 Ensuring PostgreSQL database schema & tables are up to date...");
 
-    // 1. Add missing columns to payment_transactions safely
+    // 1. Add missing columns safely across tables (Self-healing schema migration)
     await prisma.$executeRawUnsafe(`
       DO $$ 
       BEGIN 
+        -- Messages table: Media filenames and file sizes
+        BEGIN
+          ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "fileName" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "fileSize" INTEGER;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+
+        -- Workspaces table: WhatsApp Cloud API credentials and settings
+        BEGIN
+          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppPhoneNumberId" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppWabaId" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppAccessToken" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppAutoReply" BOOLEAN DEFAULT true;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppSystemPrompt" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+
+        -- Customers table: Multi-tenant workspace reference and channel
+        BEGIN
+          ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+
+        -- Conversations table: Channel (MESSENGER / WHATSAPP)
+        BEGIN
+          ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+
+        -- Payment transactions table: Coupons & discounts
         BEGIN
           ALTER TABLE "payment_transactions" ADD COLUMN IF NOT EXISTS "couponCode" TEXT;
         EXCEPTION
@@ -159,23 +252,10 @@ async function syncDatabaseSchema() {
         EXCEPTION
           WHEN others THEN NULL;
         END;
-        BEGIN
-          ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
-        EXCEPTION
-          WHEN others THEN NULL;
-        END;
-        BEGIN
-          ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
-        EXCEPTION
-          WHEN others THEN NULL;
-        END;
+
+        -- Escalation rules table: Hit tracking
         BEGIN
           ALTER TABLE "escalation_rules" ADD COLUMN IF NOT EXISTS "hitsCount" INTEGER DEFAULT 0;
-        EXCEPTION
-          WHEN others THEN NULL;
-        END;
-        BEGIN
-          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppSystemPrompt" TEXT;
         EXCEPTION
           WHEN others THEN NULL;
         END;
@@ -225,21 +305,33 @@ async function syncDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS "idx_messages_conversation_created" ON "messages"("conversationId", "createdAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_customers_page_updated" ON "customers"("facebookPageId", "updatedAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_customers_phone" ON "customers"("phoneNumber");
+      CREATE INDEX IF NOT EXISTS "idx_customers_workspace" ON "customers"("workspaceId");
       CREATE INDEX IF NOT EXISTS "idx_orders_customer_created" ON "orders"("customerId", "createdAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_orders_status" ON "orders"("status");
       CREATE INDEX IF NOT EXISTS "idx_products_workspace_stock" ON "products"("workspaceId", "inStock");
       CREATE INDEX IF NOT EXISTS "idx_facebook_pages_workspace" ON "facebook_pages"("workspaceId");
     `);
 
-    // Auto-promote any workspace owner to permanent isAdmin in PostgreSQL
+    // Auto-promote workspace owners and configured/fallback admin emails to isAdmin
     try {
-      await prisma.$executeRawUnsafe(`
-        UPDATE "users" 
-        SET "isAdmin" = true 
-        WHERE "id" IN (
-          SELECT "userId" FROM "workspace_members" WHERE "role" = 'OWNER'
-        ) OR "email" ILIKE '%admin%' OR "email" = 'shohag@burhan.com';
-      `);
+      const explicitAdmin = process.env.ADMIN_EMAIL || config.adminEmail;
+      const fallbackAdmins = ["shohag@burhan.com", "admin@mogent.tech"];
+      const adminEmails = Array.from(
+        new Set([
+          ...(explicitAdmin ? [explicitAdmin.toLowerCase().trim()] : []),
+          ...fallbackAdmins,
+        ])
+      );
+
+      await prisma.user.updateMany({
+        where: {
+          OR: [
+            { memberships: { some: { role: "OWNER" } } },
+            { email: { in: adminEmails } },
+          ],
+        },
+        data: { isAdmin: true },
+      });
     } catch {}
 
     // 5. Auto-hydrate Redis & runtime config from PostgreSQL system_settings
@@ -282,7 +374,7 @@ async function syncDatabaseSchema() {
 // -----------------------------------------------------------------------------
 async function syncTelegramWebhook() {
   try {
-    let token = config.telegram.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+    let token = process.env.TELEGRAM_BOT_TOKEN || config.telegram.botToken || "";
     try {
       const redisVal = await redisConnection.get("mogent:telegram_master_config");
       if (redisVal) {
@@ -291,9 +383,10 @@ async function syncTelegramWebhook() {
       }
     } catch {}
 
-    if (token && token.trim() && !token.includes("8784653620")) {
+    if (token && token.trim()) {
       console.log("🤖 Ensuring Telegram Master Bot Webhook is active...");
-      const webhookUrl = "https://api.mogent.tech/webhook/telegram";
+      const apiBaseUrl = process.env.API_BASE_URL || "https://api.mogent.tech";
+      const webhookUrl = `${apiBaseUrl}/webhook/telegram`;
       const hookRes = await fetch(
         `https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}&drop_pending_updates=true`,
         { signal: AbortSignal.timeout(5000) }

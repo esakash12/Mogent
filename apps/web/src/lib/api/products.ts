@@ -40,29 +40,14 @@ export async function importProductFromFeed(feedUrl: string) {
 export async function uploadImageFile(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
     const formData = new FormData();
-    formData.append("image", file);
+    formData.append("file", file);
+    formData.append("folder", "products");
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("mogent_auth_token") : null;
-    const workspaceRaw = typeof window !== "undefined" ? localStorage.getItem("mogent_workspace") : null;
-    let workspaceId = "";
-    if (workspaceRaw) {
-      try {
-        workspaceId = workspaceRaw.startsWith("{") ? JSON.parse(workspaceRaw)?.id || "" : workspaceRaw;
-      } catch {}
+    const res = await api.post<{ url: string; key: string }>("/api/upload", formData);
+    if (res?.success && (res.data?.url || (res as any).url)) {
+      return { success: true, url: res.data?.url || (res as any).url };
     }
-
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    if (workspaceId) headers["x-workspace-id"] = workspaceId;
-
-    const res = await fetch(`${API_BASE}/api/products/upload-image`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
-
-    const json = await safeFetchJson(res);
-    return json.success ? { success: true, url: json.url } : { success: false, error: json.error };
+    return { success: false, error: res?.error || "Failed to upload image." };
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to upload image." };
   }

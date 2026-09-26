@@ -151,14 +151,19 @@ model Workspace {
   knowledgeBases  KnowledgeBase[]
   escalationRules EscalationRule[]
   telegramConfigs TelegramConfig[]
+  customers       Customer[]
 
   // WhatsApp & Contact Sharing Protocol
-  whatsAppMode         String   @default("ON_DEMAND") // ON_DEMAND, ALWAYS, DISABLED
-  whatsAppNumber       String?  @default("+8801819234567")
-  hotlineNumber        String?  @default("09612345678")
-  officeAddress        String?  @db.Text
-  whatsAppPrefillText  String?  @db.Text
-  whatsAppSystemPrompt String?  @db.Text
+  whatsAppMode          String   @default("ON_DEMAND") // ON_DEMAND, ALWAYS, DISABLED
+  whatsAppNumber        String?  @default("+8801819234567")
+  whatsAppPhoneNumberId String?
+  whatsAppWabaId        String?
+  whatsAppAccessToken   String?  @db.Text
+  whatsAppAutoReply     Boolean  @default(true)
+  hotlineNumber         String?  @default("09612345678")
+  officeAddress         String?  @db.Text
+  whatsAppPrefillText   String?  @db.Text
+  whatsAppSystemPrompt  String?  @db.Text
 
   // Billing & Subscriptions
   plan                 String   @default("FREE") // FREE, STARTER, PRO, ENTERPRISE
@@ -261,6 +266,8 @@ model Customer {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  workspaceId   String?
+  workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   facebookPage  FacebookPage   @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   orders        Order[]
@@ -268,6 +275,7 @@ model Customer {
   @@unique([facebookPageId, psid])
   @@index([phoneNumber])
   @@index([facebookPageId, updatedAt])
+  @@index([workspaceId])
   @@map("customers")
 }
 
@@ -316,6 +324,8 @@ model Message {
   content        String?       @db.Text
   mediaType      MediaType     @default(TEXT)
   mediaUrl       String?       @db.Text
+  fileName       String?       @db.Text
+  fileSize       Int?
   
   // AI & Thinking Metadata
   thinkingProcess String?      @db.Text // CoT / <thinking> tags from Gemini
