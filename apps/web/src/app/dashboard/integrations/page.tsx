@@ -119,15 +119,16 @@ export default function IntegrationsPage() {
         setTelegramData(tgRes.data);
       }
 
-      if (waRes?.success && waRes.data && (waRes.data.phoneNumberId || waRes.data.accessToken)) {
+      const waConfigData = waRes?.data || waRes;
+      if (waConfigData && (waConfigData.phoneNumberId || waConfigData.accessToken)) {
         setWhatsAppConfig((prev) => ({
           ...prev,
-          ...waRes.data,
-          isConnected: Boolean(waRes.data.phoneNumberId && waRes.data.accessToken),
+          ...waConfigData,
+          isConnected: Boolean(waConfigData.phoneNumberId && waConfigData.accessToken),
         }));
         try {
           if (typeof window !== "undefined") {
-            localStorage.setItem("mogent_whatsapp_config", JSON.stringify(waRes.data));
+            localStorage.setItem("mogent_whatsapp_config", JSON.stringify(waConfigData));
           }
         } catch {}
       }

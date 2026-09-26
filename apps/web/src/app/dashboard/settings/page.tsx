@@ -93,11 +93,17 @@ export default function SettingsSectorPage() {
         }
       } catch {}
 
-      const activeConfig = (waData?.success && waData.data && (waData.data.phoneNumberId || waData.data.accessToken))
-        ? waData.data
+      const serverConfig = waData?.data || waData;
+      const activeConfig = (serverConfig && (serverConfig.phoneNumberId || serverConfig.accessToken))
+        ? serverConfig
         : cachedConfig;
 
       if (activeConfig) {
+        if (typeof window !== "undefined" && serverConfig && (serverConfig.phoneNumberId || serverConfig.accessToken)) {
+          try {
+            localStorage.setItem("mogent_whatsapp_config", JSON.stringify(serverConfig));
+          } catch {}
+        }
         setWhatsAppConfig({
           phoneNumber: activeConfig.phoneNumber || "",
           phoneNumberId: activeConfig.phoneNumberId || "",
