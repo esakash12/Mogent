@@ -336,8 +336,29 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
             try {
               const wsId = page.workspaceId || "default";
               let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
-              if (!raw) raw = await redisConnection.get("mogent:whatsapp_config:default");
-              const saved = raw ? JSON.parse(raw) : null;
+              if (!raw && wsId !== "default") {
+                raw = await redisConnection.get("mogent:whatsapp_config:default");
+              }
+              let saved = raw ? JSON.parse(raw) : null;
+
+              // Fallback: If not found directly under wsId, auto-scan existing WhatsApp configs in Redis
+              if (!saved?.phoneNumberId || !saved?.accessToken) {
+                try {
+                  const keys = await redisConnection.keys("mogent:whatsapp_config:*");
+                  for (const k of keys) {
+                    if (k.endsWith(":default")) continue;
+                    const candRaw = await redisConnection.get(k);
+                    if (candRaw) {
+                      const cand = JSON.parse(candRaw);
+                      if (cand?.phoneNumberId && cand?.accessToken) {
+                        saved = cand;
+                        break;
+                      }
+                    }
+                  }
+                } catch {}
+              }
+
               if (saved?.phoneNumberId && saved?.accessToken) {
                 const cleanPhone = senderPsid.replace("wa_", "").replace(/\D/g, "");
                 await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {

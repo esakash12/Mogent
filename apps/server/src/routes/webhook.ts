@@ -313,6 +313,104 @@ webhookRouter.post("/telegram", async (c) => {
 // 3. WHATSAPP CLOUD API / TWILIO WEBHOOKS
 // -----------------------------------------------------------------------------
 
+// Helper to resolve target workspace for incoming WhatsApp webhook events
+async function resolveWhatsAppWorkspace(
+  phoneNumberId?: string,
+  displayPhone?: string,
+  wabaId?: string
+): Promise<string | null> {
+  const cleanPhone = displayPhone ? displayPhone.replace(/\D/g, "") : "";
+
+  // 1. Check Redis reverse lookup caches
+  if (phoneNumberId) {
+    try {
+      const cached = await redisConnection.get(`mogent:wa_phone_id_to_ws:${phoneNumberId}`);
+      if (cached) return cached;
+    } catch {}
+  }
+
+  if (cleanPhone) {
+    try {
+      const cached = await redisConnection.get(`mogent:wa_phone_to_ws:${cleanPhone}`);
+      if (cached) return cached;
+    } catch {}
+  }
+
+  // 2. Auto-scan existing Redis whatsapp configs (Auto-resolves already configured workspaces)
+  try {
+    const keys = await redisConnection.keys("mogent:whatsapp_config:*");
+    for (const key of keys) {
+      if (key.endsWith(":default")) continue;
+      const raw = await redisConnection.get(key);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          const wsId = key.replace("mogent:whatsapp_config:", "");
+          const parsedPhone = (parsed.phoneNumber || "").replace(/\D/g, "");
+          const parsedPhoneId = parsed.phoneNumberId;
+          const parsedWabaId = parsed.wabaId;
+
+          const matchPhoneId = Boolean(phoneNumberId && parsedPhoneId && parsedPhoneId === phoneNumberId);
+          const matchPhone = Boolean(
+            cleanPhone &&
+            parsedPhone &&
+            (cleanPhone === parsedPhone || cleanPhone.endsWith(parsedPhone) || parsedPhone.endsWith(cleanPhone))
+          );
+          const matchWaba = Boolean(wabaId && parsedWabaId && parsedWabaId === wabaId);
+
+          if (matchPhoneId || matchPhone || matchWaba) {
+            // Cache reverse mappings for 7 days for fast future lookups
+            if (phoneNumberId) {
+              await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, wsId, "EX", 7 * 86400);
+            }
+            if (cleanPhone) {
+              await redisConnection.set(`mogent:wa_phone_to_ws:${cleanPhone}`, wsId, "EX", 7 * 86400);
+            }
+            return wsId;
+          }
+        } catch {}
+      }
+    }
+  } catch (scanErr) {
+    console.warn("Failed scanning WhatsApp configs in Redis:", scanErr);
+  }
+
+  // 3. Check Workspace DB records by whatsAppNumber
+  if (cleanPhone) {
+    try {
+      const last10 = cleanPhone.slice(-10);
+      const ws = await prisma.workspace.findFirst({
+        where: {
+          whatsAppNumber: { contains: last10 },
+        },
+        select: { id: true },
+      });
+      if (ws) {
+        if (phoneNumberId) {
+          await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, ws.id, "EX", 7 * 86400);
+        }
+        if (cleanPhone) {
+          await redisConnection.set(`mogent:wa_phone_to_ws:${cleanPhone}`, ws.id, "EX", 7 * 86400);
+        }
+        return ws.id;
+      }
+    } catch {}
+  }
+
+  // 4. Safe single-tenant fallback to first workspace in DB
+  try {
+    const ws = await prisma.workspace.findFirst({ select: { id: true } });
+    if (ws) {
+      if (phoneNumberId) {
+        await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, ws.id, "EX", 7 * 86400);
+      }
+      return ws.id;
+    }
+  } catch {}
+
+  return null;
+}
+
 // Verification Handshake
 webhookRouter.get("/whatsapp", handleVerify);
 
@@ -324,6 +422,7 @@ webhookRouter.post("/whatsapp", async (c) => {
     // WhatsApp Cloud API payload format
     if (body.object === "whatsapp_business_account" || body.entry) {
       for (const entry of body.entry || []) {
+        const wabaId = entry.id;
         for (const change of entry.changes || []) {
           const value = change.value;
           if (value?.messages) {
@@ -335,32 +434,61 @@ webhookRouter.post("/whatsapp", async (c) => {
               }
             });
 
+            const phoneNumberId = value.metadata?.phone_number_id;
+            const displayPhone = value.metadata?.display_phone_number;
+            const cleanDisplayPhone = displayPhone ? displayPhone.replace(/\D/g, "") : "";
+
+            // Strictly resolve the exact workspace for this WhatsApp phone number
+            const targetWorkspaceId = await resolveWhatsAppWorkspace(
+              phoneNumberId,
+              cleanDisplayPhone,
+              wabaId
+            );
+
+            if (!targetWorkspaceId) {
+              console.warn("⚠️ [WhatsApp Webhook] No matching workspace found for WhatsApp phone:", cleanDisplayPhone || phoneNumberId);
+              continue;
+            }
+
+            // Find or create dedicated page strictly scoped to targetWorkspaceId
+            let page = await prisma.facebookPage.findFirst({
+              where: {
+                workspaceId: targetWorkspaceId,
+                OR: [
+                  { category: "WhatsApp" },
+                  { name: { contains: "WhatsApp", mode: "insensitive" } },
+                ],
+              },
+            });
+
+            if (!page) {
+              page = await prisma.facebookPage.findFirst({
+                where: { workspaceId: targetWorkspaceId },
+              });
+            }
+
+            if (!page) {
+              page = await prisma.facebookPage.create({
+                data: {
+                  workspaceId: targetWorkspaceId,
+                  name: "WhatsApp Official",
+                  pageId: `wa_page_${targetWorkspaceId}_${phoneNumberId || Date.now()}`,
+                  encryptedAccessToken: "direct_whatsapp",
+                  tokenIv: "000000000000000000000000",
+                  tokenTag: "00000000000000000000000000000000",
+                  category: "WhatsApp",
+                  verifyToken: "mogent_fb_verify_token_secure",
+                  aiMode: AiMode.AUTO,
+                  systemPrompt: "You are a professional WhatsApp AI assistant.",
+                },
+              });
+            }
+
             for (const msg of value.messages) {
               const fromPhone = msg.from; // e.g. "8801700000000"
               const text = msg.text?.body || msg.caption || "";
               const contactName = contactMap[fromPhone] || `+${fromPhone}`;
               const targetPsid = `wa_${fromPhone}`;
-
-              // Find first available page or auto-anchor to workspace
-              let page = await prisma.facebookPage.findFirst();
-              if (!page) {
-                const firstWorkspace = await prisma.workspace.findFirst();
-                if (firstWorkspace) {
-                  page = await prisma.facebookPage.create({
-                    data: {
-                      workspaceId: firstWorkspace.id,
-                      name: "WhatsApp Official",
-                      pageId: `wa_page_${Date.now()}`,
-                      encryptedAccessToken: "direct_whatsapp",
-                      tokenIv: "000000000000000000000000",
-                      tokenTag: "00000000000000000000000000000000",
-                      category: "WhatsApp",
-                      verifyToken: "mogent_fb_verify_token_secure",
-                      aiMode: AiMode.AUTO,
-                    },
-                  });
-                }
-              }
 
               if (page && text) {
                 let customer = await prisma.customer.findFirst({

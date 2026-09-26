@@ -1,7 +1,7 @@
 import { api } from "./client";
 
 export async function fetchConversations(
-  options?: string | { pageId?: string; channel?: string; limit?: number; search?: string; all?: boolean }
+  options?: string | { pageId?: string; channel?: string; limit?: number; skip?: number; search?: string; all?: boolean }
 ) {
   let queryStr = "";
   if (typeof options === "string") {
@@ -11,6 +11,7 @@ export async function fetchConversations(
     if (options.pageId && options.pageId !== "ALL") params.append("pageId", options.pageId);
     if (options.channel && options.channel !== "ALL") params.append("channel", options.channel);
     if (options.limit) params.append("limit", options.limit.toString());
+    if (options.skip !== undefined && options.skip !== null) params.append("skip", options.skip.toString());
     if (options.search) params.append("search", options.search);
     if (options.all) params.append("all", "true");
     queryStr = params.toString();

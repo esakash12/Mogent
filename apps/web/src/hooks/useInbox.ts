@@ -55,6 +55,36 @@ export function useInbox() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  // Sliding Window (30 items per chunk, max 60 in memory)
+  const [windowOffset, setWindowOffset] = useState(0);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [newIncomingCount, setNewIncomingCount] = useState(0);
+
+  const windowOffsetRef = useRef(0);
+  const hasMoreOlderRef = useRef(true);
+  const isLoadingMoreRef = useRef(false);
+  const isScrolledDownRef = useRef(false);
+  const conversationsRef = useRef<Conversation[]>([]);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep refs in sync
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  useEffect(() => {
+    windowOffsetRef.current = windowOffset;
+  }, [windowOffset]);
+
+  useEffect(() => {
+    hasMoreOlderRef.current = hasMoreOlder;
+  }, [hasMoreOlder]);
+
+  useEffect(() => {
+    isLoadingMoreRef.current = isLoadingMore;
+  }, [isLoadingMore]);
+
   // WhatsApp New Chat Modal State
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [isStartingWhatsApp, setIsStartingWhatsApp] = useState(false);
@@ -82,12 +112,38 @@ export function useInbox() {
     if (isFetchingRef.current) return;
     if (typeof document !== "undefined" && document.hidden && isBackground) return;
 
+    // Background polling while scrolled down or viewing older window:
+    // Protect user view: DO NOT reset scroll or overwrite list! Count new arrivals instead.
+    if (isBackground && (windowOffsetRef.current > 0 || isScrolledDownRef.current)) {
+      try {
+        const latest = await fetchConversations({ limit: 5, skip: 0 });
+        if (Array.isArray(latest) && latest.length > 0) {
+          const currentTopId = conversationsRef.current[0]?.id;
+          const currentTopLastTime = conversationsRef.current[0]?.lastTime;
+
+          if (currentTopId && latest[0]?.id !== currentTopId) {
+            const newCount = latest.filter((item) => !conversationsRef.current.some((c) => c.id === item.id)).length;
+            setNewIncomingCount((prev) => Math.max(prev + (newCount || 1), 1));
+          } else if (currentTopId && latest[0]?.id === currentTopId && latest[0]?.lastTime !== currentTopLastTime) {
+            setNewIncomingCount((prev) => (prev === 0 ? 1 : prev));
+          }
+        }
+      } catch {}
+      return;
+    }
+
     isFetchingRef.current = true;
     if (!isBackground) setLoading(true);
     try {
-      const data = await fetchConversations({ limit: 40 });
+      const data = await fetchConversations({ limit: 30, skip: 0 });
       if (Array.isArray(data)) {
         setConversations(data);
+        conversationsRef.current = data;
+        setWindowOffset(0);
+        windowOffsetRef.current = 0;
+        setHasMoreOlder(data.length >= 30);
+        hasMoreOlderRef.current = data.length >= 30;
+        setNewIncomingCount(0);
         if (data.length > 0) {
           if (typeof window !== "undefined" && window.innerWidth >= 768) {
             setSelectedId((prev) => (prev && data.some((c) => c.id === prev) ? prev : data[0].id));
@@ -101,6 +157,110 @@ export function useInbox() {
       if (!isBackground) setLoading(false);
     }
   }, []);
+
+  const loadOlderWindow = useCallback(async () => {
+    if (isLoadingMoreRef.current || !hasMoreOlderRef.current) return;
+
+    isLoadingMoreRef.current = true;
+    setIsLoadingMore(true);
+
+    try {
+      const currentOffset = windowOffsetRef.current;
+      const currentCount = conversationsRef.current.length;
+      const nextSkip = currentOffset + currentCount;
+
+      const olderData = await fetchConversations({ limit: 30, skip: nextSkip });
+      if (Array.isArray(olderData)) {
+        if (olderData.length === 0) {
+          setHasMoreOlder(false);
+          hasMoreOlderRef.current = false;
+        } else {
+          // Sliding window: maintain max 60 items in memory/DOM
+          if (conversationsRef.current.length >= 60) {
+            const newOffset = currentOffset + 30;
+            const updated = [...conversationsRef.current.slice(30), ...olderData];
+            setConversations(updated);
+            conversationsRef.current = updated;
+            setWindowOffset(newOffset);
+            windowOffsetRef.current = newOffset;
+          } else {
+            const updated = [...conversationsRef.current, ...olderData];
+            setConversations(updated);
+            conversationsRef.current = updated;
+          }
+
+          if (olderData.length < 30) {
+            setHasMoreOlder(false);
+            hasMoreOlderRef.current = false;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load older conversations:", err);
+    } finally {
+      isLoadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
+  }, []);
+
+  const loadNewerWindow = useCallback(async () => {
+    if (isLoadingMoreRef.current || windowOffsetRef.current <= 0) return;
+
+    isLoadingMoreRef.current = true;
+    setIsLoadingMore(true);
+
+    try {
+      const currentOffset = windowOffsetRef.current;
+      const prevSkip = Math.max(0, currentOffset - 30);
+
+      const newerData = await fetchConversations({ limit: 30, skip: prevSkip });
+      if (Array.isArray(newerData) && newerData.length > 0) {
+        const updated = [...newerData, ...conversationsRef.current.slice(0, 30)];
+        setConversations(updated);
+        conversationsRef.current = updated;
+        setWindowOffset(prevSkip);
+        windowOffsetRef.current = prevSkip;
+        setHasMoreOlder(true);
+        hasMoreOlderRef.current = true;
+      }
+    } catch (err) {
+      console.error("Failed to load newer conversations:", err);
+    } finally {
+      isLoadingMoreRef.current = false;
+      setIsLoadingMore(false);
+    }
+  }, []);
+
+  const jumpToTopLatest = useCallback(async () => {
+    setNewIncomingCount(0);
+    isScrolledDownRef.current = false;
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    await loadData(false);
+  }, [loadData]);
+
+  const handleListScroll = useCallback(() => {
+    const el = listContainerRef.current;
+    if (!el) return;
+
+    const isDown = el.scrollTop > 80;
+    isScrolledDownRef.current = isDown;
+
+    if (el.scrollTop <= 10 && windowOffsetRef.current === 0) {
+      setNewIncomingCount(0);
+    }
+
+    // Detect scroll near bottom for loading older items
+    if (!isLoadingMoreRef.current && hasMoreOlderRef.current && el.scrollTop + el.clientHeight >= el.scrollHeight - 120) {
+      loadOlderWindow();
+    }
+
+    // Detect scroll near top when offset > 0 for loading newer items
+    if (!isLoadingMoreRef.current && windowOffsetRef.current > 0 && el.scrollTop <= 40) {
+      loadNewerWindow();
+    }
+  }, [loadOlderWindow, loadNewerWindow]);
 
   useEffect(() => {
     loadData();
@@ -345,6 +505,14 @@ export function useInbox() {
 
   const handleSwitchChannel = (newChannel: ChannelTab) => {
     setChannelTab(newChannel);
+    setNewIncomingCount(0);
+    setWindowOffset(0);
+    windowOffsetRef.current = 0;
+    setHasMoreOlder(true);
+    hasMoreOlderRef.current = true;
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = 0;
+    }
     const targetList = newChannel === "MESSENGER" ? messengerConversations : whatsAppConversations;
     if (targetList.length > 0) {
       setSelectedId(targetList[0].id);
@@ -378,6 +546,14 @@ export function useInbox() {
     handleToggleHumanControl,
     handleMarkSaleCompleted,
     handleSwitchChannel,
+    // Sliding Window & Floating Jump
+    windowOffset,
+    hasMoreOlder,
+    isLoadingMore,
+    newIncomingCount,
+    listContainerRef,
+    handleListScroll,
+    jumpToTopLatest,
     // WhatsApp modal
     showWhatsAppModal,
     setShowWhatsAppModal,

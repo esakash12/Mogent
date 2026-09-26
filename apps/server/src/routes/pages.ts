@@ -402,6 +402,25 @@ pagesRouter.post("/whatsapp/config", async (c) => {
       JSON.stringify(configData)
     );
 
+    // Save reverse lookups in Redis for incoming webhook routing
+    if (configData.phoneNumberId) {
+      await redisConnection.set(
+        `mogent:wa_phone_id_to_ws:${configData.phoneNumberId}`,
+        workspaceId,
+        "EX",
+        30 * 86400
+      );
+    }
+    const cleanDigits = configData.phoneNumber.replace(/\D/g, "");
+    if (cleanDigits) {
+      await redisConnection.set(
+        `mogent:wa_phone_to_ws:${cleanDigits}`,
+        workspaceId,
+        "EX",
+        30 * 86400
+      );
+    }
+
     try {
       await prisma.workspace.update({
         where: { id: workspaceId },
@@ -410,6 +429,37 @@ pagesRouter.post("/whatsapp/config", async (c) => {
         },
       });
     } catch {}
+
+    // Auto-create or ensure dedicated WhatsApp facebookPage exists for this workspace
+    try {
+      const existingPage = await prisma.facebookPage.findFirst({
+        where: {
+          workspaceId,
+          OR: [
+            { category: "WhatsApp" },
+            { name: { contains: "WhatsApp", mode: "insensitive" } },
+          ],
+        },
+      });
+      if (!existingPage) {
+        await prisma.facebookPage.create({
+          data: {
+            workspaceId,
+            name: "WhatsApp Official",
+            pageId: `wa_page_${workspaceId}_${configData.phoneNumberId || Date.now()}`,
+            encryptedAccessToken: "direct_whatsapp",
+            tokenIv: "000000000000000000000000",
+            tokenTag: "00000000000000000000000000000000",
+            category: "WhatsApp",
+            verifyToken: "mogent_fb_verify_token_secure",
+            aiMode: AiMode.AUTO,
+            systemPrompt: "You are a professional WhatsApp AI assistant.",
+          },
+        });
+      }
+    } catch (pageErr: any) {
+      console.warn("Auto-create WhatsApp facebookPage warning:", pageErr.message);
+    }
 
     return c.json({
       success: true,
@@ -491,7 +541,15 @@ pagesRouter.post("/whatsapp/test", async (c) => {
     // Also record the test message in DB so it immediately appears in the Mogent Inbox
     try {
       const page = (workspaceId && workspaceId !== "default"
-        ? await prisma.facebookPage.findFirst({ where: { workspaceId } })
+        ? await prisma.facebookPage.findFirst({
+            where: {
+              workspaceId,
+              OR: [
+                { category: "WhatsApp" },
+                { name: { contains: "WhatsApp", mode: "insensitive" } },
+              ],
+            },
+          }) || await prisma.facebookPage.findFirst({ where: { workspaceId } })
         : null) || await prisma.facebookPage.findFirst();
 
       if (page) {

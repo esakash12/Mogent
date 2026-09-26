@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Loader2, Send, Phone, Facebook, Plus } from "lucide-react";
+import { Search, Loader2, Send, Phone, Facebook, Plus, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useInbox, FilterTab } from "@/hooks/useInbox";
 import { ChannelTabs } from "@/components/inbox/ChannelTabs";
@@ -42,6 +42,14 @@ export default function LiveInboxPage() {
     handleToggleHumanControl,
     handleMarkSaleCompleted,
     handleSwitchChannel,
+    // Sliding Window & Floating Jump
+    windowOffset,
+    hasMoreOlder,
+    isLoadingMore,
+    newIncomingCount,
+    listContainerRef,
+    handleListScroll,
+    jumpToTopLatest,
     // WhatsApp modal
     showWhatsAppModal,
     setShowWhatsAppModal,
@@ -136,42 +144,78 @@ export default function LiveInboxPage() {
           </div>
         </div>
 
-        {/* Conversations Scrollable List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-[#F1F5F9] scrollbar-thin">
-          {loading ? (
-            <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 text-[#F59E0B] animate-spin" />
-              <span className="text-xs font-semibold text-[#64748B]">Loading chats...</span>
-            </div>
-          ) : filteredConversations.length > 0 ? (
-            filteredConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isSelected={conv.id === selectedId}
-                onSelect={setSelectedId}
-                onMarkSaleCompleted={handleMarkSaleCompleted}
-              />
-            ))
-          ) : (
-            <div className="p-8 text-center text-xs text-[#64748B] space-y-3">
-              <p>
-                {channelTab === "WHATSAPP"
-                  ? "কোনো হোয়াটসঅ্যাপ কনভারসেশন পাওয়া যায়নি।"
-                  : "কোনো মেসেঞ্জার কনভারসেশন পাওয়া যায়নি।"}
-              </p>
-              {channelTab === "WHATSAPP" && (
-                <button
-                  type="button"
-                  onClick={() => setShowWhatsAppModal(true)}
-                  className="px-4 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>নতুন হোয়াটসঅ্যাপ চ্যাট শুরু করুন</span>
-                </button>
-              )}
+        {/* Relative wrapper for Conversation List + Floating New Message Button */}
+        <div className="flex-1 relative overflow-hidden flex flex-col">
+          {/* Floating Pill: New Message notification & Jump-to-Top */}
+          {newIncomingCount > 0 && (
+            <div className="absolute top-3 left-0 right-0 z-30 flex justify-center pointer-events-none px-4">
+              <button
+                type="button"
+                onClick={jumpToTopLatest}
+                className="pointer-events-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#0F172A]/95 hover:bg-[#1E293B] text-white text-xs font-bold shadow-lg border border-slate-700 animate-bounce cursor-pointer transition-all hover:scale-105"
+              >
+                <ArrowUp className="w-3.5 h-3.5 text-[#F59E0B]" />
+                <span>নতুন মেসেজ এসেছে ({newIncomingCount}) • শীর্ষে যান</span>
+              </button>
             </div>
           )}
+
+          {/* Conversations Scrollable List with Sliding Window */}
+          <div
+            ref={listContainerRef}
+            onScroll={handleListScroll}
+            className="flex-1 overflow-y-auto divide-y divide-[#F1F5F9] scrollbar-thin"
+          >
+            {loading ? (
+              <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 text-[#F59E0B] animate-spin" />
+                <span className="text-xs font-semibold text-[#64748B]">Loading chats...</span>
+              </div>
+            ) : filteredConversations.length > 0 ? (
+              <>
+                {filteredConversations.map((conv) => (
+                  <ConversationItem
+                    key={conv.id}
+                    conv={conv}
+                    isSelected={conv.id === selectedId}
+                    onSelect={setSelectedId}
+                    onMarkSaleCompleted={handleMarkSaleCompleted}
+                  />
+                ))}
+
+                {/* Loading Older / Reached End Status */}
+                {isLoadingMore && (
+                  <div className="p-3 text-center text-xs text-[#64748B] flex items-center justify-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F59E0B]" />
+                    <span>আগের মেসেজ লোড হচ্ছে...</span>
+                  </div>
+                )}
+                {!hasMoreOlder && filteredConversations.length >= 30 && (
+                  <div className="p-2.5 text-center text-[11px] text-[#94A3B8]">
+                    সব পুরানো কনভারসেশন লোড সম্পন্ন
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="p-8 text-center text-xs text-[#64748B] space-y-3">
+                <p>
+                  {channelTab === "WHATSAPP"
+                    ? "কোনো হোয়াটসঅ্যাপ কনভারসেশন পাওয়া যায়নি।"
+                    : "কোনো মেসেঞ্জার কনভারসেশন পাওয়া যায়নি।"}
+                </p>
+                {channelTab === "WHATSAPP" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWhatsAppModal(true)}
+                    className="px-4 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>নতুন হোয়াটসঅ্যাপ চ্যাট শুরু করুন</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
