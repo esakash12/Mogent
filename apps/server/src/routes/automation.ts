@@ -4,26 +4,24 @@ import { prisma, EscalationReason } from "@mogent/database";
 import { redisConnection } from "../redis";
 import { telegramApi } from "../services/telegram-api";
 import { config } from "../config";
+import { authMiddleware } from "../middleware/auth";
 
 export const automationRouter = new Hono();
 
+// Enforce authenticated workspace access
+automationRouter.use("*", authMiddleware);
+
 // GET /api/automation/rules - List all rules
 automationRouter.get("/rules", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
+    if (!workspaceId) {
       return c.json({ success: true, data: [] });
     }
 
     const rules = await prisma.escalationRule.findMany({
-      where: { workspaceId: targetWorkspaceId },
+      where: { workspaceId },
       orderBy: { createdAt: "desc" },
     });
 
@@ -36,7 +34,7 @@ automationRouter.get("/rules", async (c) => {
         keywords: r.keywords,
         action: "TRANSFER_HUMAN",
         isActive: r.isActive,
-        hitsCount: 0,
+        hitsCount: (r as any).hitsCount ?? 0,
         createdAt: r.createdAt,
       })),
     });
@@ -47,7 +45,7 @@ automationRouter.get("/rules", async (c) => {
 
 // POST /api/automation/rules - Create a new rule
 automationRouter.post("/rules", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -57,23 +55,18 @@ automationRouter.post("/rules", async (c) => {
       return c.json({ success: false, error: "Rule name is required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
+    if (!workspaceId) {
       return c.json({ success: false, error: "No workspace found" }, 404);
     }
 
     const created = await prisma.escalationRule.create({
       data: {
-        workspaceId: targetWorkspaceId,
+        workspaceId,
         name: name.trim(),
         reason: (reason as EscalationReason) || EscalationReason.CUSTOM_KEYWORD,
         keywords: Array.isArray(keywords) ? keywords : [keywords].filter(Boolean),
         isActive: true,
+        hitsCount: 0,
       },
     });
 
@@ -86,10 +79,19 @@ automationRouter.post("/rules", async (c) => {
 // PATCH /api/automation/rules/:id - Toggle rule active state
 automationRouter.patch("/rules/:id", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
     const { isActive } = body;
+
+    const rule = await prisma.escalationRule.findUnique({ where: { id } });
+    if (!rule) {
+      return c.json({ success: false, error: "Rule not found" }, 404);
+    }
+    if (workspaceId && rule.workspaceId !== workspaceId) {
+      return c.json({ success: false, error: "Unauthorized access to rule" }, 403);
+    }
 
     const updated = await prisma.escalationRule.update({
       where: { id },
@@ -105,8 +107,17 @@ automationRouter.patch("/rules/:id", async (c) => {
 // DELETE /api/automation/rules/:id - Delete rule
 automationRouter.delete("/rules/:id", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
+    const rule = await prisma.escalationRule.findUnique({ where: { id } });
+    if (!rule) {
+      return c.json({ success: false, error: "Rule not found" }, 404);
+    }
+    if (workspaceId && rule.workspaceId !== workspaceId) {
+      return c.json({ success: false, error: "Unauthorized access to rule" }, 403);
+    }
+
     await prisma.escalationRule.delete({ where: { id } });
     return c.json({ success: true, message: "Rule deleted successfully" });
   } catch (error: any) {
@@ -120,6 +131,9 @@ automationRouter.delete("/rules/:id", async (c) => {
 
 // Helper function to resolve target workspace ID accurately from headers / JWT
 async function resolveWorkspaceId(c: any): Promise<string | null> {
+  const wsCtx = c.get?.("workspaceId");
+  if (wsCtx) return wsCtx;
+
   const workspaceHeader = c.req.header("x-workspace-id");
   if (workspaceHeader && workspaceHeader.trim()) {
     return workspaceHeader.trim();
@@ -139,10 +153,7 @@ async function resolveWorkspaceId(c: any): Promise<string | null> {
     } catch {}
   }
 
-  const defaultWs = await prisma.workspace.findFirst({
-    orderBy: { updatedAt: "desc" },
-  });
-  return defaultWs?.id || null;
+  return null;
 }
 
 // GET /api/automation/telegram - Get workspace telegram config and connection key

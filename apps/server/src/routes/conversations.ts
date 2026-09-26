@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { ConversationsController } from "../controllers/conversations.controller";
+import { authMiddleware } from "../middleware/auth";
 
 export const conversationsRouter = new Hono();
+
+// Enforce auth on conversations routes
+conversationsRouter.use("*", authMiddleware);
 
 // GET /api/conversations - List conversations for active workspace
 conversationsRouter.get("/", ConversationsController.list);

@@ -393,6 +393,7 @@ model EscalationRule {
   reason      EscalationReason
   keywords    String[]         @default([]) // e.g. ["owner", "scam", "police", "refund", "খারাপ", "ম্যানেজার"]
   isActive    Boolean          @default(true)
+  hitsCount   Int              @default(0)
   
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt

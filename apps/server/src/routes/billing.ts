@@ -4,8 +4,12 @@ import { prisma, PaymentStatus, PaymentMethod } from "@mogent/database";
 import { redisConnection } from "../redis";
 import { config } from "../config";
 import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
+import { authMiddleware, adminAuthMiddleware } from "../middleware/auth";
 
 export const billingRouter = new Hono();
+
+// Enforce admin check on all /admin/* endpoints
+billingRouter.use("/admin/*", adminAuthMiddleware);
 
 const REDIS_PAYMENT_CONFIG = "mogent:payment_gateway_config";
 
@@ -71,60 +75,50 @@ export const PLANS: Record<string, { name: string; price: number; pageLimit: num
 // -----------------------------------------------------------------------------
 // 1. GET WORKSPACE BILLING & SUBSCRIPTION STATUS (Fail-Safe & Resilient)
 // -----------------------------------------------------------------------------
-billingRouter.get("/", async (c) => {
+billingRouter.get("/", authMiddleware, async (c) => {
   const workspaceHeader = c.req.header("x-workspace-id");
-  const authHeader = c.req.header("Authorization");
+  const authWorkspaceId = c.get("workspaceId");
 
   try {
-    let targetWorkspaceId = workspaceHeader?.trim() || null;
+    const targetWorkspaceId = authWorkspaceId || workspaceHeader?.trim() || null;
 
-    // Resolve workspace from user token if not explicitly passed
-    if (!targetWorkspaceId && authHeader && authHeader.startsWith("Bearer ")) {
-      try {
-        const payload = (await verify(authHeader.substring(7), config.jwtSecret, "HS256")) as any;
-        if (payload?.workspaceId) {
-          targetWorkspaceId = payload.workspaceId;
-        } else if (payload?.userId) {
-          const mem = await prisma.workspaceMember.findFirst({
-            where: { userId: payload.userId },
-          });
-          if (mem) targetWorkspaceId = mem.workspaceId;
-        }
-      } catch {}
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "No workspace context found" }, 404);
     }
 
-    let workspace: any = null;
-    if (targetWorkspaceId) {
-      workspace = await prisma.workspace.findUnique({
-        where: { id: targetWorkspaceId },
-        include: {
-          facebookPages: { select: { id: true } },
-        },
-      });
-    }
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: targetWorkspaceId },
+      include: {
+        facebookPages: { select: { id: true } },
+      },
+    });
 
     if (!workspace) {
-      workspace = await prisma.workspace.findFirst({
-        orderBy: { updatedAt: "desc" },
-        include: {
-          facebookPages: { select: { id: true } },
-        },
-      });
+      return c.json({ success: false, error: "Workspace not found" }, 404);
     }
 
     const currentPlanKey = (workspace?.plan || "FREE").toUpperCase();
     const currentPlanInfo = PLANS[currentPlanKey] || PLANS.FREE;
 
-    // Fail-safe query for payment transactions (won't crash if columns are syncing)
+    // Real AI message consumption count for this workspace
+    const pageIds = (workspace.facebookPages || []).map((p: any) => p.id);
+    const messagesUsed = pageIds.length > 0
+      ? await prisma.message.count({
+          where: {
+            conversation: { facebookPageId: { in: pageIds } },
+            sender: "AI",
+          },
+        })
+      : 0;
+
+    // Query payment transactions
     let paymentHistory: any[] = [];
     try {
-      if (workspace?.id) {
-        paymentHistory = await prisma.paymentTransaction.findMany({
-          where: { workspaceId: workspace.id },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        });
-      }
+      paymentHistory = await prisma.paymentTransaction.findMany({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
     } catch (err: any) {
       console.warn("Payment history notice:", err.message);
     }
@@ -137,13 +131,15 @@ billingRouter.get("/", async (c) => {
     return c.json({
       success: true,
       data: {
-        workspaceId: workspace?.id,
-        workspaceName: workspace?.name,
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
         currentPlan: currentPlanKey,
         currentPlanDetails: currentPlanInfo,
-        planExpiresAt: workspace?.planExpiresAt,
-        connectedPagesCount: workspace?.facebookPages?.length || 0,
+        planExpiresAt: workspace.planExpiresAt,
+        connectedPagesCount: workspace.facebookPages?.length || 0,
         pageLimit: currentPlanInfo.pageLimit,
+        messagesUsed,
+        messageLimit: currentPlanInfo.msgLimit,
         pendingPayment: pendingPayment || null,
         paymentHistory: paymentHistory,
       },
@@ -264,11 +260,11 @@ billingRouter.post("/coupons/validate", async (c) => {
 // -----------------------------------------------------------------------------
 // 4. SUBMIT PAYMENT TRANSACTION (bKash, Nagad, Rocket)
 // -----------------------------------------------------------------------------
-billingRouter.post("/submit-payment", async (c) => {
+billingRouter.post("/submit-payment", authMiddleware, async (c) => {
   try {
     const body = await c.req.json();
     const { plan, method, senderNumber, trxId, couponCode, notes } = body;
-    let workspaceId = c.req.header("x-workspace-id") || body.workspaceId;
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id") || body.workspaceId;
 
     if (!plan || !senderNumber || !trxId) {
       return c.json({ success: false, error: "Plan, Sender Number, and TrxID are required" }, 400);
@@ -283,12 +279,7 @@ billingRouter.post("/submit-payment", async (c) => {
     }
 
     if (!workspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      workspaceId = defaultWs?.id;
-    }
-
-    if (!workspaceId) {
-      return c.json({ success: false, error: "Workspace not found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const cleanPlan = plan.toUpperCase();

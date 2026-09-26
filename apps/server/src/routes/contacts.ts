@@ -1,37 +1,53 @@
 import { Hono } from "hono";
 import { prisma } from "@mogent/database";
+import { authMiddleware } from "../middleware/auth";
 
 export const contactsRouter = new Hono();
 
+// Enforce auth on contacts routes
+contactsRouter.use("*", authMiddleware);
+
 // GET /api/contacts - List customer contacts for active workspace
 contactsRouter.get("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
   const filter = c.req.query("filter"); // ALL, PHONE, PURCHASED, COMPLAINT
   const pageId = c.req.query("pageId");
 
   try {
-    let pagesWhere: any = {};
-    if (pageId && pageId !== "ALL") {
-      pagesWhere = { id: pageId };
-    } else if (workspaceId) {
-      pagesWhere = { workspaceId };
+    if (!workspaceId) {
+      return c.json({
+        success: true,
+        data: [],
+        totalCount: 0,
+        verifiedPhonesCount: 0,
+        confirmedBuyersCount: 0,
+      });
     }
 
-    let pages = await prisma.facebookPage.findMany({
+    let pagesWhere: any = { workspaceId };
+    if (pageId && pageId !== "ALL") {
+      pagesWhere.id = pageId;
+    }
+
+    const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
       select: { id: true, name: true, pageId: true },
     });
-    let pageIds = pages.map((p) => p.id);
+    const pageIds = pages.map((p) => p.id);
 
-    if (pageIds.length === 0 && (!pageId || pageId === "ALL")) {
-      const allPages = await prisma.facebookPage.findMany({
-        select: { id: true, name: true, pageId: true },
+    // Stop cross-tenant data leaks: If workspace has no pages, immediately return empty results
+    if (pageIds.length === 0) {
+      return c.json({
+        success: true,
+        data: [],
+        totalCount: 0,
+        verifiedPhonesCount: 0,
+        confirmedBuyersCount: 0,
       });
-      pageIds = allPages.map((p) => p.id);
     }
 
     const customers = await prisma.customer.findMany({
-      where: pageIds.length > 0 ? { facebookPageId: { in: pageIds } } : {},
+      where: { facebookPageId: { in: pageIds } },
       include: { facebookPage: true },
       orderBy: { updatedAt: "desc" },
     });
@@ -89,7 +105,7 @@ contactsRouter.get("/", async (c) => {
 
 // POST /api/contacts - Create or update a customer contact/lead
 contactsRouter.post("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -99,43 +115,33 @@ contactsRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Customer name is required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst({
-        orderBy: { updatedAt: "desc" },
-      });
-      targetWorkspaceId = defaultWs?.id;
+    if (!workspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     let targetPageId = pageId;
     if (!targetPageId || targetPageId === "ALL") {
       const page = await prisma.facebookPage.findFirst({
-        where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
+        where: { workspaceId },
       });
       targetPageId = page?.id;
     }
 
     if (!targetPageId) {
-      const anyPage = await prisma.facebookPage.findFirst();
-      if (anyPage) {
-        targetPageId = anyPage.id;
-      } else if (targetWorkspaceId) {
-        const newPage = await prisma.facebookPage.create({
-          data: {
-            workspaceId: targetWorkspaceId,
-            pageId: `store-${Date.now()}`,
-            name: "Direct Leads",
-            category: "Direct Leads",
-            encryptedAccessToken: "direct_token",
-            tokenIv: "direct_iv",
-            tokenTag: "direct_tag",
-            verifyToken: "mogent_fb_verify_token_secure",
-          },
-        });
-        targetPageId = newPage.id;
-      } else {
-        return c.json({ success: false, error: "No connected store page found" }, 404);
-      }
+      // Create a direct store page for this workspace
+      const newPage = await prisma.facebookPage.create({
+        data: {
+          workspaceId,
+          pageId: `store-${Date.now()}`,
+          name: "Direct Leads",
+          category: "Direct Leads",
+          encryptedAccessToken: "direct_token",
+          tokenIv: "direct_iv",
+          tokenTag: "direct_tag",
+          verifyToken: "mogent_fb_verify_token_secure",
+        },
+      });
+      targetPageId = newPage.id;
     }
 
     const cleanName = (name || "").trim();

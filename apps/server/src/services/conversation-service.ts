@@ -30,38 +30,29 @@ export class ConversationService {
   static async listConversations(params: ListConversationsParams) {
     const { workspaceId, filterPageId } = params;
 
-    let pagesWhere: any = {};
-    if (filterPageId && filterPageId !== "ALL") {
-      pagesWhere = { id: filterPageId };
-    } else if (workspaceId) {
-      pagesWhere = { workspaceId };
+    if (!workspaceId) {
+      return [];
     }
 
-    let pages = await prisma.facebookPage.findMany({
+    let pagesWhere: any = { workspaceId };
+    if (filterPageId && filterPageId !== "ALL") {
+      pagesWhere.id = filterPageId;
+    }
+
+    const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
       select: { id: true, name: true, pageId: true, encryptedAccessToken: true, tokenIv: true, tokenTag: true },
     });
-    let pageIds = pages.map((p) => p.id);
+    const pageIds = pages.map((p) => p.id);
 
-    if (pageIds.length === 0 && (!filterPageId || filterPageId === "ALL")) {
-      const allPages = await prisma.facebookPage.findMany({
-        select: { id: true, name: true, pageId: true, encryptedAccessToken: true, tokenIv: true, tokenTag: true },
-      });
-      pageIds = allPages.map((p) => p.id);
-      pages = allPages;
-    }
-
+    // Stop cross-tenant leaks: If workspace has no pages, return empty array immediately
     if (pageIds.length === 0) {
       return [];
     }
 
     const list = await prisma.conversation.findMany({
       where: {
-        OR: [
-          { facebookPageId: { in: pageIds } },
-          { channel: "WHATSAPP" },
-          { customer: { psid: { startsWith: "wa_" } } },
-        ],
+        facebookPageId: { in: pageIds },
       },
       include: {
         customer: true,
@@ -306,17 +297,32 @@ export class ConversationService {
 
     let page: any = null;
     if (facebookPageId) {
-      page = await prisma.facebookPage.findUnique({ where: { id: facebookPageId } });
+      page = await prisma.facebookPage.findFirst({
+        where: workspaceId ? { id: facebookPageId, workspaceId } : { id: facebookPageId },
+      });
     }
     if (!page && workspaceId) {
       page = await prisma.facebookPage.findFirst({ where: { workspaceId } });
     }
-    if (!page) {
-      page = await prisma.facebookPage.findFirst();
+
+    if (!page && workspaceId) {
+      // Auto-provision a dedicated WhatsApp store page for this workspace
+      page = await prisma.facebookPage.create({
+        data: {
+          workspaceId,
+          pageId: `wa-store-${Date.now()}`,
+          name: "WhatsApp Store",
+          category: "WhatsApp",
+          encryptedAccessToken: "wa_direct_token",
+          tokenIv: "wa_direct_iv",
+          tokenTag: "wa_direct_tag",
+          verifyToken: "mogent_fb_verify_token_secure",
+        },
+      });
     }
 
     if (!page) {
-      throw new Error("No connected store page or workspace found.");
+      throw new Error("No connected store page found for this workspace. Please connect a store first.");
     }
 
     let customer = await prisma.customer.findFirst({

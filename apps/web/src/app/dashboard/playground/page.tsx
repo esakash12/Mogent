@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import {
@@ -19,6 +19,8 @@ interface ChatMessage {
   role: "user" | "model";
   text: string;
   time: string;
+  thinking?: string | null;
+  button?: { title: string; url: string } | null;
 }
 
 export default function TryYourAIPage() {
@@ -57,9 +59,14 @@ export default function TryYourAIPage() {
       });
 
       const replyText =
+        res?.data?.replyText ||
         res?.data?.reply ||
+        res?.replyText ||
         res?.reply ||
         (res?.success === false ? `Error: ${res?.error || "AI could not generate response"}` : "আপনার প্রশ্নটি পেয়েছি। আমি শপের সেলস এজেন্ট হিসেবে আপনাকে সহায়তা করছি।");
+
+      const thinking = res?.data?.thinking || res?.thinking || null;
+      const button = res?.data?.button || res?.button || null;
 
       setMessages([
         ...newHistory,
@@ -68,6 +75,8 @@ export default function TryYourAIPage() {
           role: "model",
           text: replyText,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          thinking,
+          button,
         },
       ]);
     } catch (err: any) {
@@ -142,6 +151,29 @@ export default function TryYourAIPage() {
                 >
                   {m.text}
                 </div>
+
+                {m.thinking && (
+                  <details className="mt-1 text-[11px] text-[#64748B] bg-[#F1F5F9] p-2.5 rounded-xl border border-[#E2E8F0] max-w-full">
+                    <summary className="font-bold text-[#475569] cursor-pointer select-none">
+                      🧠 AI Thinking Process
+                    </summary>
+                    <p className="mt-1.5 whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-[#334155]">
+                      {m.thinking}
+                    </p>
+                  </details>
+                )}
+
+                {m.button && (
+                  <a
+                    href={m.button.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] text-white rounded-xl text-[11px] font-bold shadow-xs hover:bg-[#1EBE5D] transition-colors"
+                  >
+                    {m.button.title}
+                  </a>
+                )}
+
                 <span className="text-[10px] text-[#64748B] mt-1 px-1">{m.time}</span>
               </div>
             );

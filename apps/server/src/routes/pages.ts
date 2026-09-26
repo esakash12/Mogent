@@ -3,18 +3,26 @@ import { prisma, AiMode, MessageSender, MessageStatus } from "@mogent/database";
 import { encryptToken } from "@mogent/shared";
 import { config } from "../config";
 import crypto from "crypto";
+import { authMiddleware } from "../middleware/auth";
 
 export const pagesRouter = new Hono();
+
+// Enforce authentication across pages management
+pagesRouter.use("*", authMiddleware);
 
 // -----------------------------------------------------------------------------
 // 1. GET ALL FACEBOOK PAGES FOR WORKSPACE
 // -----------------------------------------------------------------------------
 pagesRouter.get("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
+    if (!workspaceId) {
+      return c.json({ success: true, data: [] });
+    }
+
     const pages = await prisma.facebookPage.findMany({
-      where: workspaceId ? { workspaceId } : undefined,
+      where: { workspaceId },
       orderBy: { createdAt: "desc" },
     });
 
@@ -105,19 +113,14 @@ pagesRouter.post("/facebook/oauth-connect", async (c) => {
   try {
     const body = await c.req.json();
     const { pages } = body; // Array of { id, name, accessToken, category }
-    let workspaceId = c.req.header("x-workspace-id") || body.workspaceId;
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id") || body.workspaceId;
 
     if (!pages || !Array.isArray(pages) || pages.length === 0) {
       return c.json({ success: false, error: "No Facebook pages selected" }, 400);
     }
 
     if (!workspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      workspaceId = defaultWs?.id;
-    }
-
-    if (!workspaceId) {
-      return c.json({ success: false, error: "No workspace found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const connectedPages = [];
@@ -195,10 +198,14 @@ pagesRouter.post("/", async (c) => {
   try {
     const body = await c.req.json();
     let { name, pageId, accessToken, systemPrompt, aiMode, category } = body;
-    let workspaceId = c.req.header("x-workspace-id") || body.workspaceId;
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id") || body.workspaceId;
 
     if (!accessToken || !accessToken.trim()) {
       return c.json({ success: false, error: "Access Token is required" }, 400);
+    }
+
+    if (!workspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const cleanToken = accessToken.trim();
@@ -232,18 +239,6 @@ pagesRouter.post("/", async (c) => {
       );
     } catch (subErr) {
       console.warn("Auto-subscribe webhook error:", subErr);
-    }
-
-    if (!workspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      workspaceId = defaultWs?.id;
-    }
-
-    if (!workspaceId) {
-      const newWs = await prisma.workspace.create({
-        data: { name: "Default Workspace", slug: "default-ws" },
-      });
-      workspaceId = newWs.id;
     }
 
     // Encrypt the Access Token using AES-256-GCM
@@ -352,12 +347,13 @@ pagesRouter.delete("/:id", async (c) => {
 import { redisConnection } from "../redis";
 
 pagesRouter.get("/whatsapp/config", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id") || "default";
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Workspace context is required" }, 400);
+  }
+
   try {
-    let raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
-    if (!raw && workspaceId !== "default") {
-      raw = await redisConnection.get("mogent:whatsapp_config:default");
-    }
+    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
     const saved = raw ? JSON.parse(raw) : {};
 
     return c.json({
@@ -383,7 +379,11 @@ pagesRouter.get("/whatsapp/config", async (c) => {
 // 9. SAVE WHATSAPP CONFIGURATION
 // -----------------------------------------------------------------------------
 pagesRouter.post("/whatsapp/config", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id") || "default";
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Workspace context is required" }, 400);
+  }
+
   try {
     const body = await c.req.json();
     const { phoneNumber, phoneNumberId, wabaId, accessToken, autoReplyEnabled } = body;
@@ -397,27 +397,19 @@ pagesRouter.post("/whatsapp/config", async (c) => {
       updatedAt: new Date().toISOString(),
     };
 
-    await Promise.all([
-      redisConnection.set(
-        `mogent:whatsapp_config:${workspaceId}`,
-        JSON.stringify(configData)
-      ),
-      redisConnection.set(
-        "mogent:whatsapp_config:default",
-        JSON.stringify(configData)
-      ),
-    ]);
+    await redisConnection.set(
+      `mogent:whatsapp_config:${workspaceId}`,
+      JSON.stringify(configData)
+    );
 
-    if (workspaceId && workspaceId !== "default") {
-      try {
-        await prisma.workspace.update({
-          where: { id: workspaceId },
-          data: {
-            whatsAppNumber: configData.phoneNumber || undefined,
-          },
-        });
-      } catch {}
-    }
+    try {
+      await prisma.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          whatsAppNumber: configData.phoneNumber || undefined,
+        },
+      });
+    } catch {}
 
     return c.json({
       success: true,
@@ -434,15 +426,16 @@ pagesRouter.post("/whatsapp/config", async (c) => {
 // 10. TEST WHATSAPP CONNECTION / MESSAGE
 // -----------------------------------------------------------------------------
 pagesRouter.post("/whatsapp/test", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id") || "default";
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Workspace context is required" }, 400);
+  }
+
   try {
     const body = await c.req.json();
     const { testPhone } = body;
 
-    let raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
-    if (!raw && workspaceId !== "default") {
-      raw = await redisConnection.get("mogent:whatsapp_config:default");
-    }
+    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
     const saved = raw ? JSON.parse(raw) : {};
 
     if (!saved.phoneNumberId || !saved.accessToken) {

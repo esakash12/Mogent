@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -68,27 +68,33 @@ export default function DashboardOverviewPage() {
           totalRev += parseFloat(o.totalAmount || "0") || 0;
         }
 
+        const totalRevenue = analyticsData?.totalRevenue !== undefined ? analyticsData.totalRevenue : totalRev;
+        const totalOrders = analyticsData?.confirmedOrdersCount !== undefined ? analyticsData.confirmedOrdersCount : orderArr.length;
+
         setMetrics({
           totalConversations: totalConv,
           aiResponses: aiResolved,
           totalContacts: contArr.length,
           pendingHandoff: analyticsData?.pendingHandoff || 0,
-          totalOrders: orderArr.length,
-          totalRevenue: totalRev,
+          totalOrders,
+          totalRevenue,
           avgResponseTime: "1.2s",
           activePages: pagesArr.length,
         });
 
-        // Generate last 14 days dynamic chart
-        const days: { date: string; count: number }[] = [];
-        for (let i = 13; i >= 0; i--) {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          const dayCount = totalConv > 0 ? Math.max(1, Math.round((totalConv / 14) * (0.6 + Math.random() * 0.8))) : 0;
-          days.push({ date: label, count: dayCount });
+        // Use real 14-day daily activity from Prisma
+        if (analyticsData?.dailyActivity && Array.isArray(analyticsData.dailyActivity) && analyticsData.dailyActivity.length > 0) {
+          setChartDays(analyticsData.dailyActivity);
+        } else {
+          const days: { date: string; count: number }[] = [];
+          for (let i = 13; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            days.push({ date: label, count: 0 });
+          }
+          setChartDays(days);
         }
-        setChartDays(days);
         setLoading(false);
       })
       .catch(() => setLoading(false));

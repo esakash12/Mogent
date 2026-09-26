@@ -1,31 +1,27 @@
-﻿import { Hono } from "hono";
+import { Hono } from "hono";
 import { prisma } from "@mogent/database";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
+import { authMiddleware } from "../middleware/auth";
 
 export const productsRouter = new Hono();
 
+// Enforce auth on products routes
+productsRouter.use("*", authMiddleware);
+
 // GET /api/products - List products for active workspace
 productsRouter.get("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
-    let where: any = {};
-    if (workspaceId) {
-      where = { workspaceId };
+    if (!workspaceId) {
+      return c.json({ success: true, data: [] });
     }
 
-    let products = await prisma.product.findMany({
-      where,
+    const products = await prisma.product.findMany({
+      where: { workspaceId },
       orderBy: { createdAt: "desc" },
     });
-
-    if (products.length === 0 && workspaceId) {
-      // Fallback: If no products found for this specific workspaceId, fetch all products
-      products = await prisma.product.findMany({
-        orderBy: { createdAt: "desc" },
-      });
-    }
 
     return c.json({
       success: true,
@@ -48,7 +44,7 @@ productsRouter.get("/", async (c) => {
 
 // POST /api/products - Add product to catalog
 productsRouter.post("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -58,19 +54,13 @@ productsRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Product name and price are required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "No workspace found" }, 404);
+    if (!workspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const created = await prisma.product.create({
       data: {
-        workspaceId: targetWorkspaceId,
+        workspaceId: workspaceId as string,
         name: name.trim(),
         price: Number(price),
         regularPrice: regularPrice ? Number(regularPrice) : null,
@@ -104,7 +94,7 @@ productsRouter.post("/", async (c) => {
 // IMPORT FROM WEB URL (Web to Product Scraper)
 // -----------------------------------------------------------------------------
 productsRouter.post("/import-url", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -114,14 +104,8 @@ productsRouter.post("/import-url", async (c) => {
       return c.json({ success: false, error: "Valid Web URL is required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "Workspace not found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const formattedUrl = url.startsWith("http") ? url : `https://${url}`;
@@ -200,17 +184,11 @@ productsRouter.post("/import-url", async (c) => {
 // IMPORT FROM FACEBOOK (Facebook Page Posts / Shop Catalog)
 // -----------------------------------------------------------------------------
 productsRouter.post("/import-facebook", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "Workspace not found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     // Find connected facebook page
@@ -318,7 +296,7 @@ productsRouter.post("/import-facebook", async (c) => {
 // IMPORT FROM DATA FEED (XML / RSS / JSON / CSV Feed URL)
 // -----------------------------------------------------------------------------
 productsRouter.post("/import-feed", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -328,14 +306,8 @@ productsRouter.post("/import-feed", async (c) => {
       return c.json({ success: false, error: "Valid Feed URL (XML / RSS / JSON) is required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "Workspace not found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const formattedUrl = feedUrl.startsWith("http") ? feedUrl : `https://${feedUrl}`;

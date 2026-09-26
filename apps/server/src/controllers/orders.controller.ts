@@ -7,47 +7,43 @@ export class OrdersController {
    * GET /api/orders - List all orders for active workspace
    */
   static async list(c: Context) {
-    const workspaceId = c.req.header("x-workspace-id");
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     const statusFilter = c.req.query("status");
     const pageId = c.req.query("pageId");
 
     try {
-      let targetWorkspaceId = workspaceId;
-      if (!targetWorkspaceId) {
-        const defaultWs = await prisma.workspace.findFirst();
-        targetWorkspaceId = defaultWs?.id;
+      if (!workspaceId) {
+        return c.json({ success: true, data: [] });
       }
 
-      let pagesWhere: any = {};
+      let pagesWhere: any = { workspaceId };
       if (pageId && pageId !== "ALL") {
-        pagesWhere = { id: pageId };
-      } else if (targetWorkspaceId) {
-        pagesWhere = { workspaceId: targetWorkspaceId };
+        pagesWhere.id = pageId;
       }
 
-      let pages = await prisma.facebookPage.findMany({
+      const pages = await prisma.facebookPage.findMany({
         where: pagesWhere,
         select: { id: true, name: true },
       });
-      let pageIds = pages.map((p) => p.id);
+      const pageIds = pages.map((p) => p.id);
 
-      if (pageIds.length === 0 && (!pageId || pageId === "ALL")) {
-        const allPages = await prisma.facebookPage.findMany({
-          select: { id: true, name: true },
-        });
-        pageIds = allPages.map((p) => p.id);
-        pages = allPages;
+      if (pageIds.length === 0) {
+        return c.json({ success: true, data: [] });
       }
       const pageMap = new Map(pages.map((p) => [p.id, p.name]));
 
       const customers = await prisma.customer.findMany({
-        where: pageIds.length > 0 ? { facebookPageId: { in: pageIds } } : {},
+        where: { facebookPageId: { in: pageIds } },
         select: { id: true, firstName: true, lastName: true, phoneNumber: true, deliveryAddress: true, facebookPageId: true },
       });
       const customerIds = customers.map((c) => c.id);
       const customerMap = new Map(customers.map((c) => [c.id, c]));
 
-      const where: any = customerIds.length > 0 ? { customerId: { in: customerIds } } : {};
+      if (customerIds.length === 0) {
+        return c.json({ success: true, data: [] });
+      }
+
+      const where: any = { customerId: { in: customerIds } };
       if (statusFilter && statusFilter !== "ALL") {
         where.status = statusFilter;
       }

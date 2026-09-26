@@ -39,3 +39,8 @@ Thumbs.db
 *.njsproj
 *.sw?
 scratch/
+
+# Agents Engine
+.agents/
+.agent/
+*.tsbuildinfo

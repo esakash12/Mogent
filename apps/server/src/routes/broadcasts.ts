@@ -4,14 +4,18 @@ import { redisConnection } from "../redis";
 import { facebookApi } from "../services/facebook-api";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
+import { authMiddleware } from "../middleware/auth";
 
 export const broadcastsRouter = new Hono();
+
+// Enforce authenticated workspace access
+broadcastsRouter.use("*", authMiddleware);
 
 // -----------------------------------------------------------------------------
 // 1. GET AUTOMATED FOLLOW-UP CONFIG
 // -----------------------------------------------------------------------------
 broadcastsRouter.get("/followup-config", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
     return c.json({ success: false, error: "Missing workspace ID" }, 400);
   }
@@ -51,7 +55,7 @@ broadcastsRouter.get("/followup-config", async (c) => {
 // 2. SAVE AUTOMATED FOLLOW-UP CONFIG
 // -----------------------------------------------------------------------------
 broadcastsRouter.post("/followup-config", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
     return c.json({ success: false, error: "Missing workspace ID" }, 400);
   }
@@ -85,19 +89,16 @@ broadcastsRouter.post("/followup-config", async (c) => {
 // 3. TRIGGER / RUN FOLLOW-UP SCAN (SINGLE-DELIVERY GUARANTEE)
 // -----------------------------------------------------------------------------
 broadcastsRouter.post("/trigger-followup", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Missing workspace ID" }, 400);
+  }
 
   try {
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst({
-        orderBy: { updatedAt: "desc" },
-      });
-      targetWorkspaceId = defaultWs?.id || "";
-    }
+    const targetWorkspaceId = workspaceId;
 
     // 1. Fetch Follow-up Config
-    const redisKey = targetWorkspaceId ? `mogent:followup_config:${targetWorkspaceId}` : "mogent:followup_config:default";
+    const redisKey = `mogent:followup_config:${targetWorkspaceId}`;
     const cached = await redisConnection.get(redisKey);
     let followupData = { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊", pageId: "ALL" };
     if (cached) {
@@ -114,20 +115,14 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
     const cutoffTime = new Date(Date.now() - delayMs);
 
     // 2. Fetch Pages for Workspace
-    let pagesWhere: any = {};
+    let pagesWhere: any = { workspaceId: targetWorkspaceId };
     if (followupData.pageId && followupData.pageId !== "ALL") {
-      pagesWhere = { id: followupData.pageId };
-    } else if (targetWorkspaceId) {
-      pagesWhere = { workspaceId: targetWorkspaceId };
+      pagesWhere = { id: followupData.pageId, workspaceId: targetWorkspaceId };
     }
 
-    let pages = await prisma.facebookPage.findMany({
+    const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
     });
-
-    if (pages.length === 0 && (!followupData.pageId || followupData.pageId === "ALL")) {
-      pages = await prisma.facebookPage.findMany();
-    }
 
     if (pages.length === 0) {
       return c.json({ success: true, message: "No active Facebook pages found.", sentCount: 0 });
@@ -251,8 +246,9 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
 // -----------------------------------------------------------------------------
 // 4. INSTANT MANUAL BROADCAST
 // -----------------------------------------------------------------------------
+// POST /api/broadcasts/send - Broadcast message to all customers
 broadcastsRouter.post("/send", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
     return c.json({ success: false, error: "Missing workspace ID" }, 400);
   }
@@ -322,24 +318,21 @@ broadcastsRouter.post("/send", async (c) => {
 
 // POST /api/broadcasts/test-followup - Send instantaneous test follow-up to a specific customer/conversation
 broadcastsRouter.post("/test-followup", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Missing workspace ID" }, 400);
+  }
 
   try {
     const body = await c.req.json().catch(() => ({}));
     const { conversationId, customerId, customerPhone, phone, messageText } = body;
 
-    let targetWorkspaceId = workspaceId;
-    if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst({ orderBy: { updatedAt: "desc" } });
-      targetWorkspaceId = defaultWs?.id;
-    }
-
     let conversation: any = null;
 
     // 1. Try finding conversation by conversationId
     if (conversationId && conversationId !== "DEFAULT_TEST_USER") {
-      conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
+      conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, facebookPage: { workspaceId } },
         include: { customer: true, facebookPage: true },
       });
     }
@@ -348,7 +341,7 @@ broadcastsRouter.post("/test-followup", async (c) => {
     const targetCustId = customerId || (!conversation ? conversationId : null);
     if (!conversation && targetCustId && targetCustId !== "DEFAULT_TEST_USER") {
       conversation = await prisma.conversation.findFirst({
-        where: { customerId: targetCustId },
+        where: { customerId: targetCustId, facebookPage: { workspaceId } },
         include: { customer: true, facebookPage: true },
         orderBy: { updatedAt: "desc" },
       });
@@ -358,31 +351,34 @@ broadcastsRouter.post("/test-followup", async (c) => {
     const targetPhone = (customerPhone || phone || "").trim();
     if (!conversation && targetPhone) {
       conversation = await prisma.conversation.findFirst({
-        where: { customer: { phoneNumber: targetPhone } },
+        where: {
+          facebookPage: { workspaceId },
+          customer: { phoneNumber: targetPhone },
+        },
         include: { customer: true, facebookPage: true },
         orderBy: { updatedAt: "desc" },
       });
     }
 
-    // 4. Fallback: Find the most recent conversation in the workspace or system
+    // 4. Fallback: Find the most recent conversation in the authenticated workspace
     if (!conversation) {
       conversation = await prisma.conversation.findFirst({
-        where: targetWorkspaceId ? { facebookPage: { workspaceId: targetWorkspaceId } } : {},
+        where: { facebookPage: { workspaceId } },
         include: { customer: true, facebookPage: true },
         orderBy: { updatedAt: "desc" },
       });
     }
 
-    // 5. Fallback: If still no conversation, find or create target Facebook Page and Customer
+    // 5. Fallback: If still no conversation, find or create target Facebook Page and Customer in this workspace
     if (!conversation) {
       let page = await prisma.facebookPage.findFirst({
-        where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
+        where: { workspaceId },
       });
 
-      if (!page && targetWorkspaceId) {
+      if (!page) {
         page = await prisma.facebookPage.create({
           data: {
-            workspaceId: targetWorkspaceId,
+            workspaceId,
             pageId: `store-${Date.now()}`,
             name: "Default Store Page",
             category: "Retail",
@@ -392,10 +388,6 @@ broadcastsRouter.post("/test-followup", async (c) => {
             verifyToken: "mogent_fb_verify_token_secure",
           },
         });
-      }
-
-      if (!page) {
-        page = await prisma.facebookPage.findFirst();
       }
 
       if (page) {

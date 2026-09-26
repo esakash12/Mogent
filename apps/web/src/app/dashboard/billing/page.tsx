@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -90,7 +90,13 @@ export default function BillingPage() {
     try {
       const [bData, aData] = await Promise.all([fetchBillingStatus(), fetchAnalytics()]);
       if (bData) setBillingData(bData);
-      if (aData?.totalConversations) setTotalUsedMessages(aData.totalConversations);
+      if (bData?.messagesUsed !== undefined) {
+        setTotalUsedMessages(bData.messagesUsed);
+      } else if (aData?.aiMessagesCount !== undefined) {
+        setTotalUsedMessages(aData.aiMessagesCount);
+      } else {
+        setTotalUsedMessages(0);
+      }
     } catch (err) {
       console.error("Failed to load billing:", err);
     } finally {

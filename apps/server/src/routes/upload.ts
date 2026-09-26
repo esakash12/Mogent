@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { storageService } from "../services/storage";
+import { authMiddleware } from "../middleware/auth";
 
 export const uploadRouter = new Hono();
+
+uploadRouter.use("*", authMiddleware);
 
 // POST /api/upload - Upload Image to Cloudflare R2 / S3
 uploadRouter.post("/", async (c) => {

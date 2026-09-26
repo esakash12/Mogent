@@ -1,64 +1,108 @@
 import { Hono } from "hono";
 import { prisma } from "@mogent/database";
+import { authMiddleware } from "../middleware/auth";
 
 export const dashboardRouter = new Hono();
 
+// Enforce auth on dashboard routes
+dashboardRouter.use("*", authMiddleware);
+
 // GET /api/dashboard/analytics - Multi-tenant workspace analytics
 dashboardRouter.get("/analytics", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
-    // 1. If workspaceId provided, filter by workspace
-    let pagesWhere: any = {};
-    let productsWhere: any = {};
-    let workspaceInfo: any = null;
-
-    if (workspaceId) {
-      pagesWhere = { workspaceId };
-      productsWhere = { workspaceId };
-      workspaceInfo = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { id: true, name: true, plan: true },
-      });
+    if (!workspaceId) {
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
-    let pages = await prisma.facebookPage.findMany({
-      where: pagesWhere,
+    const workspaceInfo = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, name: true, plan: true },
+    });
+
+    if (!workspaceInfo) {
+      return c.json({ success: false, error: "Workspace not found" }, 404);
+    }
+
+    // Get pages belonging ONLY to this workspace
+    const pages = await prisma.facebookPage.findMany({
+      where: { workspaceId },
       select: { id: true },
     });
-    let pageIds = pages.map((p) => p.id);
+    const pageIds = pages.map((p) => p.id);
+
+    // Compute products count strictly scoped to this workspace
+    const productsCount = await prisma.product.count({
+      where: { workspaceId },
+    });
 
     if (pageIds.length === 0) {
-      const allPages = await prisma.facebookPage.findMany({
-        select: { id: true },
+      // 14-day zero state
+      const emptyDaily: { date: string; count: number }[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        emptyDaily.push({ date: label, count: 0 });
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          workspace: workspaceInfo,
+          pagesConnected: 0,
+          totalConversations: 0,
+          totalContacts: 0,
+          aiResolutionRate: 100,
+          totalRevenue: 0,
+          confirmedOrdersCount: 0,
+          productsCount,
+          aiMessagesCount: 0,
+          isNewWorkspace: true,
+          sentiment: { positive: 100, neutral: 0, negative: 0 },
+          dailyActivity: emptyDaily,
+        },
       });
-      pageIds = allPages.map((p) => p.id);
     }
 
-    const [totalConversations, totalContacts, productsCount, aiResolvedCount] =
+    // Live counts for connected pages
+    const [totalConversations, totalContacts, aiResolvedCount, aiMessagesCount] =
       await Promise.all([
-        pageIds.length > 0
-          ? prisma.conversation.count({ where: { facebookPageId: { in: pageIds } } })
-          : prisma.conversation.count(),
-        pageIds.length > 0
-          ? prisma.customer.count({ where: { facebookPageId: { in: pageIds } } })
-          : prisma.customer.count(),
-        prisma.product.count(),
-        pageIds.length > 0
-          ? prisma.conversation.count({
-              where: { facebookPageId: { in: pageIds }, isHumanControl: false },
-            })
-          : prisma.conversation.count({ where: { isHumanControl: false } }),
+        prisma.conversation.count({ where: { facebookPageId: { in: pageIds } } }),
+        prisma.customer.count({ where: { facebookPageId: { in: pageIds } } }),
+        prisma.conversation.count({
+          where: { facebookPageId: { in: pageIds }, isHumanControl: false },
+        }),
+        prisma.message.count({
+          where: {
+            conversation: { facebookPageId: { in: pageIds } },
+            sender: "AI",
+          },
+        }),
       ]);
 
-    // Customer sentiments for this workspace
-    const customers =
-      pageIds.length > 0
-        ? await prisma.customer.findMany({
-            where: { facebookPageId: { in: pageIds } },
-            select: { sentimentScore: true },
-          })
-        : [];
+    // Real orders and revenue from Prisma Order model
+    const orders = await prisma.order.findMany({
+      where: {
+        customer: {
+          facebookPageId: { in: pageIds },
+        },
+      },
+      select: { totalAmount: true, status: true },
+    });
+
+    const confirmedOrders = orders.filter((o) =>
+      ["CONFIRMED", "DELIVERED", "SHIPPED"].includes((o.status || "").toUpperCase())
+    );
+    const totalRevenue = confirmedOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const confirmedOrdersCount = confirmedOrders.length;
+
+    // Customer sentiments
+    const customers = await prisma.customer.findMany({
+      where: { facebookPageId: { in: pageIds } },
+      select: { sentimentScore: true },
+    });
 
     let pos = 0,
       neu = 0,
@@ -87,6 +131,36 @@ dashboardRouter.get("/analytics", async (c) => {
         ? Number(((aiResolvedCount / totalConversations) * 100).toFixed(1))
         : 100;
 
+    // Real last 14 days activity from Prisma
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+    fourteenDaysAgo.setHours(0, 0, 0, 0);
+
+    const recentConvs = await prisma.conversation.findMany({
+      where: {
+        facebookPageId: { in: pageIds },
+        updatedAt: { gte: fourteenDaysAgo },
+      },
+      select: { updatedAt: true },
+    });
+
+    const dailyActivity: { date: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const nextD = new Date(d);
+      nextD.setDate(nextD.getDate() + 1);
+
+      const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const count = recentConvs.filter((c) => {
+        const t = new Date(c.updatedAt);
+        return t >= d && t < nextD;
+      }).length;
+
+      dailyActivity.push({ date: label, count });
+    }
+
     return c.json({
       success: true,
       data: {
@@ -95,20 +169,13 @@ dashboardRouter.get("/analytics", async (c) => {
         totalConversations,
         totalContacts,
         aiResolutionRate: resolutionRate,
-        totalRevenue: 0,
-        confirmedOrdersCount: 0,
+        totalRevenue,
+        confirmedOrdersCount,
         productsCount,
+        aiMessagesCount,
         isNewWorkspace: totalConversations === 0 && pageIds.length === 0,
         sentiment,
-        trajectory: [
-          { day: "Mon", date: "Aug 18", messages: 0, orders: 0 },
-          { day: "Tue", date: "Aug 19", messages: 0, orders: 0 },
-          { day: "Wed", date: "Aug 20", messages: 0, orders: 0 },
-          { day: "Thu", date: "Aug 21", messages: 0, orders: 0 },
-          { day: "Fri", date: "Aug 22", messages: 0, orders: 0 },
-          { day: "Sat", date: "Aug 23", messages: 0, orders: 0 },
-          { day: "Sun", date: "Aug 24", messages: 0, orders: 0 },
-        ],
+        dailyActivity,
       },
     });
   } catch (error: any) {

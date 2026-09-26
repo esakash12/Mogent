@@ -166,6 +166,11 @@ async function syncDatabaseSchema() {
         EXCEPTION
           WHEN others THEN NULL;
         END;
+        BEGIN
+          ALTER TABLE "escalation_rules" ADD COLUMN IF NOT EXISTS "hitsCount" INTEGER DEFAULT 0;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
       END $$;
     `);
 

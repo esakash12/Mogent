@@ -3,8 +3,12 @@ import { prisma } from "@mogent/database";
 import { redisConnection } from "../redis";
 import { config } from "../config";
 import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
+import { adminAuthMiddleware } from "../middleware/auth";
 
 export const adminRouter = new Hono();
+
+// Enforce strict Super Admin verification across all admin routes
+adminRouter.use("*", adminAuthMiddleware);
 
 const REDIS_KEYS_SET = "mogent:gemini_keys_pool";
 const REDIS_META_CONFIG = "mogent:meta_developer_config";
@@ -33,13 +37,35 @@ adminRouter.get("/overview", async (c) => {
         orderBy: { createdAt: "desc" },
         include: {
           members: { include: { user: true } },
-          facebookPages: true,
+          facebookPages: { select: { id: true } },
         },
       }),
     ]);
 
     const customKeys = await redisConnection.smembers(REDIS_KEYS_SET);
     const allKeys = Array.from(new Set([...customKeys]));
+
+    const recentClients = await Promise.all(
+      recentWorkspaces.map(async (ws) => {
+        const wsPageIds = ws.facebookPages.map((p) => p.id);
+        const wsMsgCount = wsPageIds.length > 0
+          ? await prisma.message.count({
+              where: { conversation: { facebookPageId: { in: wsPageIds } } },
+            })
+          : 0;
+
+        return {
+          id: ws.id,
+          name: ws.name,
+          ownerEmail: ws.members[0]?.user.email || "No Email",
+          pagesCount: ws.facebookPages.length,
+          messagesCount: wsMsgCount,
+          plan: ws.plan || "STARTER",
+          status: "Active",
+          createdAt: ws.createdAt,
+        };
+      })
+    );
 
     return c.json({
       success: true,
@@ -49,16 +75,7 @@ adminRouter.get("/overview", async (c) => {
         totalMessages,
         activeKeysCount: allKeys.length,
         totalCapacityRpm: allKeys.length * 15,
-        recentClients: recentWorkspaces.map((ws) => ({
-          id: ws.id,
-          name: ws.name,
-          ownerEmail: ws.members[0]?.user.email || "No Email",
-          pagesCount: ws.facebookPages.length,
-          messagesCount: totalMessages > 0 ? Math.floor(totalMessages / Math.max(totalClients, 1)) : 0,
-          plan: ws.plan || "STARTER",
-          status: "Active",
-          createdAt: ws.createdAt,
-        })),
+        recentClients,
       },
     });
   } catch (error: any) {
@@ -346,20 +363,43 @@ adminRouter.get("/clients", async (c) => {
       orderBy: { createdAt: "desc" },
     });
 
-    const data = workspaces.map((ws) => ({
-      id: ws.id,
-      name: ws.name,
-      slug: ws.slug,
-      ownerEmail: ws.members[0]?.user?.email || "No Email",
-      ownerName: ws.members[0]?.user?.name || "Merchant Owner",
-      membersCount: ws.members.length,
-      pagesCount: ws.facebookPages.length,
-      productsCount: ws.products.length,
-      messagesUsed: 0,
-      messageLimit: 50000,
-      status: "ACTIVE",
-      createdAt: ws.createdAt,
-    }));
+    const data = await Promise.all(
+      workspaces.map(async (ws) => {
+        const wsPageIds = ws.facebookPages.map((p) => p.id);
+        const wsMessagesUsed = wsPageIds.length > 0
+          ? await prisma.message.count({
+              where: {
+                conversation: { facebookPageId: { in: wsPageIds } },
+                sender: "AI",
+              },
+            })
+          : 0;
+
+        const planLimit =
+          ws.plan === "FREE"
+            ? 100
+            : ws.plan === "PRO"
+            ? 25000
+            : ws.plan === "ENTERPRISE"
+            ? 100000
+            : 5000;
+
+        return {
+          id: ws.id,
+          name: ws.name,
+          slug: ws.slug,
+          ownerEmail: ws.members[0]?.user?.email || "No Email",
+          ownerName: ws.members[0]?.user?.name || "Merchant Owner",
+          membersCount: ws.members.length,
+          pagesCount: ws.facebookPages.length,
+          productsCount: ws.products.length,
+          messagesUsed: wsMessagesUsed,
+          messageLimit: planLimit,
+          status: "ACTIVE",
+          createdAt: ws.createdAt,
+        };
+      })
+    );
 
     return c.json({ success: true, data });
   } catch (error: any) {

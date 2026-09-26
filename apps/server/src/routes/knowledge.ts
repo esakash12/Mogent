@@ -3,47 +3,46 @@ import { prisma, KnowledgeType } from "@mogent/database";
 import { redisConnection } from "../redis";
 import { config } from "../config";
 import { AiProxyClient } from "../ai-client";
+import { authMiddleware } from "../middleware/auth";
 
 const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey);
 
 export const knowledgeRouter = new Hono();
 
+// Enforce auth on knowledge routes
+knowledgeRouter.use("*", authMiddleware);
+
 // GET /api/knowledge - List knowledge items, system prompt, and WhatsApp config for workspace
 knowledgeRouter.get("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
   const pageId = c.req.query("pageId");
 
   try {
-    let where: any = {};
-    let workspace: any = null;
-
-    if (workspaceId) {
-      where = { workspaceId };
-      workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (!workspaceId) {
+      return c.json({ success: true, data: [] });
     }
 
-    if (!workspace) {
-      workspace = await prisma.workspace.findFirst();
-    }
-
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
     const targetWsId = workspace?.id;
+
+    if (!targetWsId) {
+      return c.json({ success: true, data: [] });
+    }
 
     let targetPage: any = null;
     if (pageId && pageId !== "ALL") {
-      targetPage = await prisma.facebookPage.findUnique({
-        where: { id: pageId },
+      targetPage = await prisma.facebookPage.findFirst({
+        where: { id: pageId, workspaceId: targetWsId },
       });
-    } else if (targetWsId) {
+    } else {
       targetPage = await prisma.facebookPage.findFirst({
         where: { workspaceId: targetWsId, isActive: true },
         orderBy: { createdAt: "desc" },
       });
-    } else {
-      targetPage = await prisma.facebookPage.findFirst({ where: { isActive: true } });
     }
 
     const items = await prisma.knowledgeBase.findMany({
-      where: targetWsId ? { workspaceId: targetWsId } : where,
+      where: { workspaceId: targetWsId },
       orderBy: { priority: "desc" },
     });
 
@@ -85,20 +84,14 @@ knowledgeRouter.get("/", async (c) => {
 
 // POST /api/knowledge/system-prompt - Save Custom System Prompt & Persona
 knowledgeRouter.post("/system-prompt", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
     const { systemPrompt, businessName, pageId, whatsappPrompt } = body;
 
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "No workspace found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     if (systemPrompt !== undefined) {
@@ -123,13 +116,10 @@ knowledgeRouter.post("/system-prompt", async (c) => {
       }
     }
 
-    // Save WhatsApp prompt separately to Redis
+    // Save WhatsApp prompt separately to Redis strictly scoped by workspaceId
     if (whatsappPrompt !== undefined) {
       const cleanWp = (whatsappPrompt || "").trim();
-      await Promise.all([
-        redisConnection.set(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`, cleanWp),
-        redisConnection.set("mogent:whatsapp_system_prompt:default", cleanWp),
-      ]);
+      await redisConnection.set(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`, cleanWp);
     }
 
     return c.json({
@@ -144,12 +134,13 @@ knowledgeRouter.post("/system-prompt", async (c) => {
 
 // GET /api/knowledge/whatsapp-prompt
 knowledgeRouter.get("/whatsapp-prompt", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id") || "default";
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: true, prompt: "" });
+  }
+
   try {
-    let raw = await redisConnection.get(`mogent:whatsapp_system_prompt:${workspaceId}`);
-    if (!raw && workspaceId !== "default") {
-      raw = await redisConnection.get("mogent:whatsapp_system_prompt:default");
-    }
+    const raw = await redisConnection.get(`mogent:whatsapp_system_prompt:${workspaceId}`);
     return c.json({ success: true, prompt: raw || "" });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
@@ -158,14 +149,15 @@ knowledgeRouter.get("/whatsapp-prompt", async (c) => {
 
 // POST /api/knowledge/whatsapp-prompt
 knowledgeRouter.post("/whatsapp-prompt", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id") || "default";
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Workspace context is required" }, 400);
+  }
+
   try {
     const body = await c.req.json();
     const cleanPrompt = (body.prompt || "").trim();
-    await Promise.all([
-      redisConnection.set(`mogent:whatsapp_system_prompt:${workspaceId}`, cleanPrompt),
-      redisConnection.set("mogent:whatsapp_system_prompt:default", cleanPrompt),
-    ]);
+    await redisConnection.set(`mogent:whatsapp_system_prompt:${workspaceId}`, cleanPrompt);
     return c.json({ success: true, message: "WhatsApp prompt saved successfully!", prompt: cleanPrompt });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
@@ -174,7 +166,7 @@ knowledgeRouter.post("/whatsapp-prompt", async (c) => {
 
 // POST /api/knowledge - Add knowledge base entry
 knowledgeRouter.post("/", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -184,14 +176,8 @@ knowledgeRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Title and content are required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "No workspace found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const created = await prisma.knowledgeBase.create({
@@ -226,7 +212,7 @@ knowledgeRouter.post("/whatsapp", async (c) => {
     }
 
     if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "No workspace found" }, 404);
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     const updated = await prisma.workspace.update({
@@ -248,7 +234,7 @@ knowledgeRouter.post("/whatsapp", async (c) => {
 
 // POST /api/knowledge/playground - Test AI generation in studio sandbox
 knowledgeRouter.post("/playground", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+  const targetWorkspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
   try {
     const body = await c.req.json();
@@ -258,10 +244,8 @@ knowledgeRouter.post("/playground", async (c) => {
       return c.json({ success: false, error: "Message is required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
+      return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
     // Fetch knowledge base context
@@ -359,6 +343,7 @@ knowledgeRouter.post("/playground", async (c) => {
       success: true,
       data: {
         replyText,
+        reply: replyText,
         button,
         thinking: aiRes.data.thinking,
         sentimentScore: aiRes.data.sentimentScore,

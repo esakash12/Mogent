@@ -475,20 +475,71 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
         ];
         const hasHumanKeyword = text ? humanKeywords.some((kw) => text.toLowerCase().includes(kw)) : false;
 
-        // 12. Handle Escalation & Telegram Instant Alert (Triggers on: AI flag, 3x repetition, keywords, low sentiment)
+        // Custom Automation / Escalation Rules from Workspace
+        let matchedCustomRule: any = null;
+        try {
+          if (page.workspaceId) {
+            const customRules = await prisma.escalationRule.findMany({
+              where: {
+                workspaceId: page.workspaceId,
+                isActive: true,
+              },
+            });
+
+            if (text && customRules.length > 0) {
+              const lowerText = text.toLowerCase();
+              for (const rule of customRules) {
+                if (
+                  Array.isArray(rule.keywords) &&
+                  rule.keywords.some((kw: string) => kw && lowerText.includes(kw.trim().toLowerCase()))
+                ) {
+                  matchedCustomRule = rule;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (ruleErr) {
+          console.error("Failed to check workspace escalation rules:", ruleErr);
+        }
+
+        if (matchedCustomRule) {
+          try {
+            await prisma.escalationRule.update({
+              where: { id: matchedCustomRule.id },
+              data: { hitsCount: { increment: 1 } },
+            });
+          } catch (incErr) {
+            console.error("Failed to increment escalation rule hitsCount:", incErr);
+          }
+        }
+
+        // 12. Handle Escalation & Telegram Instant Alert (Triggers on: Custom rule, AI flag, 3x repetition, keywords, low sentiment)
         const mustEscalate =
+          Boolean(matchedCustomRule) ||
           shouldEscalate ||
           isStuckInLoop ||
           hasHumanKeyword ||
           (sentimentScore !== undefined && sentimentScore <= -0.6);
 
         let finalEscalationReason = escalationReason;
-        if (isStuckInLoop) {
+        let eventReason: EscalationReason = EscalationReason.NEGATIVE_SENTIMENT;
+
+        if (matchedCustomRule) {
+          finalEscalationReason = `Custom Automation Rule Triggered: "${matchedCustomRule.name}"`;
+          eventReason = matchedCustomRule.reason || EscalationReason.CUSTOM_KEYWORD;
+        } else if (isStuckInLoop) {
           finalEscalationReason = "Customer repeated the same query 3 times (Stuck in Loop / Escalation Triggered)";
+          eventReason = EscalationReason.UNSUPPORTED_QUERY;
         } else if (hasHumanKeyword && !finalEscalationReason) {
           finalEscalationReason = "Customer explicitly requested human agent / live representative";
+          eventReason = EscalationReason.HUMAN_REQUESTED;
         } else if (!finalEscalationReason && sentimentScore !== undefined && sentimentScore <= -0.6) {
           finalEscalationReason = "Negative Customer Sentiment / Frustration Detected";
+          eventReason = EscalationReason.NEGATIVE_SENTIMENT;
+        } else if (shouldEscalate) {
+          finalEscalationReason = escalationReason || "AI Triggered Escalation";
+          eventReason = EscalationReason.HIGH_VALUE_LEAD;
         }
 
         if (mustEscalate) {
@@ -506,7 +557,7 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
           await prisma.escalationEvent.create({
             data: {
               conversationId: conversation.id,
-              reason: isStuckInLoop ? EscalationReason.UNSUPPORTED_QUERY : hasHumanKeyword ? EscalationReason.HUMAN_REQUESTED : EscalationReason.NEGATIVE_SENTIMENT,
+              reason: eventReason,
               triggerMessage: text,
               summary: finalEscalationReason || "Human Takeover Triggered",
               status: "PENDING",

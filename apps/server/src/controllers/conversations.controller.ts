@@ -6,7 +6,7 @@ export class ConversationsController {
    * GET /api/conversations - List conversations for active workspace
    */
   static async list(c: Context) {
-    const workspaceId = c.req.header("x-workspace-id");
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     const filterPageId = c.req.query("pageId");
 
     try {
@@ -84,7 +84,7 @@ export class ConversationsController {
    * POST /api/conversations/whatsapp/start - Start or find an active WhatsApp conversation
    */
   static async startWhatsApp(c: Context) {
-    const workspaceId = c.req.header("x-workspace-id");
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
     try {
       const body = await c.req.json().catch(() => ({}));
