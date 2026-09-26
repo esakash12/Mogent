@@ -1,3 +1,5 @@
+process.env.TZ = "Asia/Dhaka";
+
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
@@ -140,9 +142,16 @@ app.route("/api/comments", commentsRouter);
 app.get("/uploads/*", async (c) => {
   const relPath = c.req.path.replace(/^\/uploads\//, "");
   const safePath = path.normalize(relPath).replace(/^(\.\.[\/\\])+/, "");
-  const fullPath = path.join(process.cwd(), "uploads", safePath);
+  const candidates = [
+    path.join(process.cwd(), "uploads", safePath),
+    path.join(process.cwd(), "apps", "server", "uploads", safePath),
+    path.resolve(process.cwd(), "..", "uploads", safePath),
+    path.resolve(__dirname, "../uploads", safePath),
+    path.resolve(__dirname, "../../uploads", safePath),
+  ];
+  const fullPath = candidates.find((p) => fs.existsSync(p));
 
-  if (!fs.existsSync(fullPath)) {
+  if (!fullPath) {
     return c.text("File not found", 404);
   }
 

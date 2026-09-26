@@ -11,6 +11,7 @@ import {
   createOrderManual as apiCreateOrder,
 } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { formatBdTime } from "@/lib/timezone";
 
 export interface Message {
   id: string;
@@ -365,7 +366,7 @@ export function useInbox() {
       mediaType: attachment?.mediaType || "TEXT",
       mediaUrl: attachment?.mediaUrl,
       fileName: attachment?.fileName,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: formatBdTime(new Date()),
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -500,7 +501,7 @@ export function useInbox() {
       if (res?.success && res.data) {
         const confirmText = `✅ Order Confirmed!\nOrder ID: #${res.data.orderNumber || res.data.id?.slice(-6)?.toUpperCase()}\nItems: ${orderForm.productName}\nAmount: ৳${orderForm.totalAmount}\nPayment: ${orderForm.paymentMethod}\n\nThank you for shopping with us!`;
 
-        const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const now = formatBdTime(new Date());
         const optimisticMsg: Message = {
           id: Date.now().toString(),
           sender: "HUMAN",

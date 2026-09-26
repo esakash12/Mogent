@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "@mogent/database";
 import { authMiddleware } from "../middleware/auth";
+import { formatBdTime } from "../utils/timezone";
 
 export const contactsRouter = new Hono();
 
@@ -108,7 +109,7 @@ contactsRouter.get("/", async (c) => {
             : `${cust.sentimentScore.toFixed(2)}`
           : "+0.70",
         sentiment: sentimentTag,
-        lastActive: new Date(cust.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        lastActive: formatBdTime(cust.updatedAt),
         psid: cust.psid,
         profilePic: cust.profilePic,
         pageId: cust.facebookPageId,

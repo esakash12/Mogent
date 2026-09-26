@@ -121,8 +121,9 @@ export default function LiveInboxPage() {
       try {
         setIsUploadingAttachment(true);
         const uploadRes = await uploadInboxAttachment(pendingAttachment.file);
-        if (uploadRes?.success && uploadRes.data?.url) {
-          const mediaUrl = uploadRes.data.url;
+        const resolvedUrl = uploadRes?.data?.url || (uploadRes as any)?.url || (uploadRes as any)?.data?.data?.url;
+        if (uploadRes?.success && resolvedUrl) {
+          const mediaUrl = resolvedUrl;
           const mediaType = pendingAttachment.mediaType;
           const fileName = pendingAttachment.fileName;
           handleRemoveAttachment();

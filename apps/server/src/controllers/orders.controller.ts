@@ -1,6 +1,7 @@
 import { Context } from "hono";
 import { prisma } from "@mogent/database";
 import { createOrder } from "../services/order-service";
+import { formatBdTime } from "../utils/timezone";
 
 export class OrdersController {
   /**
@@ -83,7 +84,7 @@ export class OrdersController {
             amount: o.totalAmount,
             paymentMethod: "COD",
             status: o.status,
-            capturedAt: new Date(o.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            capturedAt: formatBdTime(o.createdAt),
             createdAt: o.createdAt,
             pageName,
           };

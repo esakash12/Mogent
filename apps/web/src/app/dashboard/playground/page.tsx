@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { testPlaygroundAI } from "@/lib/api";
+import { formatBdTime } from "@/lib/timezone";
 
 interface ChatMessage {
   id: string;
@@ -37,7 +38,7 @@ export default function TryYourAIPage() {
     const userText = inputText;
     setInputText("");
 
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const now = formatBdTime(new Date());
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
@@ -82,7 +83,7 @@ export default function TryYourAIPage() {
           id: (Date.now() + 1).toString(),
           role: "model",
           text: replyText,
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          time: formatBdTime(new Date()),
           channel,
           thinking,
           button,
@@ -95,7 +96,7 @@ export default function TryYourAIPage() {
           id: (Date.now() + 1).toString(),
           role: "model",
           text: "দুঃখিত, সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          time: formatBdTime(new Date()),
           channel,
         },
       ]);

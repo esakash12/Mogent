@@ -43,7 +43,7 @@ dashboardRouter.get("/analytics", async (c) => {
       for (let i = 13; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", month: "short", day: "numeric" });
         emptyDaily.push({ date: label, count: 0 });
       }
 
@@ -152,7 +152,7 @@ dashboardRouter.get("/analytics", async (c) => {
       const nextD = new Date(d);
       nextD.setDate(nextD.getDate() + 1);
 
-      const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", month: "short", day: "numeric" });
       const count = recentConvs.filter((c) => {
         const t = new Date(c.updatedAt);
         return t >= d && t < nextD;

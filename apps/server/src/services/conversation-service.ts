@@ -3,6 +3,9 @@ import { facebookApi } from "./facebook-api";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
 import { redisConnection } from "../redis";
+import { formatBdTime } from "../utils/timezone";
+import fs from "fs";
+import path from "path";
 
 export interface ListConversationsParams {
   workspaceId?: string;
@@ -174,7 +177,7 @@ export class ConversationService {
         address: conv.customer.deliveryAddress,
         lastMessage: conv.messages[0]?.content || "No messages yet",
         lastTime: conv.messages[0]
-          ? new Date(conv.messages[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          ? formatBdTime(conv.messages[0].createdAt)
           : "Just now",
         tag: conv.customer.tags[0] || (convChannel === "WHATSAPP" ? "WhatsApp Lead" : "General Inquiry"),
       };
@@ -197,7 +200,7 @@ export class ConversationService {
       mediaType: m.mediaType,
       mediaUrl: m.mediaUrl,
       fileName: m.fileName || undefined,
-      time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: formatBdTime(m.createdAt),
       thinking: m.thinkingProcess,
     }));
   }
@@ -247,7 +250,8 @@ export class ConversationService {
               pageAccessToken,
               customer.psid,
               mediaType === "FILE" ? "file" : "image",
-              mediaUrl
+              mediaUrl,
+              fileName
             );
           }
           // If text caption provided, dispatch text
@@ -288,8 +292,81 @@ export class ConversationService {
           const cleanPhone = (customer.phoneNumber || customer.psid.replace("wa_", "")).replace(/\D/g, "");
           if (cleanPhone) {
             if (isMedia && mediaUrl) {
-              // Dispatch Image or Document via WhatsApp Cloud API
+              // 1. Resolve local disk file or upload binary directly to WhatsApp Media API
+              let mediaId: string | null = null;
+              let bufferToSend: Buffer | null = null;
+              let mimeType = mediaType === "FILE" ? "application/pdf" : "image/jpeg";
+
+              if (mediaUrl.includes("/uploads/")) {
+                try {
+                  const rel = mediaUrl.substring(mediaUrl.indexOf("/uploads/") + "/uploads/".length).split("?")[0];
+                  const candidates = [
+                    path.join(process.cwd(), "uploads", rel),
+                    path.join(process.cwd(), "apps", "server", "uploads", rel),
+                    path.resolve(process.cwd(), "..", "uploads", rel),
+                    path.resolve(__dirname, "../../uploads", rel),
+                    path.resolve(__dirname, "../../../uploads", rel),
+                  ];
+                  for (const cand of candidates) {
+                    if (fs.existsSync(cand)) {
+                      bufferToSend = fs.readFileSync(cand);
+                      if (cand.endsWith(".png")) mimeType = "image/png";
+                      else if (cand.endsWith(".webp")) mimeType = "image/webp";
+                      else if (cand.endsWith(".pdf")) mimeType = "application/pdf";
+                      else if (cand.endsWith(".gif")) mimeType = "image/gif";
+                      break;
+                    }
+                  }
+                } catch {}
+              }
+
+              if (!bufferToSend && (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://"))) {
+                try {
+                  const fetchRes = await fetch(mediaUrl);
+                  if (fetchRes.ok) {
+                    const arr = await fetchRes.arrayBuffer();
+                    bufferToSend = Buffer.from(arr);
+                    const ct = fetchRes.headers.get("content-type");
+                    if (ct) mimeType = ct;
+                  }
+                } catch {}
+              }
+
+              if (bufferToSend) {
+                try {
+                  const formData = new FormData();
+                  formData.append("messaging_product", "whatsapp");
+                  formData.append("file", new Blob([new Uint8Array(bufferToSend)], { type: mimeType }), fileName || (mediaType === "FILE" ? "document.pdf" : "image.jpg"));
+                  formData.append("type", mimeType);
+
+                  const uploadRes = await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/media`, {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${saved.accessToken}`,
+                    },
+                    body: formData,
+                  });
+
+                  if (uploadRes.ok) {
+                    const uploadData: any = await uploadRes.json();
+                    if (uploadData?.id) {
+                      mediaId = uploadData.id;
+                    }
+                  } else {
+                    const errTxt = await uploadRes.text();
+                    console.warn("WhatsApp Media API upload notice:", errTxt);
+                  }
+                } catch (upErr: any) {
+                  console.warn("WhatsApp local binary media upload error:", upErr.message);
+                }
+              }
+
+              // 2. Dispatch Document or Image via WhatsApp Cloud API
               if (mediaType === "FILE") {
+                const docObj = mediaId
+                  ? { id: mediaId, caption: cleanText || undefined, filename: fileName || "document.pdf" }
+                  : { link: mediaUrl, caption: cleanText || undefined, filename: fileName || "document.pdf" };
+
                 await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
                   method: "POST",
                   headers: {
@@ -300,14 +377,14 @@ export class ConversationService {
                     messaging_product: "whatsapp",
                     to: cleanPhone,
                     type: "document",
-                    document: {
-                      link: mediaUrl,
-                      caption: cleanText || undefined,
-                      filename: fileName || "document.pdf",
-                    },
+                    document: docObj,
                   }),
                 });
               } else {
+                const imgObj = mediaId
+                  ? { id: mediaId, caption: cleanText || undefined }
+                  : { link: mediaUrl, caption: cleanText || undefined };
+
                 await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
                   method: "POST",
                   headers: {
@@ -318,10 +395,7 @@ export class ConversationService {
                     messaging_product: "whatsapp",
                     to: cleanPhone,
                     type: "image",
-                    image: {
-                      link: mediaUrl,
-                      caption: cleanText || undefined,
-                    },
+                    image: imgObj,
                   }),
                 });
               }
@@ -371,7 +445,7 @@ export class ConversationService {
       mediaType: message.mediaType,
       mediaUrl: message.mediaUrl,
       fileName: message.fileName,
-      time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: formatBdTime(message.createdAt),
     };
   }
 

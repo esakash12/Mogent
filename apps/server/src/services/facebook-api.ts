@@ -1,4 +1,6 @@
 import { config } from "../config";
+import fs from "fs";
+import path from "path";
 
 export interface FbCustomerProfile {
   first_name?: string;
@@ -53,40 +55,123 @@ export class FacebookApiService {
 
   /**
    * Sends an attachment (image, file/pdf) via Facebook Messenger Send API.
+   * Supports both direct binary upload (via filedata) and URL-based fetching.
    */
   public async sendAttachmentMessage(
     pageAccessToken: string,
     recipientPsid: string,
     type: "image" | "file",
-    url: string
+    url: string,
+    fileName?: string,
+    fileBuffer?: Buffer
   ): Promise<any> {
     const endpoint = `${this.baseUrl}/me/messages?access_token=${pageAccessToken}`;
 
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recipient: { id: recipientPsid },
-        messaging_type: "RESPONSE",
-        message: {
-          attachment: {
-            type,
-            payload: {
-              url,
-              is_reusable: true,
-            },
-          },
-        },
-      }),
-    });
+    // 1. If buffer exists or if URL points to a file, resolve buffer for binary multipart upload
+    let bufferToSend = fileBuffer;
+    let mimeType = type === "file" ? "application/pdf" : "image/jpeg";
+    const cleanFileName = fileName || (type === "file" ? "document.pdf" : "image.jpg");
 
-    if (!res.ok) {
-      const errorData = await res.text();
-      console.warn(`Facebook Send Attachment Warning (${res.status}):`, errorData);
-      return null;
+    if (!bufferToSend && url) {
+      if (url.includes("/uploads/")) {
+        try {
+          const rel = url.substring(url.indexOf("/uploads/") + "/uploads/".length).split("?")[0];
+          const candidates = [
+            path.join(process.cwd(), "uploads", rel),
+            path.join(process.cwd(), "apps", "server", "uploads", rel),
+            path.resolve(process.cwd(), "..", "uploads", rel),
+            path.resolve(__dirname, "../../uploads", rel),
+            path.resolve(__dirname, "../../../uploads", rel),
+          ];
+          for (const cand of candidates) {
+            if (fs.existsSync(cand)) {
+              bufferToSend = fs.readFileSync(cand);
+              if (cand.endsWith(".png")) mimeType = "image/png";
+              else if (cand.endsWith(".webp")) mimeType = "image/webp";
+              else if (cand.endsWith(".pdf")) mimeType = "application/pdf";
+              else if (cand.endsWith(".gif")) mimeType = "image/gif";
+              break;
+            }
+          }
+        } catch {}
+      }
+
+      // If still no buffer and url is http/https, fetch file bytes into memory
+      if (!bufferToSend && (url.startsWith("http://") || url.startsWith("https://"))) {
+        try {
+          const fetchRes = await fetch(url);
+          if (fetchRes.ok) {
+            const arr = await fetchRes.arrayBuffer();
+            bufferToSend = Buffer.from(arr);
+            const ct = fetchRes.headers.get("content-type");
+            if (ct) mimeType = ct;
+          }
+        } catch {}
+      }
     }
 
-    return res.json();
+    if (bufferToSend) {
+      try {
+        const formData = new FormData();
+        formData.append("recipient", JSON.stringify({ id: recipientPsid }));
+        formData.append("messaging_type", "RESPONSE");
+        formData.append("message", JSON.stringify({
+          attachment: {
+            type,
+            payload: { is_reusable: true },
+          },
+        }));
+        formData.append("filedata", new Blob([new Uint8Array(bufferToSend)], { type: mimeType }), cleanFileName);
+
+        const formRes = await fetch(endpoint, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (formRes.ok) {
+          const resJson = await formRes.json();
+          console.log(`✅ Facebook Messenger attachment sent via binary upload to ${recipientPsid}`);
+          return resJson;
+        } else {
+          const errText = await formRes.text();
+          console.warn(`Facebook Send Attachment (binary) Warning (${formRes.status}):`, errText);
+        }
+      } catch (err: any) {
+        console.warn("Facebook binary attachment send error, trying URL fallback:", err.message);
+      }
+    }
+
+    // 2. URL-based attachment dispatch fallback
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: recipientPsid },
+          messaging_type: "RESPONSE",
+          message: {
+            attachment: {
+              type,
+              payload: {
+                url,
+                is_reusable: true,
+              },
+            },
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.text();
+        console.warn(`Facebook Send Attachment Warning (${res.status}):`, errorData);
+        return null;
+      }
+
+      return res.json();
+    } catch (urlErr: any) {
+      console.warn("Facebook URL attachment send error:", urlErr.message);
+      return null;
+    }
   }
 
   /**

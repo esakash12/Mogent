@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
+import { formatBdTime } from "@/lib/timezone";
 import { ConfirmModal } from "@/components/confirm-modal";
 import {
   fetchComments,
@@ -447,10 +448,7 @@ export default function FacebookCommentsPage() {
                           {comment.authorName}
                         </span>
                         <span className="text-[10px] text-[#9CA3AF]">
-                          {new Date(comment.createdTime).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatBdTime(comment.createdTime)}
                         </span>
                         {comment.isHidden && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#F3F4F6] text-[#6B7280] text-[10px] font-semibold border border-[#E5E7EB]">
@@ -512,10 +510,7 @@ export default function FacebookCommentsPage() {
                             {rep.authorName}
                           </span>
                           <span className="text-[#9CA3AF] text-[10px]">
-                            {new Date(rep.createdTime).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {formatBdTime(rep.createdTime)}
                           </span>
                         </div>
                         <p className="text-xs text-[#374151] pl-4">{rep.message}</p>
