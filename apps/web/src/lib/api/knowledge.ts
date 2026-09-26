@@ -39,6 +39,15 @@ export async function saveSystemPrompt(data: {
   return await api.post("/api/knowledge/system-prompt", data);
 }
 
+export async function fetchWhatsAppPrompt(): Promise<string> {
+  const res = await api.get<{ prompt: string }>("/api/knowledge/whatsapp-prompt");
+  return res.success && res.data?.prompt !== undefined ? res.data.prompt : (res as any)?.prompt || "";
+}
+
+export async function saveWhatsAppPrompt(prompt: string) {
+  return await api.post("/api/knowledge/whatsapp-prompt", { prompt });
+}
+
 export async function testPlaygroundAI(data: { message: string; history?: any[]; pageId?: string; channel?: string }) {
   return await api.post("/api/knowledge/playground", data);
 }

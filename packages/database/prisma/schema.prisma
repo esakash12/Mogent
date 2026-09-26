@@ -158,6 +158,7 @@ model Workspace {
   hotlineNumber        String?  @default("09612345678")
   officeAddress        String?  @db.Text
   whatsAppPrefillText  String?  @db.Text
+  whatsAppSystemPrompt String?  @db.Text
 
   // Billing & Subscriptions
   plan                 String   @default("FREE") // FREE, STARTER, PRO, ENTERPRISE

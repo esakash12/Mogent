@@ -17,11 +17,14 @@ import {
   Lightbulb,
   Edit2,
   Info,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/lib/toast";
 import {
   fetchKnowledgeAndWhatsApp,
   saveSystemPrompt,
+  saveWhatsAppPrompt,
   createKnowledgeItem,
   deleteKnowledgeItem,
   saveWhatsAppProtocol,
@@ -31,6 +34,7 @@ import {
 
 type KnowledgeTab =
   | "PERSONA"
+  | "WHATSAPP"
   | "FAQ"
   | "DELIVERY"
   | "RETURN"
@@ -38,8 +42,9 @@ type KnowledgeTab =
   | "CONTACT"
   | "KYC";
 
-const tabsList: { id: KnowledgeTab; label: string }[] = [
-  { id: "PERSONA", label: "AI Persona" },
+const tabsList: { id: KnowledgeTab; label: string; isWhatsApp?: boolean }[] = [
+  { id: "PERSONA", label: "Messenger AI Persona" },
+  { id: "WHATSAPP", label: "WhatsApp Prompt", isWhatsApp: true },
   { id: "FAQ", label: "FAQ" },
   { id: "DELIVERY", label: "Delivery" },
   { id: "RETURN", label: "Return & Refund" },
@@ -58,6 +63,12 @@ export default function KnowledgeBasePage() {
   // Persona
   const [personaPrompt, setPersonaPrompt] = useState("");
   const [businessName, setBusinessName] = useState("");
+
+  // WhatsApp Prompt State
+  const [whatsappPrompt, setWhatsappPrompt] = useState("");
+  const [isGeneratingWhatsApp, setIsGeneratingWhatsApp] = useState(false);
+  const [isSavingWhatsApp, setIsSavingWhatsApp] = useState(false);
+  const [savedWhatsAppSuccess, setSavedWhatsAppSuccess] = useState(false);
 
   // FAQ
   const [faqs, setFaqs] = useState<{ id: string; question: string; answer: string }[]>([]);
@@ -117,6 +128,17 @@ export default function KnowledgeBasePage() {
         } else {
           setPersonaPrompt(
             `You are a helpful sales assistant for ${data.businessName || "our store"}.\nAlways reply in friendly Bengali (বাংলা / বাংলিশ).\nBe polite, concise, and help customers complete their orders quickly.\nDo not discuss competitor products or unrelated topics.`
+          );
+        }
+
+        if (data.whatsappPrompt) {
+          setWhatsappPrompt(data.whatsappPrompt);
+        } else {
+          setWhatsappPrompt(
+            `আপনি "${data.businessName || "আমাদের শপ"}" এর একজন বাস্তব অভিজ্ঞ সেলস এক্সপার্ট ও শপ ওনার।
+কাস্টমার মাত্রই WhatsApp-এ সরাসরি মেসেজ দিয়েছেন।
+আপনার উত্তরগুলো হবে বাস্তব মানুষের মতো স্বাভাবিক, অত্যন্ত সংক্ষিপ্ত ও সরাসরি টু-দ্য-পয়েন্ট (১-২ টি ছোট বাক্যে)।
+কখনোই রোবটের মতো দীর্ঘ বিবরণ বা বড় প্যারাগ্রাফ দেবেন না। সরাসরি প্রশ্নের উত্তর দিয়ে কাস্টমারকে অর্ডার কনফার্ম করতে সহায়তা করুন।`
           );
         }
 
@@ -219,6 +241,43 @@ Key Guidelines:
       console.error("Error saving persona to DB:", err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleGenerateWhatsAppTemplate = () => {
+    setIsGeneratingWhatsApp(true);
+    setTimeout(() => {
+      setWhatsappPrompt(
+        `আপনি "${businessName || "আমাদের শপ"}" এর একজন অত্যন্ত দক্ষ, বাস্তব সেলস এক্সপার্ট ও শপ ওনার।
+
+কাস্টমার মাত্রই WhatsApp-এ সরাসরি যোগাযোগ করেছেন।
+WhatsApp চ্যাট ও সেলস রুলস:
+১. মানুষের মতো আন্তরিক ও সরাসরি ভাষায় কথা বলবেন।
+২. প্রতিটি মেসেজের উত্তর হবে অত্যন্ত সংক্ষিপ্ত (সর্বোচ্চ ১-২ টি ছোট বাক্য)। কোনো বড় প্যারাগ্রাফ বা অপ্রয়োজনীয় ভূমিকা দেওয়া সম্পূর্ণ নিষেধ।
+৩. কাস্টমার যা জানতে চেয়েছেন ঠিক সেইটুকুর সরাসরি উত্তর দিন।
+৪. কাস্টমার প্রোডাক্ট নিতে আগ্রহী হলে বা সাইজ জানালে সরাসরি বলুন: "অর্ডারটি কি আপনার নামে কনফার্ম করে দেব? অনুগ্রহ করে আপনার নাম, ডেলিভারি ঠিকানা ও ফোন নাম্বার দিন।"
+৫. দাম বা ডেলিভারি চার্জ জানতে চাইলে স্পষ্ট এক বাক্যে উত্তর দিন।`
+      );
+      setIsGeneratingWhatsApp(false);
+      toast.success("Sales Masterclass Prompt Template Loaded!");
+    }, 400);
+  };
+
+  const handleSaveWhatsAppPrompt = async () => {
+    setIsSavingWhatsApp(true);
+    try {
+      const res = await saveWhatsAppPrompt(whatsappPrompt);
+      if (res?.success) {
+        setSavedWhatsAppSuccess(true);
+        toast.success("Dedicated WhatsApp System Prompt saved successfully!");
+        setTimeout(() => setSavedWhatsAppSuccess(false), 2500);
+      } else {
+        toast.error(res?.error || "Failed to save WhatsApp prompt.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save WhatsApp prompt.");
+    } finally {
+      setIsSavingWhatsApp(false);
     }
   };
 
@@ -349,7 +408,7 @@ Key Guidelines:
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* 7 Sub Tabs Row with High Contrast */}
+      {/* 8 Sub Tabs Row with High Contrast */}
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
         {tabsList.map((tab) => {
           const active = activeTab === tab.id;
@@ -358,13 +417,18 @@ Key Guidelines:
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer",
+                "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer",
                 active
-                  ? "bg-[#F59E0B] text-black shadow-sm"
+                  ? tab.isWhatsApp
+                    ? "bg-[#25D366] text-white shadow-sm"
+                    : "bg-[#F59E0B] text-black shadow-sm"
+                  : tab.isWhatsApp
+                  ? "bg-white border border-[#BBF7D0] text-[#16A34A] hover:bg-[#F0FDF4]"
                   : "bg-white border border-[#E2E8F0] text-[#334155] hover:text-[#0F172A] hover:bg-[#F8FAFC]"
               )}
             >
-              {tab.label}
+              {tab.isWhatsApp && <MessageCircle className="w-3.5 h-3.5" />}
+              <span>{tab.label}</span>
             </button>
           );
         })}
@@ -439,7 +503,103 @@ Key Guidelines:
         </div>
       )}
 
-      {/* 2. FAQ TAB */}
+      {/* 2. DEDICATED WHATSAPP SYSTEM PROMPT TAB */}
+      {activeTab === "WHATSAPP" && (
+        <div className="space-y-4">
+          {/* Card 1: Title Card with WhatsApp Green Branding */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-sm space-y-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#DCFCE7] text-[#16A34A] flex items-center justify-center border border-[#BBF7D0] shrink-0">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                    <span>Dedicated WhatsApp System Prompt</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]">
+                      Active on WhatsApp
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#475569]">
+                    Separate instructions specifically for WhatsApp. When a conversation is on WhatsApp, the AI automatically prioritizes this prompt.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Strategy Tips Card */}
+          <div className="bg-[#F0FDF4] rounded-2xl border border-[#BBF7D0] p-5 shadow-sm space-y-2">
+            <h3 className="text-xs font-bold text-[#166534] flex items-center gap-1.5">
+              <Lightbulb className="w-3.5 h-3.5 text-[#16A34A]" />
+              <span>WhatsApp Sales Guidelines & Best Practices</span>
+            </h3>
+            <ul className="text-xs text-[#14532D] space-y-1.5 list-disc pl-5 font-medium">
+              <li>
+                <strong>ছোট ও প্রাকৃতিক উত্তর:</strong> WhatsApp-এ কাস্টমার লম্বা রোবটিক প্যারাগ্রাফ পছন্দ করে না। ১-২ বাক্যে সরাসরি মানুষের মতো উত্তর দিন।
+              </li>
+              <li>
+                <strong>সেলস ক্লোজার স্টাইল:</strong> কাস্টমার সাইজ বা প্রোডাক্ট পছন্দ করলে সরাসরি নাম, ডেলিভারি ঠিকানা ও মোবাইল নাম্বার চেয়ে অর্ডার কনফার্ম করার দিকে নিয়ে যান।
+              </li>
+              <li>
+                <strong>স্মার্ট প্রম্পট অগ্রাধিকার:</strong> এই প্রম্পটটি সেভ থাকলে WhatsApp চ্যানেলে এটি সাধারণ ফেসবুক মেসেঞ্জার প্রম্পটের চেয়ে স্বয়ংক্রিয়ভাবে অগ্রাধিকার পাবে।
+              </li>
+            </ul>
+          </div>
+
+          {/* Card 3: Instructions Editor Card */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
+                <span>WhatsApp System Prompt & Sales Persona</span>
+              </label>
+
+              <button
+                type="button"
+                onClick={handleGenerateWhatsAppTemplate}
+                disabled={isGeneratingWhatsApp}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#F0FDF4] border border-[#BBF7D0] text-[#166534] text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isGeneratingWhatsApp ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-[#16A34A]" />
+                )}
+                <span>Load Sales Closer Template</span>
+              </button>
+            </div>
+
+            <textarea
+              rows={12}
+              value={whatsappPrompt}
+              onChange={(e) => setWhatsappPrompt(e.target.value)}
+              placeholder="Write or paste your dedicated WhatsApp AI sales closer instructions here..."
+              className="w-full p-4 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono leading-relaxed focus:outline-none focus:border-[#25D366] focus:ring-1 focus:ring-[#25D366]"
+            />
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-[#15803D] font-bold">
+                {savedWhatsAppSuccess && "✓ Dedicated WhatsApp prompt saved to database & live!"}
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveWhatsAppPrompt}
+                disabled={isSavingWhatsApp}
+                className="px-6 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20BA5C] text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isSavingWhatsApp ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                <span>{isSavingWhatsApp ? "Saving..." : "Save WhatsApp Prompt"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. FAQ TAB */}
       {activeTab === "FAQ" && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-sm flex items-center justify-between">

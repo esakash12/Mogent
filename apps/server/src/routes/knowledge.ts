@@ -46,7 +46,10 @@ knowledgeRouter.get("/", async (c) => {
       orderBy: { priority: "desc" },
     });
 
-    let wpPrompt = targetWsId ? await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWsId}`) : null;
+    let wpPrompt = (workspace as any)?.whatsAppSystemPrompt;
+    if (!wpPrompt && targetWsId) {
+      wpPrompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWsId}`);
+    }
     if (!wpPrompt) {
       wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
     }
@@ -148,9 +151,13 @@ knowledgeRouter.post("/system-prompt", async (c) => {
       }
     }
 
-    // Save WhatsApp prompt separately to Redis strictly scoped by workspaceId
+    // Save WhatsApp prompt separately to Database & Redis strictly scoped by workspaceId
     if (whatsappPrompt !== undefined) {
       const cleanWp = (whatsappPrompt || "").trim();
+      await prisma.workspace.update({
+        where: { id: targetWorkspaceId },
+        data: { whatsAppSystemPrompt: cleanWp || null },
+      });
       await redisConnection.set(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`, cleanWp);
     }
 
@@ -164,7 +171,7 @@ knowledgeRouter.post("/system-prompt", async (c) => {
   }
 });
 
-// GET /api/knowledge/whatsapp-prompt
+// GET /api/knowledge/whatsapp-prompt - Retrieve dedicated WhatsApp prompt
 knowledgeRouter.get("/whatsapp-prompt", async (c) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
@@ -172,15 +179,22 @@ knowledgeRouter.get("/whatsapp-prompt", async (c) => {
   }
 
   try {
-    const raw = await redisConnection.get(`mogent:whatsapp_system_prompt:${workspaceId}`);
-    return c.json({ success: true, prompt: raw || "" });
+    const ws = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { whatsAppSystemPrompt: true },
+    });
+    let prompt = ws?.whatsAppSystemPrompt;
+    if (!prompt) {
+      prompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${workspaceId}`);
+    }
+    return c.json({ success: true, prompt: prompt || "" });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
 
-// POST /api/knowledge/whatsapp-prompt
-knowledgeRouter.post("/whatsapp-prompt", async (c) => {
+// Handler for POST / PUT /api/knowledge/whatsapp-prompt
+const handleSaveWhatsAppPrompt = async (c: any) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
     return c.json({ success: false, error: "Workspace context is required" }, 400);
@@ -189,12 +203,25 @@ knowledgeRouter.post("/whatsapp-prompt", async (c) => {
   try {
     const body = await c.req.json();
     const cleanPrompt = (body.prompt || "").trim();
+
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { whatsAppSystemPrompt: cleanPrompt || null },
+    });
+
     await redisConnection.set(`mogent:whatsapp_system_prompt:${workspaceId}`, cleanPrompt);
-    return c.json({ success: true, message: "WhatsApp prompt saved successfully!", prompt: cleanPrompt });
+    return c.json({
+      success: true,
+      message: "Dedicated WhatsApp system prompt saved successfully!",
+      prompt: cleanPrompt,
+    });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }
-});
+};
+
+knowledgeRouter.post("/whatsapp-prompt", handleSaveWhatsAppPrompt);
+knowledgeRouter.put("/whatsapp-prompt", handleSaveWhatsAppPrompt);
 
 // POST /api/knowledge - Add knowledge base entry
 knowledgeRouter.post("/", async (c) => {
@@ -548,9 +575,10 @@ knowledgeRouter.post("/playground", async (c) => {
     let systemPrompt = "";
 
     if (isWhatsApp) {
-      let wpPrompt = targetWorkspaceId
-        ? await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`)
-        : null;
+      let wpPrompt = (workspace as any)?.whatsAppSystemPrompt;
+      if (!wpPrompt && targetWorkspaceId) {
+        wpPrompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`);
+      }
       if (!wpPrompt) {
         wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
       }

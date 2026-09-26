@@ -237,12 +237,19 @@ export function startMessageWorker() {
         );
       }
 
+      const isWhatsApp = Boolean(
+        isWhatsAppRecipient ||
+        (conversation as any).channel === "WHATSAPP" ||
+        (customer as any)?.channel === "WHATSAPP"
+      );
+
       // Context-aware system prompt & Channel Separation
       let systemPrompt = "";
-      if (isWhatsAppRecipient) {
-        let wpCustomPrompt = page.workspaceId
-          ? await redisConnection.get(`mogent:whatsapp_system_prompt:${page.workspaceId}`)
-          : null;
+      if (isWhatsApp) {
+        let wpCustomPrompt = page.workspace?.whatsAppSystemPrompt;
+        if (!wpCustomPrompt && page.workspaceId) {
+          wpCustomPrompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${page.workspaceId}`);
+        }
         if (!wpCustomPrompt) {
           wpCustomPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
         }
@@ -279,7 +286,7 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
           },
           temperature: page.aiTemperature,
           model: config.aiProxy.defaultModel,
-          channel: isWhatsAppRecipient ? "WHATSAPP" : "MESSENGER",
+          channel: isWhatsApp ? "WHATSAPP" : "MESSENGER",
         });
 
         const { thinking, replyText, sentimentScore, shouldEscalate, escalationReason, extractedLeadInfo } =
@@ -325,7 +332,7 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
 
         // 10. Send Reply to Customer via Facebook Messenger or WhatsApp Cloud API
         if (finalReplyText && page.aiMode !== "MANUAL") {
-          if (isWhatsAppRecipient) {
+          if (isWhatsApp) {
             try {
               const wsId = page.workspaceId || "default";
               let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);

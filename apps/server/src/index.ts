@@ -173,6 +173,11 @@ async function syncDatabaseSchema() {
         EXCEPTION
           WHEN others THEN NULL;
         END;
+        BEGIN
+          ALTER TABLE "workspaces" ADD COLUMN IF NOT EXISTS "whatsAppSystemPrompt" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
       END $$;
     `);
 
