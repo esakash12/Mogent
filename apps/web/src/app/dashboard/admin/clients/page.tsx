@@ -10,7 +10,7 @@ import {
   RefreshCw,
   ExternalLink,
   Shield,
-  Loader2
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchAdminClients } from "@/lib/api";
@@ -59,46 +59,46 @@ export default function AdminClientsPage() {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E8F0] pb-5">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-semibold mb-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#D97706] text-xs font-bold mb-2">
             <Shield className="w-3.5 h-3.5" />
             <span>Super Admin Multi-Tenant Directory</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#EDEDED]">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#0F172A]">
             Merchant Workspaces & Clients
           </h1>
-          <p className="text-[#888] text-xs mt-1">
-            Overview of all merchant stores, connected Facebook Pages, and product catalogs.
+          <p className="text-[#64748B] text-xs mt-1">
+            Overview of all merchant stores, connected Facebook Pages, and product catalogs across the platform.
           </p>
         </div>
 
         <button
           onClick={loadClients}
-          className="px-3.5 py-2 rounded-xl bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-mono text-[#888] hover:text-[#EDEDED] flex items-center gap-2 transition-colors cursor-pointer"
+          className="px-4 py-2.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-xs font-bold text-[#0F172A] flex items-center gap-2 transition-colors cursor-pointer shadow-xs w-fit"
         >
-          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+          <RefreshCw className={cn("w-3.5 h-3.5 text-[#F59E0B]", loading && "animate-spin")} />
           <span>Refresh Clients</span>
         </button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A]">
-          <span className="text-xs text-[#888]">Total Workspaces</span>
-          <p className="text-2xl font-bold text-[#EDEDED] mt-1">{clients.length}</p>
+        <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
+          <span className="text-xs font-bold text-[#64748B]">Total Workspaces</span>
+          <p className="text-2xl font-black text-[#0F172A] mt-1">{clients.length}</p>
         </div>
-        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A]">
-          <span className="text-xs text-[#888]">Total Connected Pages</span>
-          <p className="text-2xl font-bold text-blue-400 mt-1">
+        <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
+          <span className="text-xs font-bold text-[#64748B]">Total Connected Pages</span>
+          <p className="text-2xl font-black text-[#2563EB] mt-1">
             {clients.reduce((acc, c) => acc + (c.pagesCount || 0), 0)}
           </p>
         </div>
-        <div className="p-5 rounded-2xl border border-[#222] bg-[#0A0A0A]">
-          <span className="text-xs text-[#888]">Total Catalog Products</span>
-          <p className="text-2xl font-bold text-amber-500 mt-1">
+        <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
+          <span className="text-xs font-bold text-[#64748B]">Total Catalog Products</span>
+          <p className="text-2xl font-black text-[#D97706] mt-1">
             {clients.reduce((acc, c) => acc + (c.productsCount || 0), 0)}
           </p>
         </div>
@@ -106,32 +106,32 @@ export default function AdminClientsPage() {
 
       {/* Search */}
       <div className="relative w-full sm:w-80">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
         <input
           type="text"
           placeholder="Search workspace, owner email..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-[#111] border border-[#222] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+          className="w-full pl-9 pr-4 py-2.5 text-xs rounded-xl bg-white border border-[#CBD5E1] text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B] placeholder:text-[#94A3B8] shadow-xs"
         />
       </div>
 
       {/* Clients Table */}
-      <div className="rounded-2xl border border-[#222] bg-[#0A0A0A] overflow-hidden">
+      <div className="rounded-2xl border border-[#E2E8F0] bg-white shadow-xs overflow-hidden">
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center gap-2">
-            <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-            <span className="text-xs text-[#888]">Loading merchant workspaces...</span>
+            <Loader2 className="w-6 h-6 text-[#F59E0B] animate-spin" />
+            <span className="text-xs text-[#64748B]">Loading merchant workspaces...</span>
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center space-y-2">
-            <Users className="w-8 h-8 text-[#555] mx-auto" />
-            <p className="text-xs text-[#888]">No merchant workspaces found.</p>
+            <Users className="w-8 h-8 text-[#94A3B8] mx-auto" />
+            <p className="text-xs text-[#64748B]">No merchant workspaces found.</p>
           </div>
         ) : (
           <div className="overflow-x-auto scrollbar-thin">
             <table className="w-full text-left text-xs min-w-[700px]">
-              <thead className="bg-[#111] border-b border-[#222] text-[#888] font-semibold">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#64748B] font-bold">
                 <tr>
                   <th className="p-4">Workspace</th>
                   <th className="p-4">Owner Email</th>
@@ -141,38 +141,38 @@ export default function AdminClientsPage() {
                   <th className="p-4 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#222]">
+              <tbody className="divide-y divide-[#E2E8F0]">
                 {filtered.map((c) => (
-                  <tr key={c.id} className="hover:bg-[#111]/40 transition-colors">
-                    <td className="p-4 font-semibold text-[#EDEDED]">
+                  <tr key={c.id} className="hover:bg-[#F8FAFC] transition-colors">
+                    <td className="p-4 font-bold text-[#0F172A]">
                       <p>{c.name}</p>
-                      <p className="text-[10px] text-[#666] font-mono">Slug: {c.slug}</p>
+                      <p className="text-[10px] text-[#94A3B8] font-mono">Slug: {c.slug}</p>
                     </td>
 
-                    <td className="p-4 text-[#AAA] font-mono">
+                    <td className="p-4 text-[#475569] font-mono">
                       {c.ownerEmail}
                     </td>
 
                     <td className="p-4">
-                      <span className="inline-flex items-center gap-1.5 font-semibold text-blue-400">
+                      <span className="inline-flex items-center gap-1.5 font-bold text-[#2563EB]">
                         <Facebook className="w-3.5 h-3.5" />
                         {c.pagesCount} Pages
                       </span>
                     </td>
 
                     <td className="p-4">
-                      <span className="inline-flex items-center gap-1.5 font-semibold text-[#EDEDED]">
-                        <Package className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="inline-flex items-center gap-1.5 font-bold text-[#0F172A]">
+                        <Package className="w-3.5 h-3.5 text-[#D97706]" />
                         {c.productsCount} Items
                       </span>
                     </td>
 
-                    <td className="p-4 text-[#888] font-mono">
+                    <td className="p-4 text-[#64748B] font-mono">
                       {new Date(c.createdAt).toLocaleDateString()}
                     </td>
 
                     <td className="p-4 text-right">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]">
                         Active
                       </span>
                     </td>

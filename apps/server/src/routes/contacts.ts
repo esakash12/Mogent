@@ -16,7 +16,7 @@ contactsRouter.get("/", async (c) => {
   const search = (c.req.query("search") || "").trim();
   const isAll = c.req.query("all") === "true";
   const limitParam = c.req.query("limit");
-  const limit = isAll ? undefined : (limitParam ? parseInt(limitParam) : 50);
+  const limit = limitParam ? parseInt(limitParam) : undefined;
 
   try {
     if (!workspaceId) {
@@ -28,6 +28,17 @@ contactsRouter.get("/", async (c) => {
         confirmedBuyersCount: 0,
       });
     }
+
+    // Non-blocking self-healing: ensure customers with conversations in this workspace are linked
+    await prisma.customer.updateMany({
+      where: {
+        workspaceId: null,
+        conversations: {
+          some: { workspaceId },
+        },
+      },
+      data: { workspaceId },
+    }).catch(() => {});
 
     let pagesWhere: any = { workspaceId };
     if (pageId && pageId !== "ALL") {
@@ -44,6 +55,16 @@ contactsRouter.get("/", async (c) => {
       OR: [
         { workspaceId },
         ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+        {
+          conversations: {
+            some: {
+              OR: [
+                { workspaceId },
+                ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+              ],
+            },
+          },
+        },
       ],
     };
 
@@ -81,7 +102,7 @@ contactsRouter.get("/", async (c) => {
         where,
         include: { facebookPage: { select: { id: true, name: true } } },
         orderBy: { updatedAt: "desc" },
-        take: limit,
+        ...(limit ? { take: limit } : {}),
       }),
     ]);
 
@@ -155,6 +176,16 @@ contactsRouter.get("/export", async (c) => {
         OR: [
           { workspaceId },
           ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+          {
+            conversations: {
+              some: {
+                OR: [
+                  { workspaceId },
+                  ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+                ],
+              },
+            },
+          },
         ],
       },
       include: { facebookPage: true },

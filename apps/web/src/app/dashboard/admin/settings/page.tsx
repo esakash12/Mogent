@@ -228,16 +228,16 @@ export default function AdminGlobalSettingsPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-300 max-w-4xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E8F0] pb-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-semibold mb-2">
             <Shield className="w-3.5 h-3.5" />
             <span>Super Admin Global Config</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#EDEDED]">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#0F172A]">
             Meta Developer App & Global AI Settings
           </h1>
-          <p className="text-[#888] text-xs mt-1">
+          <p className="text-[#64748B] text-xs mt-1">
             Configure centralized Meta Developer App for 1-click merchant onboarding and system-wide AI defaults.
           </p>
         </div>
@@ -252,14 +252,14 @@ export default function AdminGlobalSettingsPage() {
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* 1. Meta Developer App Settings */}
-        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+        <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 font-bold">
               <Facebook className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-[#EDEDED]">Central Meta Developer App (OAuth)</h3>
-              <p className="text-xs text-[#888]">
+              <h3 className="font-semibold text-sm text-[#0F172A]">Central Meta Developer App (OAuth)</h3>
+              <p className="text-xs text-[#64748B]">
                 All merchants will connect their Facebook Pages using this App ID without needing their own developer account.
               </p>
             </div>
@@ -267,42 +267,42 @@ export default function AdminGlobalSettingsPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Meta App ID (Facebook App ID)</label>
+              <label className="text-xs font-medium text-[#64748B]">Meta App ID (Facebook App ID)</label>
               <input
                 type="text"
                 value={appId}
                 onChange={(e) => setAppId(e.target.value)}
                 placeholder="e.g. 10928491823901"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Meta App Secret</label>
+              <label className="text-xs font-medium text-[#64748B]">Meta App Secret</label>
               <input
                 type="password"
                 value={appSecret}
                 onChange={(e) => setAppSecret(e.target.value)}
                 placeholder="••••••••••••••••••••"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#888]">Webhook Verify Token</label>
+            <label className="text-xs font-medium text-[#64748B]">Webhook Verify Token</label>
             <input
               type="text"
               value={verifyToken}
               onChange={(e) => setVerifyToken(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
             />
           </div>
 
           {/* Webhook Meta URL Details */}
-          <div className="p-4 rounded-xl bg-[#111] border border-[#222] space-y-3 text-xs font-mono">
+          <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3 text-xs font-mono">
             <div className="flex items-center justify-between">
-              <span className="text-[#888]">Meta Webhook Callback URL:</span>
+              <span className="text-[#64748B]">Meta Webhook Callback URL:</span>
               <button
                 type="button"
                 onClick={() => handleCopy("https://api.mogent.tech/webhook/facebook", "admin_wb")}
@@ -312,46 +312,46 @@ export default function AdminGlobalSettingsPage() {
                 <span>{copiedField === "admin_wb" ? "Copied" : "Copy URL"}</span>
               </button>
             </div>
-            <div className="p-2 rounded bg-[#0A0A0A] text-[#EDEDED] select-all">
+            <div className="p-2 rounded bg-white text-[#0F172A] select-all">
               https://api.mogent.tech/webhook/facebook
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 text-[10px] font-sans">
-              <div className="p-2.5 rounded bg-[#0A0A0A] border border-[#222]">
-                <span className="text-[#666] block">Privacy Policy URL:</span>
-                <span className="text-[#EDEDED] font-mono">https://mogent.tech/privacy</span>
+              <div className="p-2.5 rounded bg-white border border-[#E2E8F0]">
+                <span className="text-[#94A3B8] block">Privacy Policy URL:</span>
+                <span className="text-[#0F172A] font-mono">https://mogent.tech/privacy</span>
               </div>
-              <div className="p-2.5 rounded bg-[#0A0A0A] border border-[#222]">
-                <span className="text-[#666] block">Terms of Service URL:</span>
-                <span className="text-[#EDEDED] font-mono">https://mogent.tech/terms</span>
+              <div className="p-2.5 rounded bg-white border border-[#E2E8F0]">
+                <span className="text-[#94A3B8] block">Terms of Service URL:</span>
+                <span className="text-[#0F172A] font-mono">https://mogent.tech/terms</span>
               </div>
-              <div className="p-2.5 rounded bg-[#0A0A0A] border border-[#222]">
-                <span className="text-[#666] block">Data Deletion URL:</span>
-                <span className="text-[#EDEDED] font-mono">https://mogent.tech/data-deletion</span>
+              <div className="p-2.5 rounded bg-white border border-[#E2E8F0]">
+                <span className="text-[#94A3B8] block">Data Deletion URL:</span>
+                <span className="text-[#0F172A] font-mono">https://mogent.tech/data-deletion</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* 2. AI Engine & Key Rotator Defaults */}
-        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+        <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-[#EDEDED]">AI Engine Defaults</h3>
-              <p className="text-xs text-[#888]">Global defaults for all customer Facebook Messenger chatbots.</p>
+              <h3 className="font-semibold text-sm text-[#0F172A]">AI Engine Defaults</h3>
+              <p className="text-xs text-[#64748B]">Global defaults for all customer Facebook Messenger chatbots.</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Default LLM Model</label>
+              <label className="text-xs font-medium text-[#64748B]">Default LLM Model</label>
               <select
                 value={defaultModel}
                 onChange={(e) => setDefaultModel(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500 font-mono"
               >
                 <option value="gemini-3.5-flash-lite">Mogent Engine Ultra v3.5 (Recommended, Ultra Fast)</option>
                 <option value="gemini-3.1-flash-lite">Mogent Engine Turbo v3.1 (High Speed, Lightweight)</option>
@@ -359,26 +359,26 @@ export default function AdminGlobalSettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Rate-Limit 429 Cooldown (Seconds)</label>
+              <label className="text-xs font-medium text-[#64748B]">Rate-Limit 429 Cooldown (Seconds)</label>
               <input
                 type="number"
                 value={cooldownSecs}
                 onChange={(e) => setCooldownSecs(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>
           </div>
         </div>
 
         {/* 3. Single Master Telegram Bot Settings */}
-        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+        <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
               <Bell className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-[#EDEDED]">Single Master Telegram Bot (Platform Bot)</h3>
-              <p className="text-xs text-[#888]">
+              <h3 className="font-semibold text-sm text-[#0F172A]">Single Master Telegram Bot (Platform Bot)</h3>
+              <p className="text-xs text-[#64748B]">
                 All merchants will connect their workspace to this central bot using 1-click deep links without creating their own bot tokens.
               </p>
             </div>
@@ -386,25 +386,25 @@ export default function AdminGlobalSettingsPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Master Telegram Bot Token (@BotFather)</label>
+              <label className="text-xs font-medium text-[#64748B]">Master Telegram Bot Token (@BotFather)</label>
               <input
                 type="password"
                 value={tgBotToken}
                 onChange={(e) => setTgBotToken(e.target.value)}
                 placeholder="e.g. 8784653620:AAF2Y-Hy3De5YLZ7WFqPVhzE26kHeitddoY"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Master Bot Username</label>
+              <label className="text-xs font-medium text-[#64748B]">Master Bot Username</label>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={tgBotUsername}
                   onChange={(e) => setTgBotUsername(e.target.value)}
                   placeholder="e.g. MogentAlertBot"
-                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
                 />
                 <button
                   type="button"
@@ -420,19 +420,19 @@ export default function AdminGlobalSettingsPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#888]">Super Admin Notifications Chat ID</label>
+            <label className="text-xs font-medium text-[#64748B]">Super Admin Notifications Chat ID</label>
             <input
               type="text"
               value={telegramChatId}
               onChange={(e) => setTelegramChatId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
             />
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#111] border border-[#222] flex items-center justify-between text-xs font-mono">
+          <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between text-xs font-mono">
             <div className="space-y-0.5">
-              <span className="text-[11px] text-[#888] block">Telegram Webhook Endpoint:</span>
-              <span className="text-[#EDEDED] text-[11px]">https://api.mogent.tech/webhook/telegram</span>
+              <span className="text-[11px] text-[#64748B] block">Telegram Webhook Endpoint:</span>
+              <span className="text-[#0F172A] text-[11px]">https://api.mogent.tech/webhook/telegram</span>
             </div>
             <button
               type="button"
@@ -446,14 +446,14 @@ export default function AdminGlobalSettingsPage() {
         </div>
 
         {/* 4. Cloudflare R2 Storage Settings */}
-        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+        <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-[#EDEDED]">Cloudflare R2 Object Storage (Product Images)</h3>
-              <p className="text-xs text-[#888]">
+              <h3 className="font-semibold text-sm text-[#0F172A]">Cloudflare R2 Object Storage (Product Images)</h3>
+              <p className="text-xs text-[#64748B]">
                 Central image CDN credentials for merchant commerce catalog image uploads.
               </p>
             </div>
@@ -461,73 +461,73 @@ export default function AdminGlobalSettingsPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Cloudflare Account ID</label>
+              <label className="text-xs font-medium text-[#64748B]">Cloudflare Account ID</label>
               <input
                 type="text"
                 value={cfAccountId}
                 onChange={(e) => setCfAccountId(e.target.value)}
                 placeholder="e.g. 9b8c7d6e5f4a3b2..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">R2 Bucket Name</label>
+              <label className="text-xs font-medium text-[#64748B]">R2 Bucket Name</label>
               <input
                 type="text"
                 value={cfBucketName}
                 onChange={(e) => setCfBucketName(e.target.value)}
                 placeholder="e.g. mogent-assets"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">R2 Access Key ID</label>
+              <label className="text-xs font-medium text-[#64748B]">R2 Access Key ID</label>
               <input
                 type="text"
                 value={cfAccessKeyId}
                 onChange={(e) => setCfAccessKeyId(e.target.value)}
                 placeholder="e.g. a1b2c3d4e5f6..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">R2 Secret Access Key</label>
+              <label className="text-xs font-medium text-[#64748B]">R2 Secret Access Key</label>
               <input
                 type="password"
                 value={cfSecretAccessKey}
                 onChange={(e) => setCfSecretAccessKey(e.target.value)}
                 placeholder="••••••••••••••••••••••••••••"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#888]">Public CDN Domain / R2 Public URL</label>
+            <label className="text-xs font-medium text-[#64748B]">Public CDN Domain / R2 Public URL</label>
             <input
               type="text"
               value={cfPublicDomain}
               onChange={(e) => setCfPublicDomain(e.target.value)}
               placeholder="e.g. https://cdn.mogent.tech or https://pub-xxx.r2.dev"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
             />
           </div>
         </div>
 
         {/* 5. Manual Payment Gateways / Receiver Accounts */}
-        <div className="p-6 rounded-2xl border border-[#222] bg-[#0A0A0A] space-y-6">
+        <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-500 shrink-0">
               <span className="font-bold text-sm">৳</span>
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-[#EDEDED]">Manual Payment Receiver Accounts (bKash, Nagad, Rocket)</h3>
-              <p className="text-xs text-[#888]">
+              <h3 className="font-semibold text-sm text-[#0F172A]">Manual Payment Receiver Accounts (bKash, Nagad, Rocket)</h3>
+              <p className="text-xs text-[#64748B]">
                 These numbers and instructions are shown dynamically to merchants on their billing checkout modal.
               </p>
             </div>
@@ -541,18 +541,18 @@ export default function AdminGlobalSettingsPage() {
                 value={bkashNumber}
                 onChange={(e) => setBkashNumber(e.target.value)}
                 placeholder="017XXXXXXXX"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-pink-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-pink-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">bKash Account Type</label>
+              <label className="text-xs font-medium text-[#64748B]">bKash Account Type</label>
               <input
                 type="text"
                 value={bkashType}
                 onChange={(e) => setBkashType(e.target.value)}
                 placeholder="e.g. Personal (Send Money) / Merchant (Make Payment)"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
@@ -565,18 +565,18 @@ export default function AdminGlobalSettingsPage() {
                 value={nagadNumber}
                 onChange={(e) => setNagadNumber(e.target.value)}
                 placeholder="017XXXXXXXX"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-orange-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-orange-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Nagad Account Type</label>
+              <label className="text-xs font-medium text-[#64748B]">Nagad Account Type</label>
               <input
                 type="text"
                 value={nagadType}
                 onChange={(e) => setNagadType(e.target.value)}
                 placeholder="e.g. Personal (Send Money)"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
@@ -589,30 +589,30 @@ export default function AdminGlobalSettingsPage() {
                 value={rocketNumber}
                 onChange={(e) => setRocketNumber(e.target.value)}
                 placeholder="017XXXXXXXX-X"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-purple-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-purple-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#888]">Rocket Account Type</label>
+              <label className="text-xs font-medium text-[#64748B]">Rocket Account Type</label>
               <input
                 type="text"
                 value={rocketType}
                 onChange={(e) => setRocketType(e.target.value)}
                 placeholder="e.g. Personal (Send Money)"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#888]">Custom Payment Instructions Note</label>
+            <label className="text-xs font-medium text-[#64748B]">Custom Payment Instructions Note</label>
             <textarea
               rows={2}
               value={paymentInstructions}
               onChange={(e) => setPaymentInstructions(e.target.value)}
               placeholder="Instructions shown to merchant above the payment submit form..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#111] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500"
             />
           </div>
         </div>
@@ -632,15 +632,15 @@ export default function AdminGlobalSettingsPage() {
 
       {/* Floating Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-[#111] border border-[#333] shadow-2xl flex items-start gap-3 max-w-md animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-[#F8FAFC] border border-[#CBD5E1] shadow-2xl flex items-start gap-3 max-w-md animate-in slide-in-from-bottom-5">
           {toastMessage.type === "success" ? (
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           ) : (
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
           )}
           <div className="space-y-0.5">
-            <h4 className="text-xs font-bold text-[#EDEDED]">{toastMessage.title}</h4>
-            <p className="text-[11px] text-[#AAA] leading-relaxed">{toastMessage.desc}</p>
+            <h4 className="text-xs font-bold text-[#0F172A]">{toastMessage.title}</h4>
+            <p className="text-[11px] text-[#475569] leading-relaxed">{toastMessage.desc}</p>
           </div>
         </div>
       )}

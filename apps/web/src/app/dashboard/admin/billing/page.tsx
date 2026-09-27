@@ -256,16 +256,16 @@ export default function AdminBillingApprovalsPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#222] pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E8F0] pb-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-semibold mb-2">
             <Shield className="w-3.5 h-3.5" />
             <span>Super Admin Revenue Hub</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#EDEDED]">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[#0F172A]">
             Subscription & Payment Verification
           </h1>
-          <p className="text-[#888] text-xs mt-1">
+          <p className="text-[#64748B] text-xs mt-1">
             Verify manual Bangladeshi bKash, Nagad, and Rocket transaction IDs, create promo coupons, and approve merchant plans.
           </p>
         </div>
@@ -283,7 +283,7 @@ export default function AdminBillingApprovalsPage() {
 
           <button
             onClick={() => (activeTab === "PAYMENTS" ? loadPayments() : loadCoupons())}
-            className="px-3.5 py-2 rounded-xl bg-[#111] hover:bg-[#222] border border-[#222] text-xs font-mono text-[#888] hover:text-[#EDEDED] flex items-center gap-2 transition-colors cursor-pointer w-fit"
+            className="px-3.5 py-2 rounded-xl bg-[#F8FAFC] hover:bg-[#E2E8F0] border border-[#E2E8F0] text-xs font-mono text-[#64748B] hover:text-[#0F172A] flex items-center gap-2 transition-colors cursor-pointer w-fit"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", (loading || couponsLoading) && "animate-spin")} />
             <span>Refresh</span>
@@ -292,14 +292,14 @@ export default function AdminBillingApprovalsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-[#222] pb-3">
+      <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
         <button
           onClick={() => setActiveTab("PAYMENTS")}
           className={cn(
             "px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer",
             activeTab === "PAYMENTS"
               ? "bg-amber-500 text-black font-bold"
-              : "bg-[#111] text-[#888] hover:text-[#EDEDED] border border-[#222]"
+              : "bg-[#F8FAFC] text-[#64748B] hover:text-[#0F172A] border border-[#E2E8F0]"
           )}
         >
           <CreditCard className="w-4 h-4" />
@@ -312,7 +312,7 @@ export default function AdminBillingApprovalsPage() {
             "px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer",
             activeTab === "COUPONS"
               ? "bg-amber-500 text-black font-bold"
-              : "bg-[#111] text-[#888] hover:text-[#EDEDED] border border-[#222]"
+              : "bg-[#F8FAFC] text-[#64748B] hover:text-[#0F172A] border border-[#E2E8F0]"
           )}
         >
           <Tag className="w-4 h-4" />
@@ -340,15 +340,15 @@ export default function AdminBillingApprovalsPage() {
       {activeTab === "PAYMENTS" && (
         <>
           {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl border border-[#222] bg-[#0A0A0A]">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl border border-[#E2E8F0] bg-white">
             <div className="relative w-full sm:w-72">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#555]" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
               <input
                 type="text"
                 placeholder="Search Workspace, Phone, TrxID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#111] border border-[#222] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500 font-mono"
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs text-[#0F172A] focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>
 
@@ -361,7 +361,7 @@ export default function AdminBillingApprovalsPage() {
                     "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer",
                     filterStatus === st
                       ? "bg-amber-500 text-black font-bold"
-                      : "bg-[#111] text-[#888] hover:text-[#EDEDED] border border-[#222]"
+                      : "bg-[#F8FAFC] text-[#64748B] hover:text-[#0F172A] border border-[#E2E8F0]"
                   )}
                 >
                   {st}
@@ -371,11 +371,11 @@ export default function AdminBillingApprovalsPage() {
           </div>
 
           {/* Payments Table */}
-          <div className="rounded-xl border border-[#222] bg-[#0A0A0A] overflow-hidden">
+          <div className="rounded-xl border border-[#E2E8F0] bg-white overflow-hidden">
             {loading ? (
               <div className="py-16 flex flex-col items-center justify-center gap-2">
                 <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-                <span className="text-xs text-[#888]">Loading payment requests...</span>
+                <span className="text-xs text-[#64748B]">Loading payment requests...</span>
               </div>
             ) : filteredPayments.length === 0 ? (
               <div className="py-16 text-center text-xs text-[#777]">
@@ -384,7 +384,7 @@ export default function AdminBillingApprovalsPage() {
             ) : (
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-left text-xs min-w-[850px]">
-                  <thead className="bg-[#111] text-[#888] border-b border-[#222]">
+                  <thead className="bg-[#F8FAFC] text-[#64748B] border-b border-[#E2E8F0]">
                     <tr>
                       <th className="p-3.5 font-medium">Workspace & Merchant</th>
                       <th className="p-3.5 font-medium">Plan</th>
@@ -404,9 +404,9 @@ export default function AdminBillingApprovalsPage() {
                       const method = p.method || p.paymentMethod || "BKASH";
 
                       return (
-                        <tr key={p.id} className="hover:bg-[#111]/40 transition-colors">
+                        <tr key={p.id} className="hover:bg-[#F8FAFC]/40 transition-colors">
                           <td className="p-3.5">
-                            <div className="font-semibold text-[#EDEDED] flex items-center gap-1.5">
+                            <div className="font-semibold text-[#0F172A] flex items-center gap-1.5">
                               <Building2 className="w-3.5 h-3.5 text-amber-500" />
                               <span>{p.workspaceName}</span>
                             </div>
@@ -414,18 +414,18 @@ export default function AdminBillingApprovalsPage() {
                           </td>
 
                           <td className="p-3.5">
-                            <span className="px-2 py-0.5 rounded font-bold text-[11px] bg-[#222] text-[#EDEDED] border border-[#333]">
+                            <span className="px-2 py-0.5 rounded font-bold text-[11px] bg-[#E2E8F0] text-[#0F172A] border border-[#CBD5E1]">
                               {p.plan}
                             </span>
                           </td>
 
-                          <td className="p-3.5 font-mono font-bold text-[#EDEDED]">
+                          <td className="p-3.5 font-mono font-bold text-[#0F172A]">
                             ৳{p.amount.toLocaleString()}
                           </td>
 
-                          <td className="p-3.5 font-semibold text-[#AAA]">{method}</td>
+                          <td className="p-3.5 font-semibold text-[#475569]">{method}</td>
 
-                          <td className="p-3.5 font-mono text-[#888]">{phone}</td>
+                          <td className="p-3.5 font-mono text-[#64748B]">{phone}</td>
 
                           <td className="p-3.5 font-mono font-bold text-amber-500 tracking-wider">
                             {trx}
@@ -437,7 +437,7 @@ export default function AdminBillingApprovalsPage() {
                                 {p.couponCode} (-৳{p.discountAmount})
                               </span>
                             ) : (
-                              <span className="text-[11px] text-[#555]">—</span>
+                              <span className="text-[11px] text-[#94A3B8]">—</span>
                             )}
                           </td>
 
@@ -479,7 +479,7 @@ export default function AdminBillingApprovalsPage() {
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-[11px] text-[#666] font-mono">
+                              <span className="text-[11px] text-[#94A3B8] font-mono">
                                 {p.approvedAt ? `Approved ${new Date(p.approvedAt).toLocaleDateString()}` : "Completed"}
                               </span>
                             )}
@@ -498,11 +498,11 @@ export default function AdminBillingApprovalsPage() {
       {/* ===================== TAB 2: COUPONS ===================== */}
       {activeTab === "COUPONS" && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-[#222] bg-[#0A0A0A] overflow-hidden">
+          <div className="rounded-xl border border-[#E2E8F0] bg-white overflow-hidden">
             {couponsLoading ? (
               <div className="py-16 flex flex-col items-center justify-center gap-2">
                 <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-                <span className="text-xs text-[#888]">Loading coupons...</span>
+                <span className="text-xs text-[#64748B]">Loading coupons...</span>
               </div>
             ) : coupons.length === 0 ? (
               <div className="py-16 text-center text-xs text-[#777] space-y-2">
@@ -518,7 +518,7 @@ export default function AdminBillingApprovalsPage() {
             ) : (
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-left text-xs min-w-[700px]">
-                  <thead className="bg-[#111] text-[#888] border-b border-[#222]">
+                  <thead className="bg-[#F8FAFC] text-[#64748B] border-b border-[#E2E8F0]">
                     <tr>
                       <th className="p-3.5 font-medium">Coupon Code</th>
                       <th className="p-3.5 font-medium">Discount Value</th>
@@ -531,7 +531,7 @@ export default function AdminBillingApprovalsPage() {
                   </thead>
                   <tbody className="divide-y divide-[#1C1C1C]">
                     {coupons.map((c) => (
-                      <tr key={c.id} className="hover:bg-[#111]/40 transition-colors">
+                      <tr key={c.id} className="hover:bg-[#F8FAFC]/40 transition-colors">
                         <td className="p-3.5">
                           <div className="flex items-center gap-2">
                             <Tag className="w-3.5 h-3.5 text-amber-500" />
@@ -541,7 +541,7 @@ export default function AdminBillingApprovalsPage() {
                           </div>
                         </td>
 
-                        <td className="p-3.5 font-medium text-[#EDEDED]">
+                        <td className="p-3.5 font-medium text-[#0F172A]">
                           {c.discountType === "PERCENTAGE" ? (
                             <span>
                               {c.discountValue}% OFF
@@ -553,20 +553,20 @@ export default function AdminBillingApprovalsPage() {
                         </td>
 
                         <td className="p-3.5">
-                          <span className="px-2 py-0.5 rounded font-mono text-[11px] bg-[#222] text-[#AAA] border border-[#333]">
+                          <span className="px-2 py-0.5 rounded font-mono text-[11px] bg-[#E2E8F0] text-[#475569] border border-[#CBD5E1]">
                             {c.applicablePlan || "ALL"}
                           </span>
                         </td>
 
-                        <td className="p-3.5 font-mono text-[#888]">
+                        <td className="p-3.5 font-mono text-[#64748B]">
                           {c.usedCount} {c.usageLimit ? `/ ${c.usageLimit}` : "times"}
                         </td>
 
-                        <td className="p-3.5 font-mono text-[#888]">
+                        <td className="p-3.5 font-mono text-[#64748B]">
                           {c.expiresAt ? (
                             new Date(c.expiresAt).toLocaleDateString()
                           ) : (
-                            <span className="text-[#555]">Never</span>
+                            <span className="text-[#94A3B8]">Never</span>
                           )}
                         </td>
 
@@ -587,9 +587,9 @@ export default function AdminBillingApprovalsPage() {
                             <button
                               onClick={() => handleToggleCoupon(c.id)}
                               title={c.isActive ? "Deactivate Coupon" : "Activate Coupon"}
-                              className="p-1.5 rounded-lg bg-[#111] hover:bg-[#222] border border-[#222] text-[#888] hover:text-[#EDEDED] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer"
                             >
-                              <Power className={cn("w-3.5 h-3.5", c.isActive ? "text-[#10B981]" : "text-[#666]")} />
+                              <Power className={cn("w-3.5 h-3.5", c.isActive ? "text-[#10B981]" : "text-[#94A3B8]")} />
                             </button>
 
                             <button
@@ -613,16 +613,16 @@ export default function AdminBillingApprovalsPage() {
 
       {/* Create Coupon Modal */}
       {showCreateCouponModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-[#0D0D0D] border border-[#262626] rounded-2xl shadow-2xl p-6 space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-[#222]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white border border-[#E2E8F0] rounded-2xl shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
               <div className="flex items-center gap-2">
                 <Tag className="w-4 h-4 text-amber-500" />
-                <h3 className="font-bold text-sm text-[#EDEDED]">Create Promo Coupon Code</h3>
+                <h3 className="font-bold text-sm text-[#0F172A]">Create Promo Coupon Code</h3>
               </div>
               <button
                 onClick={() => setShowCreateCouponModal(false)}
-                className="text-[#888] hover:text-[#EDEDED] text-xs cursor-pointer p-1"
+                className="text-[#64748B] hover:text-[#0F172A] text-xs cursor-pointer p-1"
               >
                 ✕
               </button>
@@ -630,24 +630,24 @@ export default function AdminBillingApprovalsPage() {
 
             <form onSubmit={handleCreateCoupon} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Coupon Code (e.g. MOGENT50)</label>
+                <label className="text-xs font-medium text-[#64748B]">Coupon Code (e.g. MOGENT50)</label>
                 <input
                   type="text"
                   required
                   placeholder="MOGENT50"
                   value={newCode}
                   onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500 uppercase"
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-mono focus:outline-none focus:border-amber-500 uppercase"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">Discount Type</label>
+                  <label className="text-xs font-medium text-[#64748B]">Discount Type</label>
                   <select
                     value={newType}
                     onChange={(e: any) => setNewType(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] focus:outline-none focus:border-amber-500"
                   >
                     <option value="PERCENTAGE">Percentage (%)</option>
                     <option value="FLAT">Flat Amount (BDT)</option>
@@ -655,7 +655,7 @@ export default function AdminBillingApprovalsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">
+                  <label className="text-xs font-medium text-[#64748B]">
                     {newType === "PERCENTAGE" ? "Percentage (e.g. 50)" : "Amount in BDT (e.g. 500)"}
                   </label>
                   <input
@@ -666,31 +666,31 @@ export default function AdminBillingApprovalsPage() {
                     placeholder={newType === "PERCENTAGE" ? "50" : "500"}
                     value={newValue}
                     onChange={(e) => setNewValue(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               {newType === "PERCENTAGE" && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">Max Discount Cap (Optional BDT)</label>
+                  <label className="text-xs font-medium text-[#64748B]">Max Discount Cap (Optional BDT)</label>
                   <input
                     type="number"
                     placeholder="e.g. 1000"
                     value={newMaxDiscount}
                     onChange={(e) => setNewMaxDiscount(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">Applicable Plan</label>
+                  <label className="text-xs font-medium text-[#64748B]">Applicable Plan</label>
                   <select
                     value={newPlan}
                     onChange={(e) => setNewPlan(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] focus:outline-none focus:border-amber-500"
                   >
                     <option value="ALL">All Plans</option>
                     <option value="STARTER">Starter Plan Only</option>
@@ -700,24 +700,24 @@ export default function AdminBillingApprovalsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#888]">Usage Limit (Optional)</label>
+                  <label className="text-xs font-medium text-[#64748B]">Usage Limit (Optional)</label>
                   <input
                     type="number"
                     placeholder="e.g. 100"
                     value={newLimit}
                     onChange={(e) => setNewLimit(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#888]">Expiry Date (Optional)</label>
+                <label className="text-xs font-medium text-[#64748B]">Expiry Date (Optional)</label>
                 <input
                   type="date"
                   value={newExpiry}
                   onChange={(e) => setNewExpiry(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#111] border border-[#333] text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[#F8FAFC] border border-[#CBD5E1] text-[#0F172A] font-mono focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -725,7 +725,7 @@ export default function AdminBillingApprovalsPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateCouponModal(false)}
-                  className="px-4 py-2 rounded-lg bg-[#111] hover:bg-[#222] text-[#888] text-xs font-medium cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] text-[#64748B] text-xs font-medium cursor-pointer"
                 >
                   Cancel
                 </button>

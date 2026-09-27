@@ -42,12 +42,12 @@ export function ConfirmModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md p-6 rounded-2xl bg-[#0D0D0D] border border-[#262626] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="relative w-full max-w-md p-6 rounded-2xl bg-white border border-[#E2E8F0] shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
         <button
           onClick={onClose}
           disabled={isLoading}
-          className="absolute top-4 right-4 text-[#888] hover:text-[#EDEDED] transition-colors cursor-pointer"
+          className="absolute top-4 right-4 p-1 rounded-lg text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
         >
           <X className="w-4 h-4" />
         </button>
@@ -55,14 +55,14 @@ export function ConfirmModal({
         <div className="flex items-start gap-4">
           <div
             className={cn(
-              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
               variant === "danger"
-                ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                ? "bg-rose-50 text-rose-600 border-rose-200"
                 : variant === "success"
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                ? "bg-emerald-50 text-emerald-600 border-emerald-200"
                 : variant === "warning"
-                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                ? "bg-amber-50 text-amber-600 border-amber-200"
+                : "bg-indigo-50 text-indigo-600 border-indigo-200"
             )}
           >
             {variant === "danger" || variant === "warning" ? (
@@ -73,8 +73,8 @@ export function ConfirmModal({
           </div>
 
           <div className="space-y-1">
-            <h3 className="font-semibold text-base text-[#EDEDED]">{title}</h3>
-            <p className="text-xs text-[#888] leading-relaxed">{description}</p>
+            <h3 className="font-bold text-base text-[#0F172A]">{title}</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">{description}</p>
           </div>
         </div>
 
@@ -85,16 +85,16 @@ export function ConfirmModal({
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={inputPlaceholder}
               rows={2}
-              className="w-full px-3.5 py-2 rounded-xl bg-[#141414] border border-[#2A2A2A] text-xs text-[#EDEDED] focus:outline-none focus:border-white transition-colors"
+              className="w-full px-3.5 py-2 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B] transition-colors"
             />
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#1C1C1C]">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#F1F5F9]">
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-[#888] hover:text-[#EDEDED] hover:bg-[#1A1A1A] transition-colors cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-bold text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] border border-[#CBD5E1] transition-colors cursor-pointer"
           >
             {cancelText}
           </button>
@@ -103,12 +103,12 @@ export function ConfirmModal({
             onClick={handleConfirm}
             disabled={isLoading}
             className={cn(
-              "px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-sm",
+              "px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-xs",
               variant === "danger"
                 ? "bg-rose-600 hover:bg-rose-500 text-white"
                 : variant === "success"
-                ? "bg-emerald-500 hover:bg-emerald-400 text-black font-bold"
-                : "bg-white hover:bg-[#EDEDED] text-black font-semibold"
+                ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                : "bg-[#F59E0B] hover:bg-[#D97706] text-black"
             )}
           >
             {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
