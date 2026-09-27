@@ -31,6 +31,11 @@ const pageMetaMap: Record<string, PageMeta> = {
     title: "Dashboard",
     subtitle: "Overview of your AI performance, conversations, and leads",
   },
+  "/dashboard/ai": {
+    title: "AI Co-Pilot",
+    subtitle: "স্বাভাবিক বাংলায় কথা বলে আপনার শপের নিয়ম, অফার ও ক্যাটালগ পরিচালনা করুন",
+    hasBack: true,
+  },
   "/dashboard/commerce": {
     title: "Products",
     subtitle: "Add your product catalog so AI can answer customer questions",

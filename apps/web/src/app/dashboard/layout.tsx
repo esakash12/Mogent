@@ -136,8 +136,18 @@ export default function DashboardLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] relative pb-16 md:pb-0">
         <Header onOpenMobileMenu={() => setMobileMenuOpen(true)} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-8">
-          <div className="max-w-[1400px] mx-auto">
+        <main
+          className={cn(
+            "flex-1 overflow-y-auto overflow-x-hidden",
+            pathname === "/dashboard/ai" ? "p-2 sm:p-4 md:p-5" : "p-3 md:p-8"
+          )}
+        >
+          <div
+            className={cn(
+              pathname === "/dashboard/ai" ? "max-w-[1440px]" : "max-w-[1400px]",
+              "mx-auto w-full"
+            )}
+          >
             {children}
           </div>
         </main>
