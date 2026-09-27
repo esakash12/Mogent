@@ -433,6 +433,42 @@ async function syncDatabaseSchema() {
       );
     `);
 
+    // 5.4 One-time migration: Safely merge legacy knowledge_base items into business_memories
+    try {
+      const kbItems = await prisma.knowledgeBase.findMany({
+        where: { isActive: true },
+      });
+      for (const kb of kbItems) {
+        const existing = await prisma.businessMemory.findFirst({
+          where: {
+            workspaceId: kb.workspaceId,
+            title: kb.title,
+          },
+        });
+        if (!existing) {
+          const category =
+            (kb.type as string) === "POLICY"
+              ? "POLICY"
+              : (kb.type as string) === "PRODUCT_CATALOG"
+              ? "CATALOG"
+              : "GENERAL";
+          await prisma.businessMemory.create({
+            data: {
+              workspaceId: kb.workspaceId,
+              pageId: kb.facebookPageId || undefined,
+              category,
+              title: kb.title,
+              instruction: kb.content,
+              confidence: 1.0,
+              isActive: kb.isActive,
+            },
+          });
+        }
+      }
+    } catch (migErr: any) {
+      console.warn("Knowledge base to business memory backfill notice:", migErr.message);
+    }
+
     // 6. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_updated" ON "conversations"("facebookPageId", "updatedAt" DESC);

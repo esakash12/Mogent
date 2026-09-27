@@ -33,7 +33,7 @@ const pageMetaMap: Record<string, PageMeta> = {
   },
   "/dashboard/ai": {
     title: "AI Co-Pilot",
-    subtitle: "স্বাভাবিক বাংলায় কথা বলে আপনার শপের নিয়ম, অফার ও ক্যাটালগ পরিচালনা করুন",
+    subtitle: "Manage store rules, offers, inventory & policies via natural chat",
     hasBack: true,
   },
   "/dashboard/commerce": {

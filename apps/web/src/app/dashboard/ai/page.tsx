@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Sparkles,
   Send,
@@ -19,6 +19,12 @@ import {
   MessageSquare,
   Info,
   Truck,
+  Mic,
+  BarChart3,
+  ScrollText,
+  Search,
+  SlidersHorizontal,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
@@ -35,52 +41,58 @@ import {
 
 const QUICK_PROMPTS = [
   {
-    icon: Sparkles,
-    badge: "ইন্টারভিউ",
-    label: "🎙️ শপ সেটআপ ইন্টারভিউ",
-    desc: "দোকানের সব তথ্য এআই ইন্টারভিউ নিয়ে জেনে নিবে",
+    icon: Mic,
+    badge: "INTERVIEW",
+    label: "Store Setup Interview",
+    desc: "AI interviews you to capture store rules & policies",
     prompt: "আসসালামু আলাইকুম, আমাদের শপ সেটআপ করার জন্য তোমার কী কী তথ্য লাগবে জিজ্ঞেস করো।",
     badgeColor: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+    iconColor: "text-amber-500",
   },
   {
-    icon: ShoppingBag,
-    badge: "ডিসকাউন্ট",
-    label: "🎁 ২টা নিলে ১০০ টাকা ছাড়",
-    desc: "কম্বো অফার ও ফ্রি ডেলিভারি রুল শেখান",
+    icon: Sparkles,
+    badge: "PROMO",
+    label: "Buy 2 Get ৳100 Off",
+    desc: "Teach bundle discount & free delivery offer",
     prompt: "আজকে থেকে কেউ যদি ২টা পাঞ্জাবি নেয় তবে তাকে ১০০ টাকা ডিসকাউন্ট দিবা আর ডেলিভারি চার্জ ফ্রি বলবা।",
     badgeColor: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
+    iconColor: "text-rose-500",
   },
   {
     icon: Truck,
-    badge: "ডেলিভারি",
-    label: "🚚 ডেলিভারি চার্জ ও অগ্রিম শর্ত",
-    desc: "ঢাকার ভেতরে ৮০৳ ও বাইরে ১৫০৳ অগ্রিম নিয়ম",
+    badge: "DELIVERY",
+    label: "Delivery & Advance Policy",
+    desc: "Inside Dhaka ৳80 & outside advance rule",
     prompt: "আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা। ঢাকার বাইরে ক্যাশ অন ডেলিভারিতে ১৫০ টাকা অগ্রিম নিবা।",
     badgeColor: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
+    iconColor: "text-blue-500",
   },
   {
     icon: Package,
-    badge: "ক্যাটালগ",
-    label: "📦 নতুন প্রোডাক্ট যোগ করো",
-    desc: "নাম, দাম, সাইজ ও স্টক চ্যাটে যোগ করুন",
+    badge: "CATALOG",
+    label: "Add New Product",
+    desc: "Add price, size variants, and inventory count",
     prompt: "একটি নতুন প্রোডাক্ট যোগ করো: প্রিমিয়াম ব্ল্যাক পাঞ্জাবি, দাম ১৪৫০ টাকা, রেগুলার ১৬০০, সাইজ M, L, XL, স্টক ৩০টি।",
     badgeColor: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
+    iconColor: "text-emerald-500",
   },
   {
-    icon: TrendingUp,
-    badge: "অ্যানালিটিক্স",
-    label: "📊 আজকের সেলস ও অর্ডার রিপোর্ট",
-    desc: "লাইভ সেলস ও পেন্ডিং অর্ডারের স্ট্যাটাস জানুন",
+    icon: BarChart3,
+    badge: "ANALYTICS",
+    label: "Daily Sales Report",
+    desc: "Check today's orders count & revenue",
     prompt: "আজকে কয়টা অর্ডার আসল এবং মোট সেলস কত হয়েছে জানাও তো?",
     badgeColor: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
+    iconColor: "text-purple-500",
   },
   {
-    icon: Layers,
-    badge: "রুলস",
-    label: "📜 চালুকৃত সকল নিয়মের তালিকা",
-    desc: "বর্তমান সব অফার ও কন্ডিশন একসাথে দেখুন",
+    icon: ScrollText,
+    badge: "RULES",
+    label: "List Active Rules",
+    desc: "Audit all active policies currently applied",
     prompt: "আমার শপে এখন পর্যন্ত কী কী অফার ও নিয়ম চালু আছে তার তালিকা দেখাও।",
     badgeColor: "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20",
+    iconColor: "text-teal-500",
   },
 ];
 
@@ -94,9 +106,18 @@ export default function CoPilotPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [refreshingMemories, setRefreshingMemories] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Check URL query on mount for direct tab switching
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("tab=memories")) {
+      setActiveTab("MEMORIES");
+    }
+  }, []);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     if (chatScrollContainerRef.current) {
@@ -134,8 +155,7 @@ export default function CoPilotPage() {
   useEffect(() => {
     if (activeTab === "CHAT") {
       scrollToBottom("smooth");
-      // Double check scroll after card layout settles
-      const timer = setTimeout(() => scrollToBottom("smooth"), 80);
+      const timer = setTimeout(() => scrollToBottom("smooth"), 100);
       return () => clearTimeout(timer);
     }
   }, [session?.messages, sending, activeTab]);
@@ -168,14 +188,14 @@ export default function CoPilotPage() {
       if (res && res.session) {
         setSession(res.session);
         if (res.action && res.action.type !== "NONE") {
-          toast.success(res.action.summary || "কো-পাইলট অ্যাকশন কার্যকর করেছে!");
+          toast.success(res.action.summary || "Co-Pilot executed action successfully!");
           // Refresh memories in background
           const refreshedMemories = await fetchBusinessMemories(selectedPageId);
           setMemories(refreshedMemories);
         }
       }
     } catch (err: any) {
-      toast.error(err.message || "মেসেজ পাঠানো সম্ভব হয়নি।");
+      toast.error(err.message || "Failed to send message.");
     } finally {
       setSending(false);
     }
@@ -187,22 +207,47 @@ export default function CoPilotPage() {
       setMemories((prev) =>
         prev.map((m) => (m.id === id ? { ...m, isActive: !currentStatus } : m))
       );
-      toast.success(!currentStatus ? "রুল সক্রিয় করা হয়েছে" : "রুল নিষ্ক্রিয় করা হয়েছে");
+      toast.success(!currentStatus ? "Rule activated" : "Rule paused");
     } catch (err: any) {
-      toast.error("রুল আপডেট করা যায়নি");
+      toast.error("Failed to update rule status");
     }
   };
 
   const handleDeleteMemory = async (id: string) => {
-    if (!confirm("আপনি কি নিশ্চিত এই নিয়মটি মুছে ফেলতে চান?")) return;
+    if (!confirm("Are you sure you want to delete this rule?")) return;
     try {
       await deleteBusinessMemory(id);
       setMemories((prev) => prev.filter((m) => m.id !== id));
-      toast.success("নিয়মটি মুছে ফেলা হয়েছে");
+      toast.success("Rule deleted successfully");
     } catch (err: any) {
-      toast.error("মুছে ফেলা সম্ভব হয়নি");
+      toast.error("Failed to delete rule");
     }
   };
+
+  const activeRulesCount = useMemo(() => {
+    return memories.filter((m) => m.isActive).length;
+  }, [memories]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    memories.forEach((m) => {
+      if (m.category) set.add(m.category.toUpperCase());
+    });
+    return Array.from(set);
+  }, [memories]);
+
+  const filteredMemories = useMemo(() => {
+    return memories.filter((m) => {
+      const matchesCategory =
+        selectedCategory === "ALL" || m.category.toUpperCase() === selectedCategory;
+      const matchesSearch =
+        !searchQuery.trim() ||
+        m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.instruction.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (m.condition && m.condition.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesCategory && matchesSearch;
+    });
+  }, [memories, selectedCategory, searchQuery]);
 
   const renderActionCard = (actionType?: string | null, payloadStr?: string | null) => {
     if (!actionType || actionType === "NONE" || !payloadStr) return null;
@@ -219,14 +264,14 @@ export default function CoPilotPage() {
           <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-              {payload.summary || "নতুন রুল সক্রিয় হয়েছে"}
+              {payload.summary || "Rule Learned & Activated"}
             </span>
             <p className="text-emerald-800/90 dark:text-emerald-200/90 leading-relaxed font-normal">
               {payload.data.instruction}
             </p>
             {payload.data.condition && (
               <span className="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
-                শর্ত: {payload.data.condition}
+                Condition: {payload.data.condition}
               </span>
             )}
           </div>
@@ -240,12 +285,12 @@ export default function CoPilotPage() {
           <Package className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div className="space-y-0.5 flex-1">
             <span className="font-semibold text-blue-700 dark:text-blue-300">
-              {payload.summary || "প্রোডাক্ট ডাটাবেজে যুক্ত হয়েছে"}
+              {payload.summary || "Product Added to Catalog"}
             </span>
             <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-blue-800 dark:text-blue-200 font-medium">
-              <span>মূল্য: ৳{payload.data.price}</span>
-              <span>স্টক: {payload.data.stockCount ?? 100}টি</span>
-              <span>ক্যাটাগরি: {payload.data.category || "General"}</span>
+              <span>Price: ৳{payload.data.price}</span>
+              <span>Stock: {payload.data.stockCount ?? 100} units</span>
+              <span>Category: {payload.data.category || "General"}</span>
             </div>
           </div>
         </div>
@@ -257,24 +302,24 @@ export default function CoPilotPage() {
       return (
         <div className="mt-2.5 p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-900 dark:text-purple-100 shadow-2xs">
           <div className="flex items-center gap-2 font-bold text-purple-700 dark:text-purple-300 mb-2.5">
-            <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            <span>লাইভ স্টোর রিপোর্ট (Store Sync)</span>
+            <BarChart3 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span>Store Live Sync Report</span>
           </div>
           <div className="grid grid-cols-2 gap-2 text-center">
             <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">আজকের অর্ডার</span>
+              <span className="text-[10px] text-muted-foreground block font-medium">Today&apos;s Orders</span>
               <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{todayOrdersCount || 0}</span>
             </div>
             <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">পেন্ডিং অর্ডার</span>
+              <span className="text-[10px] text-muted-foreground block font-medium">Pending Orders</span>
               <span className="text-base font-bold text-amber-600 dark:text-amber-400">{pendingOrdersCount || 0}</span>
             </div>
             <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">মোট অর্ডার</span>
+              <span className="text-[10px] text-muted-foreground block font-medium">Total Orders</span>
               <span className="text-base font-bold text-foreground">{totalOrdersCount || 0}</span>
             </div>
             <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">মোট সেলস</span>
+              <span className="text-[10px] text-muted-foreground block font-medium">Total Revenue</span>
               <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">৳{(totalRevenue || 0).toLocaleString()}</span>
             </div>
           </div>
@@ -287,39 +332,30 @@ export default function CoPilotPage() {
 
   return (
     <div className="space-y-3 max-w-[1440px] mx-auto">
-      {/* 1. Compact Header (Single Clean Row with Title & Controls) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/40">
+      {/* 1. Sleek Minimalist Toolbar (No Redundant Duplicate Banners) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b border-border/40">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-2xs shrink-0">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground truncate">
-                Mogent Business Co-Pilot
-              </h1>
-              <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 shrink-0">
-                Autonomous
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground hidden sm:block truncate">
-              স্বাভাবিক বাংলায় কথা বলে শপের নিয়ম, অফার, ক্যাটালগ ও ডেলিভারি পলিসি নিয়ন্ত্রণ করুন
-            </p>
-          </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Store Brain Active
+          </span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            • {activeRulesCount} Rules Live in Chat
+          </span>
         </div>
 
-        {/* Right-aligned Page Selector & Tabs */}
+        {/* Right Controls: Channel Selector & Tabs */}
         <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
           {pages.length > 0 && (
             <select
               value={selectedPageId}
               onChange={(e) => setSelectedPageId(e.target.value)}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs"
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs font-medium"
             >
-              <option value="ALL">🌐 All Channels</option>
+              <option value="ALL">All Channels</option>
               {pages.map((p) => (
                 <option key={p.id} value={p.id}>
-                  📄 {p.name}
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -347,8 +383,8 @@ export default function CoPilotPage() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Learned Rules ({memories.length})</span>
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Store Brain ({memories.length})</span>
             </button>
           </div>
         </div>
@@ -357,90 +393,96 @@ export default function CoPilotPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center min-h-[460px] rounded-2xl bg-card border border-border">
           <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-3" />
-          <p className="text-xs text-muted-foreground">বিজনেস কো-পাইলট লোড হচ্ছে...</p>
+          <p className="text-xs font-medium text-muted-foreground">Loading AI Co-Pilot...</p>
         </div>
       ) : activeTab === "CHAT" ? (
         /* TAB 1: CO-PILOT CHAT INTERFACE */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-160px)] min-h-[580px]">
-          {/* Quick Action Sidebar (4 Cols on lg, 3 on xl) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-140px)] min-h-[600px]">
+          {/* Quick Actions & Store Memory Sidebar (3 Cols on xl, 4 on lg) */}
           <div className="lg:col-span-4 xl:col-span-3 space-y-3 overflow-y-auto pr-1 flex flex-col">
             {/* Quick Prompts Box */}
             <div className="p-3.5 rounded-2xl bg-card border border-border space-y-2.5 shadow-2xs shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                   <Sparkles className="w-4 h-4 text-emerald-500" />
-                  <span>দ্রুত শেখানোর প্রম্পট</span>
+                  <span>Quick Actions</span>
                 </div>
-                <span className="text-[10px] text-muted-foreground font-medium">ক্লিক করে পাঠান</span>
+                <span className="text-[10px] text-muted-foreground font-medium">Click to execute</span>
               </div>
               <div className="space-y-1.5">
-                {QUICK_PROMPTS.map((qp, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSendMessage(qp.prompt)}
-                    disabled={sending}
-                    className="w-full text-left p-2.5 rounded-xl bg-muted/30 hover:bg-emerald-500/5 hover:border-emerald-500/40 border border-border/70 transition-all group disabled:opacity-50 cursor-pointer shadow-2xs"
-                  >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                        {qp.label}
-                      </span>
-                      <span
-                        className={cn(
-                          "px-1.5 py-0.2 rounded text-[9px] font-semibold border shrink-0",
-                          qp.badgeColor
-                        )}
-                      >
-                        {qp.badge}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-snug line-clamp-1">
-                      {qp.desc}
-                    </p>
-                  </button>
-                ))}
+                {QUICK_PROMPTS.map((qp, idx) => {
+                  const Icon = qp.icon;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => handleSendMessage(qp.prompt)}
+                      disabled={sending}
+                      className="w-full text-left p-2.5 rounded-xl bg-muted/30 hover:bg-emerald-500/5 hover:border-emerald-500/40 border border-border/70 transition-all group disabled:opacity-50 cursor-pointer shadow-2xs"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Icon className={cn("w-3.5 h-3.5 shrink-0", qp.iconColor)} />
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors truncate">
+                            {qp.label}
+                          </span>
+                        </div>
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.2 rounded text-[9px] font-semibold border shrink-0 font-mono",
+                            qp.badgeColor
+                          )}
+                        >
+                          {qp.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-snug line-clamp-1">
+                        {qp.desc}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Business-Friendly Store Memory Status */}
+            {/* Store Memory Status Card */}
             <div className="p-3.5 rounded-2xl bg-card border border-border space-y-2.5 shadow-2xs flex-1 flex flex-col">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>স্টোর মেমোরি স্ট্যাটাস</span>
+                  <span>Store Memory Status</span>
                 </span>
                 <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                  স্থায়ীভাবে সংরক্ষিত
+                  Live Synced
                 </span>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">মোট সক্রিয় নিয়ম:</span>
+                  <span className="text-muted-foreground">Active Learned Rules:</span>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    {memories.filter((m) => m.isActive).length}টি লাইভ
+                    {activeRulesCount} active
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">কাস্টমার চ্যাটে কার্যকর:</span>
+                  <span className="text-muted-foreground">Customer Chat Sync:</span>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> ১০০% লাইভ সিঙ্ক
+                    <CheckCircle2 className="w-3.5 h-3.5" /> 100% Real-time
                   </span>
                 </div>
               </div>
 
-              {/* Live Preview of Latest Learned Rules */}
+              {/* Latest Learned Rules Preview */}
               {memories.length > 0 ? (
                 <div className="pt-1.5 space-y-1.5 flex-1 flex flex-col min-h-0">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-semibold text-muted-foreground">
-                      সর্বশেষ শেখানো নিয়মসমূহ:
+                      Latest Learned Rules:
                     </span>
                     <button
                       onClick={() => setActiveTab("MEMORIES")}
-                      className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                      className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer font-medium"
                     >
-                      সব দেখুন <ChevronRight className="w-3 h-3" />
+                      View All in Brain <ChevronRight className="w-3 h-3" />
                     </button>
                   </div>
                   <div className="space-y-1.5 overflow-y-auto pr-1 flex-1">
@@ -451,7 +493,7 @@ export default function CoPilotPage() {
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="font-semibold text-foreground truncate">{mem.title}</span>
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0 font-mono">
                             {mem.category}
                           </span>
                         </div>
@@ -464,18 +506,18 @@ export default function CoPilotPage() {
                 </div>
               ) : (
                 <p className="text-[11px] text-muted-foreground italic pt-1">
-                  এখনো কোনো নিয়ম শেখানো হয়নি। উপরের প্রম্পট ব্যবহার করে নতুন অফার বা পলিসি শেখান।
+                  No custom rules learned yet. Use quick actions above or chat to teach your AI.
                 </p>
               )}
             </div>
           </div>
 
-          {/* Main Chat Stream (8 Cols on lg, 9 on xl) */}
+          {/* Main Chat Stream (9 Cols on xl, 8 on lg) */}
           <div className="lg:col-span-8 xl:col-span-9 flex flex-col h-full rounded-2xl bg-card border border-border overflow-hidden shadow-2xs">
             {/* Chat Messages Scroll Container */}
             <div
               ref={chatScrollContainerRef}
-              className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 pb-10 scroll-smooth"
+              className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 pb-12 scroll-smooth"
             >
               {session?.messages && session.messages.length > 0 ? (
                 session.messages.map((msg, index) => {
@@ -484,7 +526,7 @@ export default function CoPilotPage() {
                     <div
                       key={msg.id || index}
                       className={cn(
-                        "flex items-start gap-3 text-xs sm:text-sm",
+                        "flex items-start gap-3 text-xs sm:text-sm animate-in fade-in-50 slide-in-from-bottom-2 duration-200",
                         isOwner ? "flex-row-reverse" : "flex-row"
                       )}
                     >
@@ -516,20 +558,20 @@ export default function CoPilotPage() {
               ) : (
                 <div className="flex flex-col items-center justify-center min-h-[300px] text-center p-6 text-muted-foreground">
                   <Sparkles className="w-8 h-8 text-emerald-500 mb-2 opacity-60" />
-                  <p className="text-xs">কো-পাইলট প্রস্তুত। কোনো মেসেজ লিখে পাঠানো শুরু করুন।</p>
+                  <p className="text-xs font-medium">Co-Pilot is ready. Type a message or click a quick action above.</p>
                 </div>
               )}
               {sending && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground py-2 px-1">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                  <span>কো-পাইলট আপনার নির্দেশটি বিশ্লেষণ ও কার্যকর করছে...</span>
+                  <span>Co-Pilot is analyzing and applying changes...</span>
                 </div>
               )}
-              {/* Extra generous bottom anchor so the last message is never sliced */}
-              <div ref={messagesEndRef} className="h-6 w-full shrink-0" />
+              {/* Extra bottom anchor so the last message is never sliced */}
+              <div ref={messagesEndRef} className="h-8 w-full shrink-0" />
             </div>
 
-            {/* Input Bar */}
+            {/* Floating Input Bar */}
             <div className="p-3 sm:p-4 border-t border-border bg-card/90 backdrop-blur shrink-0">
               <form
                 onSubmit={(e) => {
@@ -542,38 +584,43 @@ export default function CoPilotPage() {
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="বাংলায় বলুন (যেমন: 'আজকে থেকে কেউ ২টা নিলে ১০০ টাকা ছাড় দাও' বা 'প্রোডাক্ট যোগ করো')..."
+                  placeholder="Type in Bengali or English (e.g. 'ঢাকার বাইরে ১৫০ টাকা অগ্রিম নিবা' or 'Offer free delivery over ৳2000')..."
                   disabled={sending}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-muted/40 border border-border text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
                 />
                 <button
                   type="submit"
                   disabled={!inputValue.trim() || sending}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 disabled:opacity-50 shadow-2xs shadow-emerald-600/20 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 disabled:opacity-50 shadow-2xs shadow-emerald-600/20 cursor-pointer shrink-0"
                 >
                   {sending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>পাঠান</span>
+                      <span>Send</span>
                       <Send className="w-3.5 h-3.5" />
                     </>
                   )}
                 </button>
               </form>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1.5 px-1">
+                <span>Press Enter ↵ to send</span>
+                <span>Rules sync instantly to Messenger & WhatsApp</span>
+              </div>
             </div>
           </div>
         </div>
       ) : (
-        /* TAB 2: DYNAMIC ZERO-SCHEMA MEMORIES */
+        /* TAB 2: STORE BRAIN & DYNAMIC RULES (REPLACING OLD KNOWLEDGE BASE) */
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card border border-border p-4 rounded-2xl shadow-2xs">
             <div>
-              <h2 className="text-base font-semibold text-foreground">
-                সংরক্ষিত ডায়নামিক নিয়ম ও পলিসিসমূহ
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                Store Brain & Business Memory
               </h2>
-              <p className="text-xs text-muted-foreground">
-                চ্যাটের মাধ্যমে আপনি যা যা শিখিয়েছেন তা এখানে পারমানেন্টলি সংরক্ষিত রয়েছে এবং মেসেঞ্জার ও হোয়াটসঅ্যাপে লাইভ কাজ করছে।
+              <p className="text-xs text-muted-foreground mt-0.5">
+                All rules, FAQs, delivery policies, and offers learned by Co-Pilot are stored here permanently and applied live in customer conversations.
               </p>
             </div>
 
@@ -585,31 +632,81 @@ export default function CoPilotPage() {
                 setRefreshingMemories(false);
               }}
               disabled={refreshingMemories}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border text-xs text-muted-foreground hover:text-foreground transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted/40 hover:bg-muted border border-border text-xs text-foreground font-medium transition-all cursor-pointer shadow-2xs shrink-0 self-start sm:self-auto"
             >
               <RefreshCw className={cn("w-3.5 h-3.5", refreshingMemories && "animate-spin")} />
-              <span>রিফ্রেশ</span>
+              <span>Refresh Brain</span>
             </button>
           </div>
 
-          {memories.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-card border border-border text-center space-y-2">
+          {/* Search & Category Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search rules, delivery conditions, FAQs..."
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-card border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+              />
+            </div>
+
+            {/* Category Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              <button
+                onClick={() => setSelectedCategory("ALL")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer shrink-0",
+                  selectedCategory === "ALL"
+                    ? "bg-emerald-600 text-white shadow-2xs"
+                    : "bg-card border border-border text-muted-foreground hover:text-foreground"
+                )}
+              >
+                All ({memories.length})
+              </button>
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer shrink-0 font-mono",
+                    selectedCategory === cat
+                      ? "bg-emerald-600 text-white shadow-2xs"
+                      : "bg-card border border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredMemories.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-card border border-border text-center space-y-2.5 shadow-2xs">
               <Info className="w-8 h-8 text-muted-foreground mx-auto opacity-40" />
-              <h3 className="text-sm font-semibold text-foreground">এখনো কোনো ডায়নামিক রুল নেই</h3>
+              <h3 className="text-sm font-semibold text-foreground">No matching rules found</h3>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                কো-পাইলট চ্যাটে যান এবং বাংলায় যেকোনো অফার, শর্ত বা নিয়ম বলুন। এআই স্বয়ংক্রিয়ভাবে তা এখানে যুক্ত করে নিবে।
+                {searchQuery || selectedCategory !== "ALL"
+                  ? "Try clearing your search query or selecting another category filter."
+                  : "Go to Co-Pilot Chat and teach your AI any offer, rule, or policy in plain Bengali or English."}
               </p>
               <button
-                onClick={() => setActiveTab("CHAT")}
-                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium cursor-pointer"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("ALL");
+                  setActiveTab("CHAT");
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium cursor-pointer shadow-2xs"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>কো-পাইলট চ্যাটে যান</span>
+                <span>Open Co-Pilot Chat</span>
               </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {memories.map((mem) => {
+              {filteredMemories.map((mem) => {
                 return (
                   <div
                     key={mem.id}
@@ -617,17 +714,17 @@ export default function CoPilotPage() {
                       "p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-2xs",
                       mem.isActive
                         ? "bg-card border-border hover:border-emerald-500/40"
-                        : "bg-muted/30 border-border/40 opacity-60"
+                        : "bg-muted/20 border-border/40 opacity-60"
                     )}
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-mono">
                           {mem.category}
                         </span>
                         {mem.facebookPage && (
                           <span className="text-[10px] text-muted-foreground font-medium">
-                            📄 {mem.facebookPage.name}
+                            {mem.facebookPage.name}
                           </span>
                         )}
                       </div>
@@ -638,16 +735,16 @@ export default function CoPilotPage() {
                       </p>
 
                       {mem.condition && (
-                        <div className="p-2 rounded-lg bg-muted/60 border border-border/50 text-[11px] font-mono text-emerald-700 dark:text-emerald-300">
-                          শর্ত: {mem.condition}
+                        <div className="p-2 rounded-lg bg-muted/60 border border-border/50 text-[11px] font-mono text-emerald-700 dark:text-emerald-300 font-medium">
+                          Condition: {mem.condition}
                         </div>
                       )}
                     </div>
 
                     <div className="flex items-center justify-between pt-3 mt-3 border-t border-border/40 text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-muted-foreground">
-                          {mem.isActive ? "সক্রিয়" : "নিষ্ক্রিয়"}
+                        <span className="text-[11px] text-muted-foreground font-medium">
+                          {mem.isActive ? "Active" : "Paused"}
                         </span>
                         <input
                           type="checkbox"
@@ -659,8 +756,8 @@ export default function CoPilotPage() {
 
                       <button
                         onClick={() => handleDeleteMemory(mem.id)}
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
-                        title="মুছে ফেলুন"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all cursor-pointer"
+                        title="Delete rule"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

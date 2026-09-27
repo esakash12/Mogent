@@ -55,20 +55,6 @@ const yourAiNav: NavItem[] = [
     matchPrefixes: ["/dashboard/products", "/dashboard/commerce"],
   },
   {
-    name: "Knowledge Base",
-    nameBn: "Knowledge Base",
-    href: "/dashboard/knowledge",
-    icon: BookOpen,
-    matchPrefixes: ["/dashboard/knowledge"],
-  },
-  {
-    name: "Services",
-    nameBn: "সার্ভিস",
-    href: "/dashboard/services",
-    icon: Wrench,
-    matchPrefixes: ["/dashboard/services"],
-  },
-  {
     name: "Website",
     nameBn: "Website",
     href: "/dashboard/website",
