@@ -521,9 +521,10 @@ export class ConversationService {
       throw new Error("No connected store page found for this workspace. Please connect a store first.");
     }
 
+    // Strict deduplication: Search for existing customer across the ENTIRE workspace
     let customer = await prisma.customer.findFirst({
       where: {
-        facebookPageId: page.id,
+        facebookPage: { workspaceId },
         OR: [{ psid: targetPsid }, { phoneNumber: cleanPhone }],
       },
     });
@@ -532,7 +533,7 @@ export class ConversationService {
       const nameParts = (name || "WhatsApp Customer").trim().split(" ");
       customer = await prisma.customer.create({
         data: {
-          facebookPageId: page.id,
+          facebookPageId: page.id, // Use the initially resolved page
           psid: targetPsid,
           firstName: nameParts[0] || "WhatsApp",
           lastName: nameParts.slice(1).join(" ") || "Customer",
@@ -542,6 +543,8 @@ export class ConversationService {
         },
       });
     } else {
+      // If customer already exists under another page in this workspace, we unify everything under that page!
+      page = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } }) || page;
       await prisma.customer.update({
         where: { id: customer.id },
         data: {

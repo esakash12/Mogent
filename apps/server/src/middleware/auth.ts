@@ -162,51 +162,50 @@ export async function authMiddleware(c: Context, next: Next) {
     // Resolve active workspace
     let targetWorkspaceId = workspaceHeader?.trim() || payload.workspaceId?.trim() || null;
 
-    // Multi-tenant permission guard: non-admins must actually belong to targetWorkspaceId
-    if (!payload.isAdmin && payload.role !== "SUPER_ADMIN") {
-      const now = Date.now();
-      const cacheKey = `${payload.userId}:${targetWorkspaceId || "DEFAULT"}`;
-      const cached = memberCache.get(cacheKey);
+    // Multi-tenant permission guard: EVERYONE must actually belong to targetWorkspaceId in the normal app
+    // (Admin bypass is handled separately by adminAuthMiddleware for admin routes)
+    const now = Date.now();
+    const cacheKey = `${payload.userId}:${targetWorkspaceId || "DEFAULT"}`;
+    const cached = memberCache.get(cacheKey);
 
-      if (cached && cached.expiresAt > now) {
-        if (!cached.isValid) {
-          return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
-        }
-        targetWorkspaceId = cached.resolvedWorkspaceId;
-      } else {
-        if (targetWorkspaceId) {
-          const member = await prisma.workspaceMember.findUnique({
-            where: {
-              workspaceId_userId: {
-                workspaceId: targetWorkspaceId,
-                userId: payload.userId,
-              },
+    if (cached && cached.expiresAt > now) {
+      if (!cached.isValid) {
+        return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
+      }
+      targetWorkspaceId = cached.resolvedWorkspaceId;
+    } else {
+      if (targetWorkspaceId) {
+        const member = await prisma.workspaceMember.findUnique({
+          where: {
+            workspaceId_userId: {
+              workspaceId: targetWorkspaceId,
+              userId: payload.userId,
             },
-          });
+          },
+        });
 
-          if (!member) {
-            // If header requested an unauthorized workspace, fall back to their valid workspace
-            const validMember = await prisma.workspaceMember.findFirst({
-              where: { userId: payload.userId },
-            });
-            if (validMember) {
-              targetWorkspaceId = validMember.workspaceId;
-              memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
-            } else {
-              memberCache.set(cacheKey, { isValid: false, resolvedWorkspaceId: "", expiresAt: now + CACHE_TTL_MS });
-              return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
-            }
-          } else {
-            memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
-          }
-        } else {
-          const firstMember = await prisma.workspaceMember.findFirst({
+        if (!member) {
+          // If header requested an unauthorized workspace, fall back to their valid workspace
+          const validMember = await prisma.workspaceMember.findFirst({
             where: { userId: payload.userId },
           });
-          if (firstMember) {
-            targetWorkspaceId = firstMember.workspaceId;
+          if (validMember) {
+            targetWorkspaceId = validMember.workspaceId;
             memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
+          } else {
+            memberCache.set(cacheKey, { isValid: false, resolvedWorkspaceId: "", expiresAt: now + CACHE_TTL_MS });
+            return c.json({ success: false, error: "Forbidden: You do not have access to this workspace" }, 403);
           }
+        } else {
+          memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
+        }
+      } else {
+        const firstMember = await prisma.workspaceMember.findFirst({
+          where: { userId: payload.userId },
+        });
+        if (firstMember) {
+          targetWorkspaceId = firstMember.workspaceId;
+          memberCache.set(cacheKey, { isValid: true, resolvedWorkspaceId: targetWorkspaceId, expiresAt: now + CACHE_TTL_MS });
         }
       }
     }

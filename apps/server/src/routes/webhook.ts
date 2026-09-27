@@ -752,9 +752,10 @@ webhookRouter.post("/whatsapp", async (c) => {
               const targetPsid = `wa_${fromPhone}`;
 
               if (page && (text || mediaUrl)) {
+                // Strict deduplication: Search for existing customer across the ENTIRE workspace
                 let customer = await prisma.customer.findFirst({
                   where: {
-                    facebookPageId: page.id,
+                    facebookPage: { workspaceId: targetWorkspaceId },
                     OR: [{ psid: targetPsid }, { phoneNumber: fromPhone }],
                   },
                 });
@@ -762,7 +763,7 @@ webhookRouter.post("/whatsapp", async (c) => {
                 if (!customer) {
                   customer = await prisma.customer.create({
                     data: {
-                      facebookPageId: page.id,
+                      facebookPageId: page.id, // Use the resolved WhatsApp page
                       psid: targetPsid,
                       firstName: contactName,
                       phoneNumber: fromPhone,
@@ -771,6 +772,8 @@ webhookRouter.post("/whatsapp", async (c) => {
                     },
                   });
                 } else {
+                  // If customer already exists under another page in this workspace, we unify everything under that page!
+                  page = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } }) || page;
                   const updateData: any = { channel: "WHATSAPP" };
                   if (contactName && contactName !== `+${fromPhone}` && (!customer.firstName || customer.firstName === "WhatsApp Tester" || customer.firstName.startsWith("+"))) {
                     updateData.firstName = contactName;

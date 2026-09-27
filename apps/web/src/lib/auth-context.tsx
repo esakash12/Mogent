@@ -124,6 +124,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: json?.error || "Login failed. Please check your credentials." };
       }
 
+      // Strict Wipe: Clear all stale mogent_* local storage keys before setting new session
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("mogent_")) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((key) => localStorage.removeItem(key));
+      } catch {}
+
       const { token, user, workspace, workspaces } = json.data;
       setToken(token);
       setUser(user);
@@ -155,6 +167,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok || !json?.success) {
         return { success: false, error: json?.error || "Registration failed" };
       }
+
+      // Strict Wipe: Clear all stale mogent_* local storage keys before setting new session
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("mogent_")) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((key) => localStorage.removeItem(key));
+      } catch {}
 
       const { token, user, workspace } = json.data;
       setToken(token);

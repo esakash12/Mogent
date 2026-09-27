@@ -355,6 +355,74 @@ async function syncDatabaseSchema() {
       console.warn("Admin flag synchronization notice:", adminSyncErr.message);
     }
 
+    // 6. WhatsApp Conversation Deduplication & Orphan Cleanup
+    try {
+      console.log("🧹 Running WhatsApp Deduplication & Orphan Cleanup...");
+      // Get all WhatsApp customers that have a phone number
+      const waCustomers = await prisma.customer.findMany({
+        where: {
+          phoneNumber: { not: "" },
+          channel: "WHATSAPP",
+        },
+        include: {
+          facebookPage: { select: { workspaceId: true } },
+          conversations: { select: { id: true, facebookPageId: true } }
+        }
+      });
+
+      // Group by WorkspaceID + CleanPhone
+      const groupMap: Record<string, typeof waCustomers> = {};
+      for (const cust of waCustomers) {
+        if (!cust.facebookPage?.workspaceId || !cust.phoneNumber) continue;
+        const cleanPhone = cust.phoneNumber.replace(/\D/g, "");
+        if (!cleanPhone) continue;
+        const key = `${cust.facebookPage.workspaceId}:${cleanPhone}`;
+        if (!groupMap[key]) groupMap[key] = [];
+        groupMap[key].push(cust);
+      }
+
+      for (const key of Object.keys(groupMap)) {
+        const group = groupMap[key];
+        if (group.length > 1) {
+          // Sort to find the primary customer (the one with the most recent updated conversation, or just the first)
+          // For simplicity, we keep the first one as primary
+          const primary = group[0];
+          
+          for (let i = 1; i < group.length; i++) {
+            const duplicate = group[i];
+            
+            // Move all messages from duplicate conversations to the primary conversation
+            // If primary doesn't have a conversation, we just move the duplicate's conversation to primary customer
+            let primaryConv = primary.conversations[0];
+            
+            for (const dupConv of duplicate.conversations) {
+              if (primaryConv) {
+                // Move messages
+                await prisma.message.updateMany({
+                  where: { conversationId: dupConv.id },
+                  data: { conversationId: primaryConv.id },
+                });
+                // Delete duplicate empty conversation
+                await prisma.conversation.delete({ where: { id: dupConv.id } }).catch(() => {});
+              } else {
+                // Transfer conversation to primary
+                await prisma.conversation.update({
+                  where: { id: dupConv.id },
+                  data: { customerId: primary.id, facebookPageId: primary.facebookPageId },
+                });
+                primaryConv = { id: dupConv.id, facebookPageId: primary.facebookPageId };
+              }
+            }
+            
+            // Delete duplicate customer
+            await prisma.customer.delete({ where: { id: duplicate.id } }).catch(() => {});
+          }
+        }
+      }
+    } catch (dedupErr: any) {
+      console.warn("WhatsApp Deduplication notice:", dedupErr.message);
+    }
+
     // 5. Auto-hydrate Redis & runtime config from PostgreSQL system_settings
     try {
       const allSettings = await prisma.systemSetting.findMany();
