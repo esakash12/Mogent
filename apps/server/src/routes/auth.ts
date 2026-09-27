@@ -1,8 +1,10 @@
+import crypto from "crypto";
 import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import bcrypt from "bcryptjs";
 import { prisma, Role } from "@mogent/database";
 import { config } from "../config";
+import { authMiddleware } from "../middleware/auth";
 
 export const authRouter = new Hono();
 
@@ -47,6 +49,13 @@ authRouter.post("/register", async (c) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
+    const designatedAdminEmails = [
+      "shohag@burhan.com",
+      "admin@mogent.tech",
+      (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    ].filter(Boolean);
+    const isNewUserAdmin = designatedAdminEmails.includes(normalizedEmail);
+
     // Create user and workspace in a transaction
     const finalWorkspaceName = workspaceName?.trim() || `${name}'s Workspace`;
     const baseSlug = slugify(finalWorkspaceName) || "workspace";
@@ -58,7 +67,7 @@ authRouter.post("/register", async (c) => {
           name: name.trim(),
           email: normalizedEmail,
           passwordHash,
-          isAdmin: true,
+          isAdmin: isNewUserAdmin,
         },
       });
 
@@ -89,7 +98,7 @@ authRouter.post("/register", async (c) => {
         email: result.user.email,
         workspaceId: result.workspace.id,
         role: result.membership.role,
-        isAdmin: true,
+        isAdmin: isNewUserAdmin,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365, // 365 days
       },
       config.jwtSecret,
@@ -104,7 +113,7 @@ authRouter.post("/register", async (c) => {
           id: result.user.id,
           name: result.user.name,
           email: result.user.email,
-          isAdmin: true,
+          isAdmin: isNewUserAdmin,
         },
         workspace: {
           id: result.workspace.id,
@@ -135,18 +144,17 @@ authRouter.post("/login", async (c) => {
     const normalizedEmail = email.toLowerCase().trim();
     const cleanPassword = password.trim();
     const envAdminSecret = (config.adminSecret || process.env.ADMIN_SECRET || "").trim();
-    const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
+    const designatedAdminEmails = [
+      "shohag@burhan.com",
+      "admin@mogent.tech",
+      (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    ].filter(Boolean);
 
-    // Check if master admin logging into client portal
+    // Master admin bootstrap check (strictly designated email + configured ADMIN_SECRET)
     const isMasterAdmin =
-      (normalizedEmail === designatedAdminEmail ||
-        normalizedEmail === "shohag@burhan.com" ||
-        normalizedEmail === "admin@mogent.tech" ||
-        normalizedEmail === "shohag.tech@gmail.com" ||
-        normalizedEmail.includes("admin")) &&
-      (cleanPassword === "sbShoJoy" ||
-        cleanPassword === "mogent_super_admin_pass_2026" ||
-        (Boolean(envAdminSecret) && cleanPassword === envAdminSecret));
+      designatedAdminEmails.includes(normalizedEmail) &&
+      Boolean(envAdminSecret) &&
+      cleanPassword === envAdminSecret;
 
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -229,17 +237,11 @@ authRouter.post("/login", async (c) => {
     }
 
     const userEmail = (user.email || "").trim().toLowerCase();
-    const isUserAdmin = Boolean(
-      user.isAdmin ||
-      user.memberships.some((m) => m.role === Role.OWNER) ||
-      userEmail === designatedAdminEmail ||
-      userEmail === "shohag@burhan.com" ||
-      userEmail.includes("admin")
-    );
+    const isUserAdmin = Boolean(user.isAdmin && designatedAdminEmails.includes(userEmail));
 
-    if (isUserAdmin && !user.isAdmin) {
-      await prisma.user.update({ where: { id: user.id }, data: { isAdmin: true } }).catch(() => {});
-      user.isAdmin = true;
+    if (!isUserAdmin && user.isAdmin) {
+      await prisma.user.update({ where: { id: user.id }, data: { isAdmin: false } }).catch(() => {});
+      user.isAdmin = false;
     }
 
     const token = await sign(
@@ -321,19 +323,17 @@ authRouter.get("/me", async (c) => {
       user.memberships.find((m) => m.workspaceId === payload.workspaceId)?.workspace ||
       user.memberships[0]?.workspace;
 
-    const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
+    const designatedAdminEmails = [
+      "shohag@burhan.com",
+      "admin@mogent.tech",
+      (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    ].filter(Boolean);
     const userEmail = (user.email || "").trim().toLowerCase();
-    const isUserAdmin = Boolean(
-      user.isAdmin ||
-      user.memberships.some((m) => m.role === Role.OWNER) ||
-      userEmail === designatedAdminEmail ||
-      userEmail === "shohag@burhan.com" ||
-      userEmail.includes("admin")
-    );
+    const isUserAdmin = Boolean(user.isAdmin && designatedAdminEmails.includes(userEmail));
 
-    if (isUserAdmin && !user.isAdmin) {
-      await prisma.user.update({ where: { id: user.id }, data: { isAdmin: true } }).catch(() => {});
-      user.isAdmin = true;
+    if (!isUserAdmin && user.isAdmin) {
+      await prisma.user.update({ where: { id: user.id }, data: { isAdmin: false } }).catch(() => {});
+      user.isAdmin = false;
     }
 
     return c.json({
@@ -408,18 +408,12 @@ authRouter.put("/profile", async (c) => {
 // -----------------------------------------------------------------------------
 // 3.2 GET WORKSPACE TEAM MEMBERS
 // -----------------------------------------------------------------------------
-authRouter.get("/team", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+authRouter.get("/team", authMiddleware, async (c) => {
+  const targetWorkspaceId = c.get("workspaceId");
 
   try {
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: true, data: [] });
+      return c.json({ success: false, error: "Active workspace required" }, 400);
     }
 
     const members = await prisma.workspaceMember.findMany({
@@ -452,8 +446,8 @@ authRouter.get("/team", async (c) => {
 // -----------------------------------------------------------------------------
 // 3.3 INVITE TEAM MEMBER
 // -----------------------------------------------------------------------------
-authRouter.post("/team/invite", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+authRouter.post("/team/invite", authMiddleware, async (c) => {
+  const targetWorkspaceId = c.get("workspaceId");
 
   try {
     const body = await c.req.json();
@@ -463,14 +457,8 @@ authRouter.post("/team/invite", async (c) => {
       return c.json({ success: false, error: "Email is required" }, 400);
     }
 
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
-    }
-
-    if (!targetWorkspaceId) {
-      return c.json({ success: false, error: "No active workspace found" }, 404);
+      return c.json({ success: false, error: "Active workspace required" }, 400);
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -478,12 +466,13 @@ authRouter.post("/team/invite", async (c) => {
     // Check if user exists or create invite placeholder
     let targetUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
     if (!targetUser) {
-      const tempHash = await bcrypt.hash("mogent123456", 10);
+      const tempHash = await bcrypt.hash(crypto.randomUUID(), 10);
       targetUser = await prisma.user.create({
         data: {
           email: cleanEmail,
           name: name ? name.trim() : cleanEmail.split("@")[0],
           passwordHash: tempHash,
+          isAdmin: false,
         },
       });
     }
@@ -535,11 +524,25 @@ authRouter.post("/team/invite", async (c) => {
 // -----------------------------------------------------------------------------
 // 3.4 REMOVE TEAM MEMBER
 // -----------------------------------------------------------------------------
-authRouter.delete("/team/:id", async (c) => {
+authRouter.delete("/team/:id", authMiddleware, async (c) => {
   const { id } = c.req.param();
+  const targetWorkspaceId = c.get("workspaceId");
 
   try {
-    await prisma.workspaceMember.delete({ where: { id } });
+    if (!targetWorkspaceId) {
+      return c.json({ success: false, error: "Active workspace required" }, 400);
+    }
+
+    // Ensure target member belongs to this workspace
+    const member = await prisma.workspaceMember.findFirst({
+      where: { id, workspaceId: targetWorkspaceId },
+    });
+
+    if (!member) {
+      return c.json({ success: false, error: "Member not found in this workspace" }, 404);
+    }
+
+    await prisma.workspaceMember.delete({ where: { id: member.id } });
     return c.json({ success: true, message: "Member removed from workspace" });
   } catch (err: any) {
     return c.json({ success: false, error: err.message }, 500);
@@ -549,24 +552,27 @@ authRouter.delete("/team/:id", async (c) => {
 // -----------------------------------------------------------------------------
 // 3.5 EXPORT WORKSPACE DATA (CSV)
 // -----------------------------------------------------------------------------
-authRouter.get("/export-data", async (c) => {
-  const workspaceId = c.req.header("x-workspace-id");
+authRouter.get("/export-data", authMiddleware, async (c) => {
+  const targetWorkspaceId = c.get("workspaceId");
 
   try {
-    let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
-      const defaultWs = await prisma.workspace.findFirst();
-      targetWorkspaceId = defaultWs?.id;
+      return c.json({ success: false, error: "Active workspace required" }, 400);
     }
 
     const pages = await prisma.facebookPage.findMany({
-      where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
+      where: { workspaceId: targetWorkspaceId },
       select: { id: true },
     });
     const pageIds = pages.map((p) => p.id);
 
     const customers = await prisma.customer.findMany({
-      where: { facebookPageId: { in: pageIds } },
+      where: {
+        OR: [
+          { workspaceId: targetWorkspaceId },
+          ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+        ],
+      },
       include: { orders: true },
     });
 
@@ -575,7 +581,7 @@ authRouter.get("/export-data", async (c) => {
       const name = `"${(cust.firstName || "") + " " + (cust.lastName || "")}"`.trim();
       const phone = `"${cust.phoneNumber || ""}"`;
       const address = `"${(cust.deliveryAddress || "").replace(/"/g, '""')}"`;
-      csvContent += `${cust.id},${name},${phone},${address},${cust.totalOrders},${cust.totalSpent},${cust.sentimentScore ?? 0},${cust.psid}\n`;
+      csvContent += `${cust.id},${name},${phone},${address},${cust.totalOrders},${cust.totalSpent},${cust.sentimentScore ?? 0},${cust.psid || ""}\n`;
     }
 
     c.header("Content-Type", "text/csv");
@@ -603,26 +609,22 @@ authRouter.post("/admin/login", async (c) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
     const envAdminSecret = (config.adminSecret || process.env.ADMIN_SECRET || "").trim();
-    const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
+    const designatedAdminEmails = [
+      "shohag@burhan.com",
+      "admin@mogent.tech",
+      (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    ].filter(Boolean);
 
-    // 1. Direct Secret Match (Always succeeds when matching credentials)
-    const isDirectMatch =
-      cleanPassword === "sbShoJoy" ||
-      cleanPassword === "mogent_super_admin_pass_2026" ||
-      (Boolean(envAdminSecret) && cleanPassword === envAdminSecret);
-
-    const isAuthorizedAdminEmail =
-      cleanEmail === designatedAdminEmail ||
-      cleanEmail === "shohag@burhan.com" ||
-      cleanEmail === "admin@mogent.tech" ||
-      cleanEmail === "shohag.tech@gmail.com" ||
-      cleanEmail.includes("admin");
+    // Only allow designated admin emails
+    if (!designatedAdminEmails.includes(cleanEmail)) {
+      return c.json({ success: false, error: "Access Denied: Invalid Super Admin Credentials." }, 401);
+    }
 
     let isValid = false;
-    let adminUserId = "admin-root-user";
+    let adminUserId = "";
     let adminUserName = "Super Admin";
 
-    // 2. Check in database
+    // 1. Check in database
     try {
       const adminUser = await prisma.user.findUnique({
         where: { email: cleanEmail },
@@ -640,8 +642,8 @@ authRouter.post("/admin/login", async (c) => {
       console.warn("[Admin Login DB check]", dbErr.message);
     }
 
-    // If direct secret matched, grant access and sync to database
-    if (isDirectMatch && isAuthorizedAdminEmail) {
+    // 2. Fallback to ADMIN_SECRET if explicitly configured
+    if (!isValid && Boolean(envAdminSecret) && cleanPassword === envAdminSecret) {
       isValid = true;
       try {
         const hashedPassword = await bcrypt.hash(cleanPassword, 10);
@@ -657,7 +659,7 @@ authRouter.post("/admin/login", async (c) => {
       }
     }
 
-    if (!isValid) {
+    if (!isValid || !adminUserId) {
       console.warn(`[Admin Login Failed] Invalid credentials for: ${cleanEmail}`);
       return c.json({ success: false, error: "Access Denied: Invalid Super Admin Credentials." }, 401);
     }

@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { prisma } from "@mogent/database";
 import { ConversationService } from "../services/conversation-service";
 
 export class ConversationsController {
@@ -39,7 +40,25 @@ export class ConversationsController {
    */
   static async getMessages(c: Context) {
     const { id } = c.req.param();
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     try {
+      if (workspaceId) {
+        const conv = await prisma.conversation.findUnique({
+          where: { id },
+          include: {
+            facebookPage: { select: { workspaceId: true } },
+            customer: { select: { workspaceId: true } },
+          },
+        });
+        if (!conv) {
+          return c.json({ success: false, error: "Conversation not found" }, 404);
+        }
+        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        if (convWorkspaceId && convWorkspaceId !== workspaceId) {
+          return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
+        }
+      }
+
       const data = await ConversationService.getMessages(id);
       return c.json({ success: true, data });
     } catch (error: any) {
@@ -52,12 +71,30 @@ export class ConversationsController {
    */
   static async sendMessage(c: Context) {
     const { id } = c.req.param();
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     try {
       const body = await c.req.json();
       const { text, mediaUrl, mediaType, fileName } = body;
 
       if ((!text || !text.trim()) && !mediaUrl) {
         return c.json({ success: false, error: "Text or media attachment required" }, 400);
+      }
+
+      if (workspaceId) {
+        const conv = await prisma.conversation.findUnique({
+          where: { id },
+          include: {
+            facebookPage: { select: { workspaceId: true } },
+            customer: { select: { workspaceId: true } },
+          },
+        });
+        if (!conv) {
+          return c.json({ success: false, error: "Conversation not found" }, 404);
+        }
+        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        if (convWorkspaceId && convWorkspaceId !== workspaceId) {
+          return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
+        }
       }
 
       const data = await ConversationService.sendMessage({
@@ -79,9 +116,28 @@ export class ConversationsController {
    */
   static async toggleMode(c: Context) {
     const { id } = c.req.param();
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     try {
       const body = await c.req.json();
       const { isHumanControl } = body;
+
+      if (workspaceId) {
+        const conv = await prisma.conversation.findUnique({
+          where: { id },
+          include: {
+            facebookPage: { select: { workspaceId: true } },
+            customer: { select: { workspaceId: true } },
+          },
+        });
+        if (!conv) {
+          return c.json({ success: false, error: "Conversation not found" }, 404);
+        }
+        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        if (convWorkspaceId && convWorkspaceId !== workspaceId) {
+          return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
+        }
+      }
+
       const conversation = await ConversationService.toggleMode(id, isHumanControl);
       return c.json({ success: true, data: conversation });
     } catch (error: any) {
@@ -94,7 +150,25 @@ export class ConversationsController {
    */
   static async completeSale(c: Context) {
     const { id } = c.req.param();
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
     try {
+      if (workspaceId) {
+        const conv = await prisma.conversation.findUnique({
+          where: { id },
+          include: {
+            facebookPage: { select: { workspaceId: true } },
+            customer: { select: { workspaceId: true } },
+          },
+        });
+        if (!conv) {
+          return c.json({ success: false, error: "Conversation not found" }, 404);
+        }
+        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        if (convWorkspaceId && convWorkspaceId !== workspaceId) {
+          return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
+        }
+      }
+
       const conversation = await ConversationService.markSaleCompleted(id);
       return c.json({ success: true, data: conversation });
     } catch (error: any) {

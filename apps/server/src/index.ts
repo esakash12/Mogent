@@ -321,27 +321,39 @@ async function syncDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS "idx_facebook_pages_workspace" ON "facebook_pages"("workspaceId");
     `);
 
-    // Auto-promote workspace owners and configured/fallback admin emails to isAdmin
+    // Security Cleanup: Strictly restrict platform isAdmin to designated admin emails
     try {
-      const explicitAdmin = process.env.ADMIN_EMAIL || config.adminEmail;
-      const fallbackAdmins = ["shohag@burhan.com", "admin@mogent.tech"];
-      const adminEmails = Array.from(
+      const explicitAdmin = (process.env.ADMIN_EMAIL || config.adminEmail || "").trim().toLowerCase();
+      const designatedAdmins = Array.from(
         new Set([
-          ...(explicitAdmin ? [explicitAdmin.toLowerCase().trim()] : []),
-          ...fallbackAdmins,
+          "shohag@burhan.com",
+          "admin@mogent.tech",
+          ...(explicitAdmin ? [explicitAdmin] : []),
         ])
       );
 
+      // 1. Revoke accidental isAdmin flag from all non-designated users
+      const revokeRes = await prisma.user.updateMany({
+        where: {
+          email: { notIn: designatedAdmins },
+          isAdmin: true,
+        },
+        data: { isAdmin: false },
+      });
+      if (revokeRes.count > 0) {
+        console.log(`🔒 Revoked accidental admin permissions from ${revokeRes.count} non-admin user(s).`);
+      }
+
+      // 2. Ensure designated admins have isAdmin = true
       await prisma.user.updateMany({
         where: {
-          OR: [
-            { memberships: { some: { role: "OWNER" } } },
-            { email: { in: adminEmails } },
-          ],
+          email: { in: designatedAdmins },
         },
         data: { isAdmin: true },
       });
-    } catch {}
+    } catch (adminSyncErr: any) {
+      console.warn("Admin flag synchronization notice:", adminSyncErr.message);
+    }
 
     // 5. Auto-hydrate Redis & runtime config from PostgreSQL system_settings
     try {

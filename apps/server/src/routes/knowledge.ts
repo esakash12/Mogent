@@ -4,6 +4,7 @@ import { redisConnection } from "../redis";
 import { config } from "../config";
 import { AiProxyClient } from "../ai-client";
 import { authMiddleware } from "../middleware/auth";
+import { validatePublicUrl } from "../utils/security";
 
 const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey);
 
@@ -429,6 +430,10 @@ knowledgeRouter.post("/crawl", async (c) => {
     }
 
     const formattedUrl = url.trim().startsWith("http") ? url.trim() : `https://${url.trim()}`;
+    const urlValidation = validatePublicUrl(formattedUrl);
+    if (!urlValidation.valid) {
+      return c.json({ success: false, error: urlValidation.error || "Invalid URL" }, 400);
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -663,8 +668,21 @@ knowledgeRouter.post("/playground", async (c) => {
 // DELETE /api/knowledge/:id - Delete knowledge item
 knowledgeRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
   try {
-    await prisma.knowledgeBase.delete({ where: { id } });
+    const item = await prisma.knowledgeBase.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+    });
+
+    if (!item) {
+      return c.json({ success: false, error: "Knowledge item not found or access denied" }, 404);
+    }
+
+    await prisma.knowledgeBase.delete({ where: { id: item.id } });
     return c.json({ success: true, message: "Deleted" });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Hono } from "hono";
 import { config } from "../config";
 import { redisConnection } from "../redis";
@@ -54,15 +55,41 @@ const handleVerify = async (c: any) => {
   return c.text("Forbidden: Verification Token Mismatch", 403);
 };
 
+function verifyMetaSignature(signatureHeader: string | undefined, rawBody: string, appSecret: string): boolean {
+  if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
+  const signature = signatureHeader.substring(7);
+  try {
+    const expectedSignature = crypto
+      .createHmac("sha256", appSecret)
+      .update(rawBody)
+      .digest("hex");
+    return crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expectedSignature, "hex"));
+  } catch {
+    return false;
+  }
+}
+
 // Helper to handle incoming Facebook Webhook events
 const handleIngest = async (c: any) => {
   try {
     let body: FacebookWebhookBody;
+    let rawBody: string = "";
 
-    let rawBody: any = null;
     try {
-      rawBody = (c as any).get?.("rawBody");
+      rawBody = (c as any).get?.("rawBody") || (await c.req.text());
     } catch {}
+
+    const appSecret = (config.facebook.appSecret || process.env.FACEBOOK_APP_SECRET || "").trim();
+    if (appSecret && rawBody) {
+      const sig = c.req.header("X-Hub-Signature-256") || c.req.header("x-hub-signature-256");
+      if (sig) {
+        const isValid = verifyMetaSignature(sig, rawBody, appSecret);
+        if (!isValid) {
+          console.warn("❌ [Facebook Webhook] Invalid X-Hub-Signature-256 signature");
+          return c.text("Forbidden: Invalid Signature", 403);
+        }
+      }
+    }
 
     if (rawBody && typeof rawBody === "string") {
       body = JSON.parse(rawBody);

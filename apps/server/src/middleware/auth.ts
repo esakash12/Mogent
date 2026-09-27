@@ -58,8 +58,21 @@ function verifyTokenSignatureOnly(token: string, secret: string): boolean {
 }
 
 async function safeVerifyToken(token: string): Promise<{ payload: any; refreshedToken: string | null }> {
+  const designatedAdminEmails = [
+    "shohag@burhan.com",
+    "admin@mogent.tech",
+    (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+  ].filter(Boolean);
+
   try {
     const payload = (await verify(token, config.jwtSecret, "HS256")) as any;
+    if (payload) {
+      const email = (payload.email || "").trim().toLowerCase();
+      if (payload.isAdmin && !designatedAdminEmails.includes(email)) {
+        payload.isAdmin = false;
+        if (payload.role === "SUPER_ADMIN") payload.role = "USER";
+      }
+    }
     return { payload, refreshedToken: null };
   } catch (err: any) {
     const isExpiryError =
@@ -90,20 +103,16 @@ async function safeVerifyToken(token: string): Promise<{ payload: any; refreshed
         });
 
         if (user) {
-          const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
+          const designatedAdminEmails = [
+            "shohag@burhan.com",
+            "admin@mogent.tech",
+            (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+          ].filter(Boolean);
           const userEmail = (user.email || "").trim().toLowerCase();
-          const isUserAdmin = Boolean(
-            user.isAdmin ||
-            payload.isAdmin ||
-            payload.role === "SUPER_ADMIN" ||
-            user.memberships.some((m) => m.role === "OWNER") ||
-            userEmail === designatedAdminEmail ||
-            userEmail === "shohag@burhan.com" ||
-            userEmail.includes("admin")
-          );
+          const isUserAdmin = Boolean(user.isAdmin && designatedAdminEmails.includes(userEmail));
 
-          if (isUserAdmin && !user.isAdmin) {
-            await prisma.user.update({ where: { id: user.id }, data: { isAdmin: true } }).catch(() => {});
+          if (!isUserAdmin && user.isAdmin) {
+            await prisma.user.update({ where: { id: user.id }, data: { isAdmin: false } }).catch(() => {});
           }
 
           const freshPayload = {
@@ -244,7 +253,16 @@ export async function adminAuthMiddleware(c: Context, next: Next) {
       return c.json({ success: false, error: "Unauthorized: Invalid token" }, 401);
     }
 
-    let isAuthorizedAdmin = payload.isAdmin === true || payload.role === "SUPER_ADMIN" || payload.role === "OWNER";
+    const designatedAdminEmails = [
+      "shohag@burhan.com",
+      "admin@mogent.tech",
+      (config.adminEmail || process.env.ADMIN_EMAIL || "").trim().toLowerCase(),
+    ].filter(Boolean);
+
+    const payloadEmail = (payload.email || "").trim().toLowerCase();
+    let isAuthorizedAdmin =
+      (payload.isAdmin === true || payload.role === "SUPER_ADMIN") &&
+      designatedAdminEmails.includes(payloadEmail);
 
     if (!isAuthorizedAdmin && payload.userId) {
       const now = Date.now();
@@ -258,28 +276,23 @@ export async function adminAuthMiddleware(c: Context, next: Next) {
             id: true,
             isAdmin: true,
             email: true,
-            memberships: { select: { role: true } },
           },
         });
 
-        const designatedAdminEmail = (config.adminEmail || process.env.ADMIN_EMAIL || "admin@mogent.tech").trim().toLowerCase();
         const userEmail = (user?.email || "").trim().toLowerCase();
-        const isOwnerOrAdmin =
-          Boolean(user?.isAdmin) ||
-          Boolean(user?.memberships?.some((m) => m.role === "OWNER")) ||
-          userEmail === designatedAdminEmail ||
-          userEmail === "shohag@burhan.com" ||
-          userEmail.includes("admin");
+        const isDesignated = designatedAdminEmails.includes(userEmail);
 
-        if (isOwnerOrAdmin) {
+        if (user && isDesignated && user.isAdmin) {
           isAuthorizedAdmin = true;
-          if (user && !user.isAdmin) {
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { isAdmin: true },
-            }).catch(() => {});
-          }
+        } else if (user && !isDesignated && user.isAdmin) {
+          // Revoke accidental platform admin flag
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { isAdmin: false },
+          }).catch(() => {});
+          isAuthorizedAdmin = false;
         }
+
         adminCheckCache.set(payload.userId, { isAdmin: isAuthorizedAdmin, expiresAt: now + CACHE_TTL_MS });
       }
     }

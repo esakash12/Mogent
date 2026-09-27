@@ -3,6 +3,7 @@ import { prisma } from "@mogent/database";
 import { decryptToken } from "@mogent/shared";
 import { config } from "../config";
 import { authMiddleware } from "../middleware/auth";
+import { validatePublicUrl } from "../utils/security";
 
 export const productsRouter = new Hono();
 
@@ -113,6 +114,11 @@ productsRouter.post("/import-url", async (c) => {
     }
 
     const formattedUrl = url.startsWith("http") ? url : `https://${url}`;
+    const urlValidation = validatePublicUrl(formattedUrl);
+    if (!urlValidation.valid) {
+      return c.json({ success: false, error: urlValidation.error || "Invalid URL" }, 400);
+    }
+
     const res = await fetch(formattedUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -315,6 +321,11 @@ productsRouter.post("/import-feed", async (c) => {
     }
 
     const formattedUrl = feedUrl.startsWith("http") ? feedUrl : `https://${feedUrl}`;
+    const urlValidation = validatePublicUrl(formattedUrl);
+    if (!urlValidation.valid) {
+      return c.json({ success: false, error: urlValidation.error || "Invalid URL" }, 400);
+    }
+
     const res = await fetch(formattedUrl);
 
     if (!res.ok) {
@@ -425,12 +436,19 @@ productsRouter.post("/import-feed", async (c) => {
 // PATCH /api/products/:id/stock - Toggle in-stock status
 productsRouter.patch("/:id/stock", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
   try {
-    const product = await prisma.product.findUnique({ where: { id } });
-    if (!product) return c.json({ success: false, error: "Product not found" }, 404);
+    const product = await prisma.product.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+    });
+    if (!product) return c.json({ success: false, error: "Product not found or access denied" }, 404);
 
     const updated = await prisma.product.update({
-      where: { id },
+      where: { id: product.id },
       data: { inStock: !product.inStock },
     });
 
@@ -443,8 +461,18 @@ productsRouter.patch("/:id/stock", async (c) => {
 // DELETE /api/products/:id - Delete product
 productsRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
   try {
-    await prisma.product.delete({ where: { id } });
+    const product = await prisma.product.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+    });
+    if (!product) return c.json({ success: false, error: "Product not found or access denied" }, 404);
+
+    await prisma.product.delete({ where: { id: product.id } });
     return c.json({ success: true, message: "Product removed" });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);

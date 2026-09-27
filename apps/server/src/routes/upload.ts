@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { storageService } from "../services/storage";
 import { authMiddleware } from "../middleware/auth";
+import { sanitizeUploadFolder } from "../utils/security";
 
 export const uploadRouter = new Hono();
 
@@ -24,8 +25,9 @@ uploadRouter.post("/", async (c) => {
       const buffer = Buffer.from(cleanBase64, "base64");
       const name = filename || `upload-${Date.now()}.jpg`;
       const mime = mimeType || "image/jpeg";
+      const safeFolder = sanitizeUploadFolder(folder);
 
-      const result = await storageService.uploadFile(buffer, name, mime, folder || "inbox");
+      const result = await storageService.uploadFile(buffer, name, mime, safeFolder);
       return c.json({
         success: true,
         url: result.url,
@@ -37,7 +39,7 @@ uploadRouter.post("/", async (c) => {
     if (contentType.includes("multipart/form-data")) {
       const body = await c.req.parseBody();
       const file = body["file"] || body["image"];
-      const folder = (body["folder"] as string) || "inbox";
+      const safeFolder = sanitizeUploadFolder(body["folder"] as string);
 
       if (!file || typeof file === "string") {
         return c.json({ success: false, error: "File is required in 'file' or 'image' field" }, 400);
@@ -47,7 +49,7 @@ uploadRouter.post("/", async (c) => {
       const filename = (file as File).name || `upload-${Date.now()}.jpg`;
       const mimeType = (file as File).type || "image/jpeg";
 
-      const result = await storageService.uploadFile(buffer, filename, mimeType, folder);
+      const result = await storageService.uploadFile(buffer, filename, mimeType, safeFolder);
       return c.json({
         success: true,
         url: result.url,

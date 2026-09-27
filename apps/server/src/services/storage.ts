@@ -4,6 +4,7 @@ import { prisma } from "@mogent/database";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { sanitizeUploadFolder } from "../utils/security";
 
 export interface UploadResult {
   url: string;
@@ -26,6 +27,7 @@ export class StorageService {
     mimeType: string = "image/jpeg",
     folder: string = "inbox"
   ): Promise<UploadResult> {
+    const safeFolder = sanitizeUploadFolder(folder);
     const size = buffer.length;
 
     // 1. Fetch Cloudflare R2 credentials from Redis, PostgreSQL, or Environment
@@ -69,7 +71,7 @@ export class StorageService {
       ? filename.substring(0, filename.lastIndexOf(".")).replace(/[^a-zA-Z0-9_-]/g, "_")
       : "file";
 
-    const uniqueKey = `${folder}/${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${safeBaseName}.${cleanExt}`;
+    const uniqueKey = `${safeFolder}/${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${safeBaseName}.${cleanExt}`;
 
     // 2. Try Cloudflare R2 first if credentials exist
     if (accountId && accessKeyId && secretAccessKey) {
@@ -112,7 +114,7 @@ export class StorageService {
 
     // 3. Fallback to Local Public Server Storage (guaranteed valid HTTP/HTTPS URL)
     try {
-      const uploadsDir = path.join(process.cwd(), "uploads", folder);
+      const uploadsDir = path.join(process.cwd(), "uploads", safeFolder);
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }

@@ -301,7 +301,20 @@ pagesRouter.post("/", async (c) => {
 // -----------------------------------------------------------------------------
 pagesRouter.patch("/:id", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
   try {
+    const page = await prisma.facebookPage.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+    });
+
+    if (!page) {
+      return c.json({ success: false, error: "Page not found or access denied" }, 404);
+    }
+
     const body = await c.req.json();
     const { aiMode, systemPrompt, temperature, businessName, businessDescription, isActive } = body;
 
@@ -314,7 +327,7 @@ pagesRouter.patch("/:id", async (c) => {
     if (isActive !== undefined) updateData.isActive = Boolean(isActive);
 
     const updated = await prisma.facebookPage.update({
-      where: { id },
+      where: { id: page.id },
       data: updateData,
     });
 
@@ -330,9 +343,22 @@ pagesRouter.patch("/:id", async (c) => {
 // -----------------------------------------------------------------------------
 pagesRouter.delete("/:id", async (c) => {
   const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
   try {
+    const page = await prisma.facebookPage.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+    });
+
+    if (!page) {
+      return c.json({ success: false, error: "Page not found or access denied" }, 404);
+    }
+
     await prisma.facebookPage.delete({
-      where: { id },
+      where: { id: page.id },
     });
     return c.json({ success: true, message: "Page disconnected successfully" });
   } catch (error: any) {
@@ -362,7 +388,7 @@ pagesRouter.get("/whatsapp/config", async (c) => {
     }
 
     if (!saved?.accessToken && !saved?.phoneNumberId) {
-      // Fallback to PostgreSQL system_settings table
+      // Fallback to PostgreSQL system_settings table for this workspace
       const dbSetting = await prisma.systemSetting.findUnique({
         where: { key: `mogent:whatsapp_config:${workspaceId}` },
       });
@@ -371,16 +397,6 @@ pagesRouter.get("/whatsapp/config", async (c) => {
           saved = JSON.parse(dbSetting.value);
           await redisConnection.set(`mogent:whatsapp_config:${workspaceId}`, dbSetting.value);
         } catch {}
-      } else {
-        // Fallback to default WhatsApp config
-        const defaultSetting = await prisma.systemSetting.findUnique({
-          where: { key: "mogent:whatsapp_config:default" },
-        });
-        if (defaultSetting?.value) {
-          try {
-            saved = JSON.parse(defaultSetting.value);
-          } catch {}
-        }
       }
     }
 
@@ -427,23 +443,17 @@ pagesRouter.post("/whatsapp/config", async (c) => {
 
     const configJson = JSON.stringify(configData);
 
-    // Dual-Layer Persistence: Redis Cache + PostgreSQL system_settings Table
+    // Workspace-isolated persistence: Redis Cache + PostgreSQL system_settings Table
     await redisConnection.set(
       `mogent:whatsapp_config:${workspaceId}`,
       configJson
     );
-    await redisConnection.set("mogent:whatsapp_config:default", configJson).catch(() => {});
 
     try {
       await prisma.systemSetting.upsert({
         where: { key: `mogent:whatsapp_config:${workspaceId}` },
         update: { value: configJson },
         create: { key: `mogent:whatsapp_config:${workspaceId}`, value: configJson },
-      });
-      await prisma.systemSetting.upsert({
-        where: { key: "mogent:whatsapp_config:default" },
-        update: { value: configJson },
-        create: { key: "mogent:whatsapp_config:default", value: configJson },
       });
     } catch (dbErr: any) {
       console.warn("Could not save WhatsApp config to PostgreSQL system_settings:", dbErr.message);

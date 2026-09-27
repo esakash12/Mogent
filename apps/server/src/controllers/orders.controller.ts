@@ -31,13 +31,12 @@ export class OrdersController {
       });
       const pageIds = pages.map((p) => p.id);
 
-      if (pageIds.length === 0) {
-        return c.json({ success: true, data: [] });
-      }
-
       const where: any = {
         customer: {
-          facebookPageId: { in: pageIds },
+          OR: [
+            { workspaceId },
+            ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+          ],
         },
       };
       if (statusFilter && statusFilter !== "ALL") {
@@ -100,7 +99,7 @@ export class OrdersController {
    * POST /api/orders - Create a new order
    */
   static async create(c: Context) {
-    const workspaceId = c.req.header("x-workspace-id");
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
 
     try {
       const body = await c.req.json();
@@ -121,12 +120,37 @@ export class OrdersController {
   }
 
   /**
-   * PATCH /api/orders/:id/status - Update order status
+   * PATCH /api/orders/:id/status - Update order status with IDOR verification
    */
   static async updateStatus(c: Context) {
     const { id } = c.req.param();
+    const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
     try {
       const { status } = await c.req.json();
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: {
+          customer: {
+            include: {
+              facebookPage: { select: { workspaceId: true } },
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        return c.json({ success: false, error: "Order not found" }, 404);
+      }
+
+      if (workspaceId) {
+        const orderWorkspaceId = order.customer?.workspaceId || order.customer?.facebookPage?.workspaceId;
+        if (orderWorkspaceId && orderWorkspaceId !== workspaceId) {
+          return c.json({ success: false, error: "Forbidden: You do not have permission to modify this order" }, 403);
+        }
+      }
+
       const updated = await prisma.order.update({
         where: { id },
         data: { status },
