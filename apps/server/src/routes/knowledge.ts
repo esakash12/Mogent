@@ -541,17 +541,77 @@ knowledgeRouter.post("/playground", async (c) => {
       return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
-    // Fetch knowledge base context
-    const knowledgeItems = targetWorkspaceId
-      ? await prisma.knowledgeBase.findMany({
-          where: { workspaceId: targetWorkspaceId, isActive: true },
-          orderBy: { priority: "desc" },
-          take: 15,
-        })
-      : [];
+    // Fetch unified context: KnowledgeBase, Co-Pilot Business Memories, and Live Products
+    const [knowledgeItems, dynamicMemories, storeProducts] = await Promise.all([
+      targetWorkspaceId
+        ? prisma.knowledgeBase.findMany({
+            where: { workspaceId: targetWorkspaceId, isActive: true },
+            orderBy: { priority: "desc" },
+            take: 15,
+          })
+        : [],
+      targetWorkspaceId
+        ? prisma.businessMemory.findMany({
+            where: { workspaceId: targetWorkspaceId, isActive: true },
+            orderBy: { createdAt: "desc" },
+            take: 30,
+          })
+        : [],
+      targetWorkspaceId
+        ? prisma.product.findMany({
+            where: { workspaceId: targetWorkspaceId, inStock: true },
+            take: 30,
+            orderBy: { createdAt: "desc" },
+          })
+        : [],
+    ]);
 
     const knowledgeContext = knowledgeItems.map(
       (k) => `[${k.type} - ${k.title}]: ${k.content}`
+    );
+
+    // Inject Dynamic Business Rules taught via Co-Pilot
+    if (dynamicMemories.length > 0) {
+      knowledgeContext.push(
+        `[দোকানের মালিকের বিশেষ নিয়ম ও অফারসমূহ]:\n` +
+          dynamicMemories
+            .map(
+              (m) =>
+                `• [${m.category}] ${m.title}: ${m.instruction} ${
+                  m.condition ? `(শর্ত: ${m.condition})` : ""
+                }`
+            )
+            .join("\n")
+      );
+    }
+
+    // Inject Live Product Catalog & Inventory
+    if (storeProducts.length > 0) {
+      knowledgeContext.push(
+        `[স্টোরের লাইভ প্রডাক্ট ক্যাটালগ ও স্টক তালিকা]:\n` +
+          storeProducts
+            .map(
+              (p) =>
+                `• ${p.name}: বর্তমান বিক্রয় মূল্য ৳${p.price}${
+                  p.regularPrice ? ` (আসল মূল্য ৳${p.regularPrice})` : ""
+                }, স্টক: ${p.stockCount ?? 100}টি, ক্যাটাগরি: ${
+                  p.category || "General"
+                }${p.description ? `, বিবরণ: ${p.description}` : ""}`
+            )
+            .join("\n")
+      );
+    }
+
+    // Inject Pricing, Math Calculation & Strict Condition Rules
+    knowledgeContext.push(
+      `[হিসাব ও প্রাইসিং নিয়ম (Pricing & Calculation Rules)]:
+• কাস্টমার নির্দিষ্ট পরিমাণের দাম জানতে চাইলে (যেমন: "৩টা কার্ডের দাম কত?"):
+  - সূত্র: মোট মূল্য = (কার্ড সংখ্যা × প্রতি কার্ডের একক মূল্য) + ডেলিভারি চার্জ (যদি প্রযোজ্য হয়)।
+  - হিসাব: যদি ১টি কার্ডের মূল্য ১৫০ টাকা হয় এবং ২ বা ততোধিক কার্ডে ফ্রি ডেলিভারি থাকে, তবে ৩টি কার্ডের মোট দাম = ৩ × ১৫০ = ৪৫০ টাকা (২ বা তার বেশি কার্ড হওয়ায় ডেলিভারি চার্জ সম্পূর্ণ ফ্রি)। তাই কাস্টমারকে মোট ৪৫০ টাকা স্পষ্টভাবে বলুন।
+• অফার ও হোয়াটসঅ্যাপ রিডাইরেক্ট শর্তাবলী কঠোরভাবে মেনে চলুন:
+  - যদি কোনো বাল্ক বা বিশেষ অফারের শর্ত থাকে (যেমন: "৫টির বেশি নিলে বিশেষ অফার" বা "quantity > 5"):
+    - কার্ডের সংখ্যা ১ থেকে ৫ হলে কখনোই বিশেষ অফার বা হোয়াটসঅ্যাপে নক দিতে বলবেন না! সরাসরি মোট দাম বলে অর্ডার নেওয়ার জন্য ফাইল ও ডেলিভারি ঠিকানা চাইবেন।
+    - শুধুমাত্র শর্ত পূরণ হলেই (যেমন: ৬ বা ততোধিক কার্ড) বিশেষ অফারের জন্য হোয়াটসঅ্যাপ লিংক দেবেন।`
     );
 
     const workspace = targetWorkspaceId

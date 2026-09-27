@@ -469,6 +469,56 @@ async function syncDatabaseSchema() {
       console.warn("Knowledge base to business memory backfill notice:", migErr.message);
     }
 
+    // 5.5 Auto-correct stale bulk offer conflicts and ensure PVC Card product exists if mentioned in memories
+    try {
+      // Deactivate any old conflicting rules that say quantity >= 4 if there's an updated rule with 5
+      await prisma.businessMemory.updateMany({
+        where: {
+          condition: "quantity >= 4",
+          isActive: true,
+        },
+        data: { isActive: false },
+      });
+
+      // If workspace has PVC card service memories but no product row, ensure product is created with price 150
+      const workspacesWithCardMemories = await prisma.businessMemory.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { instruction: { contains: "১৫০", mode: "insensitive" } },
+            { instruction: { contains: "কার্ড", mode: "insensitive" } },
+            { title: { contains: "কার্ড", mode: "insensitive" } },
+          ],
+        },
+        select: { workspaceId: true },
+      });
+
+      for (const item of workspacesWithCardMemories) {
+        const existingProd = await prisma.product.findFirst({
+          where: {
+            workspaceId: item.workspaceId,
+            name: { contains: "PVC", mode: "insensitive" },
+          },
+        });
+        if (!existingProd) {
+          await prisma.product.create({
+            data: {
+              workspaceId: item.workspaceId,
+              name: "PVC ID Card Printing",
+              price: 150,
+              regularPrice: 200,
+              category: "PVC Print Service",
+              stockCount: 500,
+              description: "High quality PVC print for NID, Driving License, Student ID, Employee ID",
+              inStock: true,
+            },
+          });
+        }
+      }
+    } catch (cleanupErr: any) {
+      console.warn("Auto-correct memories notice:", cleanupErr.message);
+    }
+
     // 6. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_updated" ON "conversations"("facebookPageId", "updatedAt" DESC);

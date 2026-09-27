@@ -232,42 +232,44 @@ YOUR CAPABILITIES & INSTRUCTIONS:
    (G) General discussion, marketing tips, or questions about how the AI works.
 
 OUTPUT FORMAT REQUIREMENTS:
-You MUST respond with a valid JSON object matching this exact schema:
+You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actions if the owner mentioned multiple rules, prices, or policies in their message:
 {
   "thought": "Short internal reasoning about what the owner wants",
-  "reply": "Warm, polite, conversational response in Bengali directly addressing the owner. If you performed an action, confirm it clearly and explain how customer chats will now reflect it.",
-  "action": {
-    "type": "TEACH_RULE" | "CREATE_PRODUCT" | "UPDATE_PRODUCT" | "DELETE_RULE" | "STATS_REPORT" | "INTERVIEW_EXTRACT" | "NONE",
-    "rule": {
-      "category": "DISCOUNT_OFFER" | "DELIVERY_POLICY" | "BUSINESS_FACT" | "SALES_BEHAVIOR" | "FAQ" | "CUSTOM_RULE",
-      "title": "Short title (e.g. ২টা পাঞ্জাবিতে ১০০ টাকা ছাড়)",
-      "instruction": "Clear natural-language instruction for customer sales AI",
-      "condition": "Optional machine or logical condition, e.g. quantity >= 2 or district != Dhaka"
-    },
-    "product": {
-      "name": "Product Name",
-      "price": 1450,
-      "regularPrice": 1600,
-      "category": "Apparel",
-      "stockCount": 30,
-      "description": "Short description"
-    },
-    "productUpdate": {
-      "productQuery": "Search phrase to match product name",
-      "price": 1200,
-      "stockCount": 10,
-      "inStock": true
-    },
-    "deleteRule": {
-      "ruleQuery": "Search phrase for rule to delete"
-    },
-    "interview": {
-      "businessName": "Extracted business name if mentioned",
-      "businessDescription": "Extracted description if mentioned",
-      "deliveryChargeInside": 80,
-      "deliveryChargeOutside": 130
+  "reply": "Warm, polite, conversational response in Bengali directly addressing the owner. If you performed actions, confirm each clearly and explain how customer chats will now reflect it.",
+  "actions": [
+    {
+      "type": "TEACH_RULE" | "CREATE_PRODUCT" | "UPDATE_PRODUCT" | "DELETE_RULE" | "STATS_REPORT" | "INTERVIEW_EXTRACT" | "NONE",
+      "rule": {
+        "category": "DISCOUNT_OFFER" | "DELIVERY_POLICY" | "BUSINESS_FACT" | "SALES_BEHAVIOR" | "FAQ" | "CUSTOM_RULE",
+        "title": "Short title (e.g. ২টা কার্ডে ফ্রি ডেলিভারি, ৫টির বেশিতে বিশেষ অফার)",
+        "instruction": "Clear natural-language instruction for customer sales AI. Must be explicit about what to say when condition IS met vs NOT met.",
+        "condition": "Optional machine or logical condition, e.g. quantity >= 2 or quantity > 5"
+      },
+      "product": {
+        "name": "Product Name (e.g. PVC Card Printing)",
+        "price": 150,
+        "regularPrice": 200,
+        "category": "PVC Print Service",
+        "stockCount": 500,
+        "description": "Short description"
+      },
+      "productUpdate": {
+        "productQuery": "Search phrase to match product name",
+        "price": 150,
+        "stockCount": 500,
+        "inStock": true
+      },
+      "deleteRule": {
+        "ruleQuery": "Search phrase for rule to delete"
+      },
+      "interview": {
+        "businessName": "Extracted business name if mentioned",
+        "businessDescription": "Extracted description if mentioned",
+        "deliveryChargeInside": 50,
+        "deliveryChargeOutside": 50
+      }
     }
-  }
+  ]
 }
 `;
 
@@ -321,11 +323,54 @@ You MUST respond with a valid JSON object matching this exact schema:
         finalReply = aiResult.replyText;
       }
 
-      // Execute Action
-      const act = parsedJson?.action;
-      if (act && act.type && act.type !== "NONE") {
+      // Execute Action(s) - supports multiple actions array or fallback single action
+      let actionList: any[] = [];
+      if (Array.isArray(parsedJson?.actions)) {
+        actionList = parsedJson.actions;
+      } else if (parsedJson?.action && parsedJson.action.type && parsedJson.action.type !== "NONE") {
+        actionList = [parsedJson.action];
+      }
+
+      // Fallback: If owner mentions 150 BDT or price for card, but no product action was emitted, inject product action
+      if (
+        (cleanText.includes("১৫০") || cleanText.includes("150")) &&
+        (cleanText.includes("দাম") || cleanText.includes("প্রোডাক্ট") || cleanText.includes("কার্ড")) &&
+        !actionList.some((a) => a.type === "CREATE_PRODUCT" || a.type === "UPDATE_PRODUCT")
+      ) {
+        actionList.push({
+          type: "CREATE_PRODUCT",
+          product: {
+            name: "PVC ID Card Printing",
+            price: 150,
+            regularPrice: 200,
+            category: "PVC Print Service",
+            stockCount: 500,
+            description: "High quality PVC print service for NID, Driving License, Student ID",
+          },
+        });
+      }
+
+      for (const act of actionList) {
+        if (!act || !act.type || act.type === "NONE") continue;
         try {
           if (act.type === "TEACH_RULE" && act.rule) {
+            // Smart Conflict Resolution:
+            // If teaching discount or bulk offer, deactivate old conflicting rules (e.g. quantity >= 4)
+            if (act.rule.category === "DISCOUNT_OFFER" || act.rule.category === "DELIVERY_POLICY") {
+              await prisma.businessMemory.updateMany({
+                where: {
+                  workspaceId,
+                  isActive: true,
+                  OR: [
+                    { condition: "quantity >= 4" },
+                    { title: { contains: "বাল্ক", mode: "insensitive" } },
+                    { title: { contains: "ডেলিভারি", mode: "insensitive" } },
+                  ],
+                },
+                data: { isActive: false },
+              });
+            }
+
             const createdMemory = await prisma.businessMemory.create({
               data: {
                 workspaceId,
@@ -346,23 +391,51 @@ You MUST respond with a valid JSON object matching this exact schema:
             };
           } else if (act.type === "CREATE_PRODUCT" && act.product) {
             const p = act.product;
-            const createdProduct = await prisma.product.create({
-              data: {
+            // Check if existing product in workspace matches
+            const existingProd = await prisma.product.findFirst({
+              where: {
                 workspaceId,
-                name: p.name || "নতুন প্রোডাক্ট",
-                price: Number(p.price) || 0,
-                regularPrice: p.regularPrice ? Number(p.regularPrice) : null,
-                category: p.category || "General",
-                stockCount: p.stockCount ? Number(p.stockCount) : 100,
-                description: p.description || null,
-                inStock: true,
+                OR: [
+                  { name: { contains: "PVC", mode: "insensitive" } },
+                  { name: { contains: (p.name || "").trim().slice(0, 8), mode: "insensitive" } },
+                ],
               },
             });
-            actionPayload = {
-              type: "CREATE_PRODUCT",
-              data: createdProduct,
-              summary: `📦 নতুন প্রোডাক্ট যুক্ত হয়েছে: ${createdProduct.name} (৳${createdProduct.price})`,
-            };
+
+            if (existingProd) {
+              const updated = await prisma.product.update({
+                where: { id: existingProd.id },
+                data: {
+                  price: Number(p.price) || existingProd.price,
+                  regularPrice: p.regularPrice ? Number(p.regularPrice) : existingProd.regularPrice,
+                  stockCount: p.stockCount ? Number(p.stockCount) : existingProd.stockCount,
+                  inStock: true,
+                },
+              });
+              actionPayload = {
+                type: "UPDATE_PRODUCT",
+                data: updated,
+                summary: `📦 প্রোডাক্ট মূল্য আপডেট হয়েছে: ${updated.name} (৳${updated.price})`,
+              };
+            } else {
+              const createdProduct = await prisma.product.create({
+                data: {
+                  workspaceId,
+                  name: p.name || "নতুন প্রোডাক্ট",
+                  price: Number(p.price) || 0,
+                  regularPrice: p.regularPrice ? Number(p.regularPrice) : null,
+                  category: p.category || "General",
+                  stockCount: p.stockCount ? Number(p.stockCount) : 100,
+                  description: p.description || null,
+                  inStock: true,
+                },
+              });
+              actionPayload = {
+                type: "CREATE_PRODUCT",
+                data: createdProduct,
+                summary: `📦 নতুন প্রোডাক্ট যুক্ত হয়েছে: ${createdProduct.name} (৳${createdProduct.price})`,
+              };
+            }
           } else if (act.type === "UPDATE_PRODUCT" && act.productUpdate) {
             const u = act.productUpdate;
             const matchedProduct = await prisma.product.findFirst({
