@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -181,11 +181,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setWorkspace(null);
     setWorkspaces([]);
     try {
-      localStorage.removeItem("mogent_auth_token");
-      localStorage.removeItem("mogent_user");
-      localStorage.removeItem("mogent_workspace");
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("mogent_")) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
     } catch {}
-    router.push("/login");
+    
+    // Force a hard reload to the login page to completely clear all React/Zustand memory states
+    window.location.href = "/login";
   };
 
   const switchWorkspace = (workspaceId: string) => {

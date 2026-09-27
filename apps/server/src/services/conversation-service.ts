@@ -336,7 +336,8 @@ export class ConversationService {
                 try {
                   const formData = new FormData();
                   formData.append("messaging_product", "whatsapp");
-                  formData.append("file", new Blob([new Uint8Array(bufferToSend)], { type: mimeType }), fileName || (mediaType === "FILE" ? "document.pdf" : "image.jpg"));
+                  const finalFilename = fileName || (mediaType === "FILE" ? "document.pdf" : "image.jpg");
+                  formData.append("file", new File([new Uint8Array(bufferToSend)], finalFilename, { type: mimeType }));
                   formData.append("type", mimeType);
 
                   const uploadRes = await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/media`, {

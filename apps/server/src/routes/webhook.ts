@@ -771,9 +771,13 @@ webhookRouter.post("/whatsapp", async (c) => {
                     },
                   });
                 } else {
+                  const updateData: any = { channel: "WHATSAPP" };
+                  if (contactName && contactName !== `+${fromPhone}` && (!customer.firstName || customer.firstName === "WhatsApp Tester" || customer.firstName.startsWith("+"))) {
+                    updateData.firstName = contactName;
+                  }
                   await prisma.customer.update({
                     where: { id: customer.id },
-                    data: { channel: "WHATSAPP" },
+                    data: updateData,
                   });
                 }
 
