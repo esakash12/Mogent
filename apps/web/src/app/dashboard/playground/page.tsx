@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   RotateCcw,
   Send,
@@ -12,7 +12,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { testPlaygroundAI } from "@/lib/api";
+import { testPlaygroundAI, fetchPages } from "@/lib/api";
 import { formatBdTime } from "@/lib/timezone";
 
 interface ChatMessage {
@@ -27,9 +27,19 @@ interface ChatMessage {
 
 export default function TryYourAIPage() {
   const [channel, setChannel] = useState<"MESSENGER" | "WHATSAPP">("MESSENGER");
+  const [pages, setPages] = useState<any[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+
+  useEffect(() => {
+    fetchPages()
+      .then((data) => {
+        if (Array.isArray(data)) setPages(data);
+      })
+      .catch((err) => console.error("Playground fetch pages error:", err));
+  }, []);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,6 +71,7 @@ export default function TryYourAIPage() {
         message: userText,
         history: historyPayload,
         channel,
+        pageId: selectedPageId !== "ALL" ? selectedPageId : undefined,
       });
 
       const replyText =
@@ -140,6 +151,24 @@ export default function TryYourAIPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Page Selector */}
+          {pages.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedPageId}
+                onChange={(e) => setSelectedPageId(e.target.value)}
+                className="text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-[#CBD5E1] bg-white text-[#0F172A] focus:outline-hidden focus:ring-1 focus:ring-[#1877F2] cursor-pointer shadow-xs"
+              >
+                <option value="ALL">All Store Pages</option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || p.businessName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Channel Selector Toggle */}
           <div className="flex items-center p-1 bg-[#F1F5F9] rounded-xl border border-[#CBD5E1]">
             <button

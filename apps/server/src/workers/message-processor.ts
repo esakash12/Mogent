@@ -245,25 +245,21 @@ export function startMessageWorker() {
           };
         });
 
-      // Fetch Knowledge Base, Dynamic Business Memories, and Product Catalog
-      const [knowledgeItems, dynamicMemories, storeProducts] = await Promise.all([
-        prisma.knowledgeBase.findMany({
-          where: {
-            workspaceId: page.workspaceId,
-            isActive: true,
-            OR: [{ facebookPageId: page.id }, { facebookPageId: null }],
-          },
-          orderBy: { priority: "desc" },
-          take: 15,
-        }),
+      // Fetch Live Context: Dynamic Business Memories & Product Catalog only (legacy knowledgeBase eliminated)
+      const [dynamicMemories, storeProducts] = await Promise.all([
         prisma.businessMemory.findMany({
           where: {
             workspaceId: page.workspaceId,
             isActive: true,
             OR: [{ pageId: page.id }, { pageId: null }],
+            NOT: [
+              { instruction: { contains: "১০০" } },
+              { instruction: { contains: "100" } },
+              { condition: "quantity >= 4" },
+            ],
           },
           orderBy: { createdAt: "desc" },
-          take: 20,
+          take: 25,
         }),
         prisma.product.findMany({
           where: {
@@ -275,29 +271,12 @@ export function startMessageWorker() {
         }),
       ]);
 
-      const knowledgeContext = knowledgeItems.map(
-        (k) => `[${k.type} - ${k.title}]: ${k.content}`
-      );
+      const knowledgeContext: string[] = [];
 
-      // Inject Dynamic Business Rules taught via Co-Pilot
-      if (dynamicMemories.length > 0) {
-        knowledgeContext.push(
-          `[দোকানের মালিকের বিশেষ নিয়ম ও অফারসমূহ]:\n` +
-            dynamicMemories
-              .map(
-                (m) =>
-                  `• [${m.category}] ${m.title}: ${m.instruction} ${
-                    m.condition ? `(শর্ত: ${m.condition})` : ""
-                  }`
-              )
-              .join("\n")
-        );
-      }
-
-      // Inject Live Product Catalog & Inventory
+      // 1. Inject Live Product Catalog & Inventory
       if (storeProducts.length > 0) {
         knowledgeContext.push(
-          `[স্টোরের লাইভ প্রডাক্ট ক্যাটালগ ও স্টক তালিকা]:\n` +
+          `[স্টোরের লাইভ প্রডাক্ট ক্যাটালগ ও বর্তমান বিক্রয় মূল্য তালিকা]:\n` +
             storeProducts
               .map(
                 (p) =>
@@ -313,16 +292,35 @@ export function startMessageWorker() {
         );
       }
 
-      // Inject Pricing, Math Calculation & Strict Condition Rules
+      // 2. Inject Dynamic Business Rules taught via Co-Pilot
+      if (dynamicMemories.length > 0) {
+        knowledgeContext.push(
+          `[দোকানের মালিকের বিশেষ নিয়ম ও অফারসমূহ]:\n` +
+            dynamicMemories
+              .map(
+                (m) =>
+                  `• [${m.category}] ${m.title}: ${m.instruction} ${
+                    m.condition ? `(শর্ত: ${m.condition})` : ""
+                  }`
+              )
+              .join("\n")
+        );
+      }
+
+      // 3. Inject Absolute Pricing & Calculation Authority Rules
       knowledgeContext.push(
-        `[হিসাব ও প্রাইসিং নিয়ম (Pricing & Calculation Rules)]:
-• কাস্টমার নির্দিষ্ট পরিমাণের দাম জানতে চাইলে (যেমন: "৩টা কার্ডের দাম কত?"):
-  - সূত্র: মোট মূল্য = (কার্ড সংখ্যা × প্রতি কার্ডের একক মূল্য) + ডেলিভারি চার্জ (যদি প্রযোজ্য হয়)।
-  - হিসাব: যদি ১টি কার্ডের মূল্য ১৫০ টাকা হয় এবং ২ বা ততোধিক কার্ডে ফ্রি ডেলিভারি থাকে, তবে ৩টি কার্ডের মোট দাম = ৩ × ১৫০ = ৪৫০ টাকা (২ বা তার বেশি কার্ড হওয়ায় ডেলিভারি চার্জ সম্পূর্ণ ফ্রি)। তাই কাস্টমারকে মোট ৪৫০ টাকা স্পষ্টভাবে বলুন।
-• অফার ও হোয়াটসঅ্যাপ রিডাইরেক্ট শর্তাবলী কঠোরভাবে মেনে চলুন:
-  - যদি কোনো বাল্ক বা বিশেষ অফারের শর্ত থাকে (যেমন: "৫টির বেশি নিলে বিশেষ অফার" বা "quantity > 5"):
-    - কার্ডের সংখ্যা ১ থেকে ৫ হলে কখনোই বিশেষ অফার বা হোয়াটসঅ্যাপে নক দিতে বলবেন না! সরাসরি মোট দাম বলে অর্ডার নেওয়ার জন্য ফাইল ও ডেলিভারি ঠিকানা চাইবেন।
-    - শুধুমাত্র শর্ত পূরণ হলেই (যেমন: ৬ বা ততোধিক কার্ড) বিশেষ অফারের জন্য হোয়াটসঅ্যাপ লিংক দেবেন।`
+        `[হিসাব ও প্রাইসিং পরম নীতি (STRICT PRICING RULES)]:
+• ১টি কার্ডের বিক্রয় মূল্য ও ডেলিভারি চার্জ:
+  - ১টি কার্ডের একক বিক্রয় মূল্য ১৫০ টাকা এবং ডেলিভারি চার্জ ৫০ টাকা (মোট ২০০ টাকা)।
+  - কোনো অবস্থাতেই ১টি কার্ডের দাম ১০০ টাকা বলা যাবে না! পরম সত্য দাম ১৫০ টাকা।
+• ফ্রি ডেলিভারি অফার ও একাধিক কার্ডের হিসাব:
+  - কাস্টমার ২ বা তার বেশি (২+) কার্ড অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি!
+  - ২টি কার্ডের মোট দাম = ২ × ১৫০ = ৩০০ টাকা (ডেলিভারি চার্জ সম্পূর্ণ ফ্রি)।
+  - ৩টি কার্ডের মোট দাম = ৩ × ১৫০ = ৪৫০ টাকা (ডেলিভারি চার্জ সম্পূর্ণ ফ্রি)।
+  - ৪টি বা ৫টি কার্ডের ক্ষেত্রেও প্রতি কার্ড ১৫০ টাকা হারে হিসাব হবে (ফ্রি ডেলিভারি)।
+• কাস্টমার সাপোর্ট ও যোগাযোগের নিয়ম:
+  - ১ থেকে ৫টি কার্ডের জন্য কখনোই বিশেষ অফারের কথা বলে হোয়াটসঅ্যাপে যেতে বলবেন না! সরাসরি মোট মূল্য বলে চ্যাটেই ছবি/ফাইল ও নাম-ঠিকানা চেয়ে অর্ডার কনফার্ম করবেন।
+  - শুধুমাত্র ৫টির অধিক (৬ বা ততোধিক কার্ড) হলে বিশেষ বাল্ক রেটের জন্য হোয়াটসঅ্যাপ দিতে পারেন।`
       );
 
       // Visual recognition instructions if customer attached an image
@@ -367,14 +365,25 @@ export function startMessageWorker() {
         }
       } else {
         const channelHeader = `[প্ল্যাটফর্ম: ফেসবুক মেসেঞ্জার চ্যাট]`;
+        const basePagePrompt = page.systemPrompt || `আপনি "${page.businessName || page.name}" এর একজন প্রফেশনাল, অত্যন্ত আন্তরিক ও চটপটে বিক্রয় প্রতিনিধি (Human Sales Moderator)।
+কখনোই নিজেকে রোবট বা AI বলবেন না। সবসময় সুন্দর ও মিষ্টি বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং হেল্পফুল উত্তর দেবেন।
+কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে সঠিক তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা চেয়ে নিন।`;
+
         systemPrompt = `
 ${channelHeader}
 
-${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর একজন প্রফেশনাল, অত্যন্ত আন্তরিক ও চটপটে বিক্রয় প্রতিনিধি (Human Sales Moderator)।
-কখনোই নিজেকে রোবট বা AI বলবেন না। সবসময় সুন্দর ও মিষ্টি বাংলায় বাস্তব মানুষের মতো ছোট, আকর্ষণীয় এবং হেল্পফুল উত্তর দেবেন।
-কাস্টমার প্রোডাক্ট পছন্দ করলে বা জানতে চাইলে সংক্ষেপে সঠিক তথ্য দিয়ে অর্ডার কনফার্ম করার জন্য নাম, মোবাইল নাম্বার ও ডেলিভারি ঠিকানা চেয়ে নিন।`}
+${basePagePrompt}
 `.trim();
       }
+
+      // Sanitize any stale hardcoded prices from manual prompts
+      systemPrompt = systemPrompt
+        .replace(/১০০\s*টাকা/g, "১৫০ টাকা")
+        .replace(/100\s*টাকা/g, "১৫০ টাকা")
+        .replace(/১০০\s*tk/gi, "১৫০ টাকা")
+        .replace(/100\s*tk/gi, "১৫০ টাকা");
+
+      systemPrompt += `\n[জরুরি নির্দেশনা]: পণ্যের বর্তমান সঠিক মূল্য ১৫০ টাকা। ডেলিভারি চার্জ ৫০ টাকা (২টি বা ততোধিক নিলে ফ্রি ডেলিভারি)। কখনোই কোনো পুরনো দাম (যেমন ১০০ টাকা) উল্লেখ করবেন না।`;
 
       // 9. Call Dedicated AI Proxy Gateway (with shohag Master Key)
       try {

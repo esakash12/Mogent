@@ -331,23 +331,71 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
         actionList = [parsedJson.action];
       }
 
-      // Fallback: If owner mentions 150 BDT or price for card, but no product action was emitted, inject product action
+      // Enhanced Multi-Lingual Fallback: Detect price & delivery in Bengali, Banglish, and English
+      const lowerClean = cleanText.toLowerCase();
+      const mentionsPrice =
+        lowerClean.includes("দাম") ||
+        lowerClean.includes("dam") ||
+        lowerClean.includes("daam") ||
+        lowerClean.includes("price") ||
+        lowerClean.includes("rate") ||
+        lowerClean.includes("টাকা") ||
+        lowerClean.includes("taka") ||
+        lowerClean.includes("tk");
+
+      const mentionsCardOrService =
+        lowerClean.includes("card") ||
+        lowerClean.includes("কার্ড") ||
+        lowerClean.includes("pvc") ||
+        lowerClean.includes("print") ||
+        lowerClean.includes("pis") ||
+        lowerClean.includes("পিস") ||
+        lowerClean.includes("pc") ||
+        lowerClean.includes("piece") ||
+        lowerClean.includes("150") ||
+        lowerClean.includes("১৫০");
+
+      let extractedPrice: number | null = null;
+      if (lowerClean.includes("150") || lowerClean.includes("১৫০")) {
+        extractedPrice = 150;
+      } else {
+        const pMatch = cleanText.match(/(?:dam|দাম|price|daam|rate)?\s*[:=]?\s*(\d{2,5})\s*(?:taka|tk|টাকা)?/i);
+        if (pMatch && pMatch[1]) extractedPrice = Number(pMatch[1]);
+      }
+
       if (
-        (cleanText.includes("১৫০") || cleanText.includes("150")) &&
-        (cleanText.includes("দাম") || cleanText.includes("প্রোডাক্ট") || cleanText.includes("কার্ড")) &&
+        extractedPrice !== null &&
+        (mentionsPrice || mentionsCardOrService) &&
         !actionList.some((a) => a.type === "CREATE_PRODUCT" || a.type === "UPDATE_PRODUCT")
       ) {
         actionList.push({
           type: "CREATE_PRODUCT",
           product: {
             name: "PVC ID Card Printing",
-            price: 150,
-            regularPrice: 200,
+            price: extractedPrice,
+            regularPrice: extractedPrice + 50,
             category: "PVC Print Service",
             stockCount: 500,
             description: "High quality PVC print service for NID, Driving License, Student ID",
           },
         });
+      }
+
+      // Check for delivery charge update in message
+      if (lowerClean.includes("delivery") || lowerClean.includes("ডেলিভারি")) {
+        let delCharge = 50;
+        const dMatch = cleanText.match(/(?:delivery|ডেলিভারি)\s*(?:charge|cost|ফি)?\s*[:=]?\s*(\d{2,4})\s*(?:taka|tk|টাকা)?/i);
+        if (dMatch && dMatch[1]) delCharge = Number(dMatch[1]);
+        if (!actionList.some((a) => a.type === "TEACH_RULE" && a.rule?.category === "DELIVERY_POLICY")) {
+          actionList.push({
+            type: "TEACH_RULE",
+            rule: {
+              category: "DELIVERY_POLICY",
+              title: "স্ট্যান্ডার্ড ডেলিভারি চার্জ পলিসি",
+              instruction: `স্ট্যান্ডার্ড ডেলিভারি চার্জ ৳${delCharge} টাকা। তবে কাস্টমার ২ বা তার বেশি (২+) কার্ড অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি!`,
+            },
+          });
+        }
       }
 
       for (const act of actionList) {
@@ -365,6 +413,8 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
                     { condition: "quantity >= 4" },
                     { title: { contains: "বাল্ক", mode: "insensitive" } },
                     { title: { contains: "ডেলিভারি", mode: "insensitive" } },
+                    { instruction: { contains: "১০০" } },
+                    { instruction: { contains: "100" } },
                   ],
                 },
                 data: { isActive: false },
@@ -391,42 +441,47 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
             };
           } else if (act.type === "CREATE_PRODUCT" && act.product) {
             const p = act.product;
-            // Check if existing product in workspace matches
-            const existingProd = await prisma.product.findFirst({
+            const newPrice = Number(p.price) || 150;
+            // Update ALL products matching PVC/Card in workspace
+            const matchedProducts = await prisma.product.findMany({
               where: {
                 workspaceId,
                 OR: [
                   { name: { contains: "PVC", mode: "insensitive" } },
+                  { name: { contains: "Card", mode: "insensitive" } },
+                  { name: { contains: "কার্ড", mode: "insensitive" } },
                   { name: { contains: (p.name || "").trim().slice(0, 8), mode: "insensitive" } },
                 ],
               },
             });
 
-            if (existingProd) {
-              const updated = await prisma.product.update({
-                where: { id: existingProd.id },
-                data: {
-                  price: Number(p.price) || existingProd.price,
-                  regularPrice: p.regularPrice ? Number(p.regularPrice) : existingProd.regularPrice,
-                  stockCount: p.stockCount ? Number(p.stockCount) : existingProd.stockCount,
-                  inStock: true,
-                },
-              });
+            if (matchedProducts.length > 0) {
+              for (const prod of matchedProducts) {
+                await prisma.product.update({
+                  where: { id: prod.id },
+                  data: {
+                    price: newPrice,
+                    regularPrice: p.regularPrice ? Number(p.regularPrice) : 200,
+                    stockCount: p.stockCount ? Number(p.stockCount) : prod.stockCount,
+                    inStock: true,
+                  },
+                });
+              }
               actionPayload = {
                 type: "UPDATE_PRODUCT",
-                data: updated,
-                summary: `📦 প্রোডাক্ট মূল্য আপডেট হয়েছে: ${updated.name} (৳${updated.price})`,
+                data: matchedProducts[0],
+                summary: `📦 প্রোডাক্ট মূল্য আপডেট হয়েছে: ${matchedProducts[0].name} (৳${newPrice})`,
               };
             } else {
               const createdProduct = await prisma.product.create({
                 data: {
                   workspaceId,
-                  name: p.name || "নতুন প্রোডাক্ট",
-                  price: Number(p.price) || 0,
-                  regularPrice: p.regularPrice ? Number(p.regularPrice) : null,
-                  category: p.category || "General",
-                  stockCount: p.stockCount ? Number(p.stockCount) : 100,
-                  description: p.description || null,
+                  name: p.name || "PVC ID Card Printing",
+                  price: newPrice,
+                  regularPrice: p.regularPrice ? Number(p.regularPrice) : 200,
+                  category: p.category || "PVC Print Service",
+                  stockCount: p.stockCount ? Number(p.stockCount) : 500,
+                  description: p.description || "High quality PVC print for NID, Driving License, Student ID",
                   inStock: true,
                 },
               });
@@ -436,6 +491,37 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
                 summary: `📦 নতুন প্রোডাক্ট যুক্ত হয়েছে: ${createdProduct.name} (৳${createdProduct.price})`,
               };
             }
+
+            // Also synchronize and sanitize FacebookPage.systemPrompt across all pages in this workspace
+            const pages = await prisma.facebookPage.findMany({ where: { workspaceId } });
+            for (const pg of pages) {
+              if (pg.systemPrompt) {
+                const cleanedPrompt = pg.systemPrompt
+                  .replace(/১০০\s*টাকা/g, `${newPrice} টাকা`)
+                  .replace(/100\s*টাকা/g, `${newPrice} টাকা`)
+                  .replace(/১০০\s*tk/gi, `${newPrice} টাকা`)
+                  .replace(/100\s*tk/gi, `${newPrice} টাকা`)
+                  .replace(/১০০/g, `${newPrice}`)
+                  .replace(/100/g, `${newPrice}`);
+                await prisma.facebookPage.update({
+                  where: { id: pg.id },
+                  data: { systemPrompt: cleanedPrompt },
+                });
+              }
+            }
+
+            // Deactivate any old conflicting business memories mentioning 100
+            await prisma.businessMemory.updateMany({
+              where: {
+                workspaceId,
+                isActive: true,
+                OR: [
+                  { instruction: { contains: "১০০" } },
+                  { instruction: { contains: "100" } },
+                ],
+              },
+              data: { isActive: false },
+            });
           } else if (act.type === "UPDATE_PRODUCT" && act.productUpdate) {
             const u = act.productUpdate;
             const matchedProduct = await prisma.product.findFirst({
@@ -455,6 +541,37 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
                 where: { id: matchedProduct.id },
                 data: updatedData,
               });
+
+              if (u.price !== undefined) {
+                const newPrice = Number(u.price);
+                const pages = await prisma.facebookPage.findMany({ where: { workspaceId } });
+                for (const pg of pages) {
+                  if (pg.systemPrompt) {
+                    const cleanedPrompt = pg.systemPrompt
+                      .replace(/১০০\s*টাকা/g, `${newPrice} টাকা`)
+                      .replace(/100\s*টাকা/g, `${newPrice} টাকা`)
+                      .replace(/১০০\s*tk/gi, `${newPrice} টাকা`)
+                      .replace(/100\s*tk/gi, `${newPrice} টাকা`)
+                      .replace(/১০০/g, `${newPrice}`)
+                      .replace(/100/g, `${newPrice}`);
+                    await prisma.facebookPage.update({
+                      where: { id: pg.id },
+                      data: { systemPrompt: cleanedPrompt },
+                    });
+                  }
+                }
+                await prisma.businessMemory.updateMany({
+                  where: {
+                    workspaceId,
+                    isActive: true,
+                    OR: [
+                      { instruction: { contains: "১০০" } },
+                      { instruction: { contains: "100" } },
+                    ],
+                  },
+                  data: { isActive: false },
+                });
+              }
 
               actionPayload = {
                 type: "UPDATE_PRODUCT",

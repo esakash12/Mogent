@@ -180,6 +180,12 @@ You MUST set "shouldEscalate": true and provide a specific "escalationReason" in
 [PRIORITY OVERRIDE RULE - THE GOLDEN COMMAND]
 The instructions, rules, and data provided in the [Knowledge Base & Owner's Custom Prompt] below are your ULTIMATE AUTHORITY.
 If the Owner's custom instructions contradict ANY of the default protocols above, you MUST COMPLETELY IGNORE the default protocol and STRICTLY follow the Owner's instructions.
+
+[PRODUCT CATALOG & PRICING PRECEDENCE]
+When quoting product prices or calculating order totals:
+- You MUST ALWAYS quote the live price from [Store Knowledge Base & Products] below.
+- If there is ever any conflict between general persona text and the Live Product Catalog or Strict Pricing Rules, the Live Product Catalog and Strict Pricing Rules ALWAYS TAKE SUPREME PRECEDENCE.
+- Never use old, outdated, or hallucinated prices.
 `;
 
     fullSystemInstruction += `

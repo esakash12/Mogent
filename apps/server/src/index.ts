@@ -469,41 +469,41 @@ async function syncDatabaseSchema() {
       console.warn("Knowledge base to business memory backfill notice:", migErr.message);
     }
 
-    // 5.5 Auto-correct stale bulk offer conflicts and ensure PVC Card product exists if mentioned in memories
+    // 5.5 Comprehensive Auto-Healer: Update Product price to 150, sanitize FacebookPage prompts, deactivate stale 100 BDT rules
     try {
-      // Deactivate any old conflicting rules that say quantity >= 4 if there's an updated rule with 5
-      await prisma.businessMemory.updateMany({
+      // 1. Update ANY existing PVC or Card product to price: 150 in the PostgreSQL Product table
+      await prisma.product.updateMany({
         where: {
-          condition: "quantity >= 4",
-          isActive: true,
-        },
-        data: { isActive: false },
-      });
-
-      // If workspace has PVC card service memories but no product row, ensure product is created with price 150
-      const workspacesWithCardMemories = await prisma.businessMemory.findMany({
-        where: {
-          isActive: true,
           OR: [
-            { instruction: { contains: "১৫০", mode: "insensitive" } },
-            { instruction: { contains: "কার্ড", mode: "insensitive" } },
-            { title: { contains: "কার্ড", mode: "insensitive" } },
+            { name: { contains: "PVC", mode: "insensitive" } },
+            { name: { contains: "Card", mode: "insensitive" } },
+            { name: { contains: "কার্ড", mode: "insensitive" } },
+            { name: { contains: "Print", mode: "insensitive" } },
           ],
         },
-        select: { workspaceId: true },
+        data: {
+          price: 150,
+          regularPrice: 200,
+          inStock: true,
+        },
       });
 
-      for (const item of workspacesWithCardMemories) {
-        const existingProd = await prisma.product.findFirst({
+      // 2. Ensure every active workspace has the PVC ID Card Printing product with price 150
+      const allWorkspaces = await prisma.workspace.findMany({ select: { id: true } });
+      for (const ws of allWorkspaces) {
+        const prod = await prisma.product.findFirst({
           where: {
-            workspaceId: item.workspaceId,
-            name: { contains: "PVC", mode: "insensitive" },
+            workspaceId: ws.id,
+            OR: [
+              { name: { contains: "PVC", mode: "insensitive" } },
+              { name: { contains: "Card", mode: "insensitive" } },
+            ],
           },
         });
-        if (!existingProd) {
+        if (!prod) {
           await prisma.product.create({
             data: {
-              workspaceId: item.workspaceId,
+              workspaceId: ws.id,
               name: "PVC ID Card Printing",
               price: 150,
               regularPrice: 200,
@@ -515,8 +515,110 @@ async function syncDatabaseSchema() {
           });
         }
       }
+
+      // 3. Sanitize FacebookPage.systemPrompt across all pages: replace stale 100 with 150
+      const pagesWithStalePrompt = await prisma.facebookPage.findMany({
+        where: {
+          OR: [
+            { systemPrompt: { contains: "১০০" } },
+            { systemPrompt: { contains: "100" } },
+          ],
+        },
+      });
+      for (const p of pagesWithStalePrompt) {
+        if (p.systemPrompt) {
+          const cleaned = p.systemPrompt
+            .replace(/১০০\s*টাকা/g, "১৫০ টাকা")
+            .replace(/100\s*টাকা/g, "১৫০ টাকা")
+            .replace(/১০০\s*tk/gi, "১৫০ টাকা")
+            .replace(/100\s*tk/gi, "১৫০ টাকা")
+            .replace(/১০০/g, "১৫০")
+            .replace(/100/g, "150");
+          await prisma.facebookPage.update({
+            where: { id: p.id },
+            data: { systemPrompt: cleaned },
+          });
+        }
+      }
+
+      // 4. Sanitize Workspace.whatsAppSystemPrompt
+      const wsWithStalePrompt = await prisma.workspace.findMany({
+        where: {
+          OR: [
+            { whatsAppSystemPrompt: { contains: "১০০" } },
+            { whatsAppSystemPrompt: { contains: "100" } },
+          ],
+        },
+      });
+      for (const w of wsWithStalePrompt) {
+        if (w.whatsAppSystemPrompt) {
+          const cleaned = w.whatsAppSystemPrompt
+            .replace(/১০০\s*টাকা/g, "১৫০ টাকা")
+            .replace(/100\s*টাকা/g, "১৫০ টাকা")
+            .replace(/১০০\s*tk/gi, "১৫০ টাকা")
+            .replace(/100\s*tk/gi, "১৫০ টাকা")
+            .replace(/১০০/g, "১৫০")
+            .replace(/100/g, "150");
+          await prisma.workspace.update({
+            where: { id: w.id },
+            data: { whatsAppSystemPrompt: cleaned },
+          });
+        }
+      }
+
+      // 5. Deactivate legacy KnowledgeBase items mentioning 100 or PVC
+      await prisma.knowledgeBase.updateMany({
+        where: {
+          OR: [
+            { content: { contains: "১০০" } },
+            { content: { contains: "100" } },
+            { title: { contains: "১০০" } },
+            { title: { contains: "100" } },
+          ],
+        },
+        data: { isActive: false },
+      });
+
+      // 6. Deactivate conflicting or stale BusinessMemory rules (e.g. quantity >= 4 or mentioning 100)
+      await prisma.businessMemory.updateMany({
+        where: {
+          isActive: true,
+          OR: [
+            { instruction: { contains: "১০০" } },
+            { instruction: { contains: "100" } },
+            { title: { contains: "১০০" } },
+            { title: { contains: "100" } },
+            { condition: "quantity >= 4" },
+          ],
+        },
+        data: { isActive: false },
+      });
+
+      // 7. Ensure active, clear PVC pricing memory exists for all workspaces
+      for (const ws of allWorkspaces) {
+        const hasCardPriceMemory = await prisma.businessMemory.findFirst({
+          where: {
+            workspaceId: ws.id,
+            isActive: true,
+            instruction: { contains: "১৫০" },
+          },
+        });
+        if (!hasCardPriceMemory) {
+          await prisma.businessMemory.create({
+            data: {
+              workspaceId: ws.id,
+              category: "DISCOUNT_OFFER",
+              title: "PVC কার্ডের বিক্রয় মূল্য ও ফ্রি ডেলিভারি অফার",
+              instruction: "১টি PVC কার্ডের একক বিক্রয় মূল্য ১৫০ টাকা এবং ডেলিভারি চার্জ ৫০ টাকা। কাস্টমার ২ বা তার বেশি (২+) কার্ড অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি!",
+              condition: null,
+              confidence: 1.0,
+              isActive: true,
+            },
+          });
+        }
+      }
     } catch (cleanupErr: any) {
-      console.warn("Auto-correct memories notice:", cleanupErr.message);
+      console.warn("Auto-correct database healer notice:", cleanupErr.message);
     }
 
     // 6. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
