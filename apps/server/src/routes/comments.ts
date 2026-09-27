@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { prisma } from "@mogent/database";
 import { authMiddleware } from "../middleware/auth";
-import { redisConnection } from "../redis";
 import { config } from "../config";
 import { decryptToken } from "@mogent/shared";
 

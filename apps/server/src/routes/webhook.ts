@@ -20,20 +20,22 @@ const handleVerify = async (c: any) => {
     return c.text("Forbidden: Invalid Hub Mode", 403);
   }
 
-  // Check against config, default token, or Redis custom token
-  let redisConfigToken = null;
+  // Check against config, default token, or PostgreSQL system_settings custom token
+  let customVerifyToken = null;
   try {
-    const raw = await redisConnection.get("mogent:meta_developer_config");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      redisConfigToken = parsed.verifyToken;
+    const dbRecord = await prisma.systemSetting.findUnique({
+      where: { key: "mogent:meta_developer_config" },
+    });
+    if (dbRecord?.value) {
+      const parsed = JSON.parse(dbRecord.value);
+      customVerifyToken = parsed.verifyToken;
     }
   } catch {}
 
   const validTokens = [
     config.facebook.verifyToken,
     "mogent_fb_verify_token_secure",
-    redisConfigToken,
+    customVerifyToken,
   ].filter(Boolean);
 
   if (token && validTokens.includes(token)) {
@@ -329,12 +331,14 @@ webhookRouter.post("/telegram", async (c) => {
     const text = msg.text.trim();
     const fromName = msg.from?.first_name || "Merchant";
 
-    // Fetch Master Bot Token from Redis or Config
+    // Fetch Master Bot Token from PostgreSQL system_settings or Config
     let masterBotToken = config.telegram.botToken;
     try {
-      const redisVal = await redisConnection.get("mogent:telegram_master_config");
-      if (redisVal) {
-        const parsed = JSON.parse(redisVal);
+      const dbRecord = await prisma.systemSetting.findUnique({
+        where: { key: "mogent:telegram_master_config" },
+      });
+      if (dbRecord?.value) {
+        const parsed = JSON.parse(dbRecord.value);
         if (parsed.botToken) masterBotToken = parsed.botToken;
       }
     } catch {}
@@ -475,61 +479,29 @@ async function resolveWhatsAppWorkspace(
 ): Promise<string | null> {
   const cleanPhone = displayPhone ? displayPhone.replace(/\D/g, "") : "";
 
-  // 1. Check Redis reverse lookup caches
+  // 1. Direct query in PostgreSQL Workspace table by phoneNumberId
   if (phoneNumberId) {
     try {
-      const cached = await redisConnection.get(`mogent:wa_phone_id_to_ws:${phoneNumberId}`);
-      if (cached) return cached;
+      const ws = await prisma.workspace.findFirst({
+        where: { whatsAppPhoneNumberId: phoneNumberId },
+        select: { id: true },
+      });
+      if (ws) return ws.id;
     } catch {}
   }
 
-  if (cleanPhone) {
+  // 2. Direct query in PostgreSQL Workspace table by wabaId
+  if (wabaId) {
     try {
-      const cached = await redisConnection.get(`mogent:wa_phone_to_ws:${cleanPhone}`);
-      if (cached) return cached;
+      const ws = await prisma.workspace.findFirst({
+        where: { whatsAppWabaId: wabaId },
+        select: { id: true },
+      });
+      if (ws) return ws.id;
     } catch {}
   }
 
-  // 2. Auto-scan existing Redis whatsapp configs (Auto-resolves already configured workspaces)
-  try {
-    const keys = await redisConnection.keys("mogent:whatsapp_config:*");
-    for (const key of keys) {
-      if (key.endsWith(":default")) continue;
-      const raw = await redisConnection.get(key);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          const wsId = key.replace("mogent:whatsapp_config:", "");
-          const parsedPhone = (parsed.phoneNumber || "").replace(/\D/g, "");
-          const parsedPhoneId = parsed.phoneNumberId;
-          const parsedWabaId = parsed.wabaId;
-
-          const matchPhoneId = Boolean(phoneNumberId && parsedPhoneId && parsedPhoneId === phoneNumberId);
-          const matchPhone = Boolean(
-            cleanPhone &&
-            parsedPhone &&
-            (cleanPhone === parsedPhone || cleanPhone.endsWith(parsedPhone) || parsedPhone.endsWith(cleanPhone))
-          );
-          const matchWaba = Boolean(wabaId && parsedWabaId && parsedWabaId === wabaId);
-
-          if (matchPhoneId || matchPhone || matchWaba) {
-            // Cache reverse mappings for 7 days for fast future lookups
-            if (phoneNumberId) {
-              await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, wsId, "EX", 7 * 86400);
-            }
-            if (cleanPhone) {
-              await redisConnection.set(`mogent:wa_phone_to_ws:${cleanPhone}`, wsId, "EX", 7 * 86400);
-            }
-            return wsId;
-          }
-        } catch {}
-      }
-    }
-  } catch (scanErr) {
-    console.warn("Failed scanning WhatsApp configs in Redis:", scanErr);
-  }
-
-  // 3. Check Workspace DB records by whatsAppNumber
+  // 3. Direct query in PostgreSQL Workspace table by whatsAppNumber
   if (cleanPhone) {
     try {
       const last10 = cleanPhone.slice(-10);
@@ -539,99 +511,85 @@ async function resolveWhatsAppWorkspace(
         },
         select: { id: true },
       });
-      if (ws) {
-        if (phoneNumberId) {
-          await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, ws.id, "EX", 7 * 86400);
-        }
-        if (cleanPhone) {
-          await redisConnection.set(`mogent:wa_phone_to_ws:${cleanPhone}`, ws.id, "EX", 7 * 86400);
-        }
-        return ws.id;
-      }
+      if (ws) return ws.id;
     } catch {}
   }
 
-  // 4. Safe single-tenant fallback ONLY if there is exactly 1 workspace in the system
+  // 4. Query PostgreSQL system_settings table if config was stored there
+  try {
+    const settings = await prisma.systemSetting.findMany({
+      where: { key: { startsWith: "mogent:whatsapp_config:" } },
+    });
+    for (const s of settings) {
+      if (s.key.endsWith(":default")) continue;
+      try {
+        const parsed = JSON.parse(s.value);
+        const wsId = s.key.replace("mogent:whatsapp_config:", "");
+        const parsedPhone = (parsed.phoneNumber || "").replace(/\D/g, "");
+        const parsedPhoneId = parsed.phoneNumberId;
+        const parsedWabaId = parsed.wabaId;
+
+        const matchPhoneId = Boolean(phoneNumberId && parsedPhoneId && parsedPhoneId === phoneNumberId);
+        const matchPhone = Boolean(
+          cleanPhone &&
+          parsedPhone &&
+          (cleanPhone === parsedPhone || cleanPhone.endsWith(parsedPhone) || parsedPhone.endsWith(cleanPhone))
+        );
+        const matchWaba = Boolean(wabaId && parsedWabaId && parsedWabaId === wabaId);
+
+        if (matchPhoneId || matchPhone || matchWaba) {
+          return wsId;
+        }
+      } catch {}
+    }
+  } catch {}
+
+  // 5. Safe single-tenant fallback ONLY if there is exactly 1 workspace in the system
   try {
     const wsCount = await prisma.workspace.count();
     if (wsCount === 1) {
       const ws = await prisma.workspace.findFirst({ select: { id: true } });
-      if (ws) {
-        if (phoneNumberId) {
-          await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, ws.id, "EX", 7 * 86400);
-        }
-        return ws.id;
-      }
+      if (ws) return ws.id;
     }
   } catch {}
 
   return null;
 }
 
-// Helper to retrieve WhatsApp access token across Redis, PostgreSQL system_settings, and DB records
+// Helper to retrieve WhatsApp access token directly from PostgreSQL Workspace and system_settings records
 async function getWhatsAppAccessToken(targetWorkspaceId?: string): Promise<string | null> {
-  // 1. Check Redis for target workspace
+  // 1. Direct query from PostgreSQL Workspace table
   if (targetWorkspaceId) {
     try {
-      const raw = await redisConnection.get(`mogent:whatsapp_config:${targetWorkspaceId}`);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.accessToken) return parsed.accessToken;
-      }
+      const ws = await prisma.workspace.findUnique({
+        where: { id: targetWorkspaceId },
+        select: { whatsAppAccessToken: true },
+      });
+      if (ws?.whatsAppAccessToken) return ws.whatsAppAccessToken;
     } catch {}
-  }
 
-  // 2. Check Redis for default config
-  try {
-    const rawDefault = await redisConnection.get("mogent:whatsapp_config:default");
-    if (rawDefault) {
-      const parsed = JSON.parse(rawDefault);
-      if (parsed.accessToken) return parsed.accessToken;
-    }
-  } catch {}
-
-  // 3. Check PostgreSQL system_settings for target workspace
-  if (targetWorkspaceId) {
+    // 2. Check PostgreSQL system_settings for target workspace
     try {
       const dbSetting = await prisma.systemSetting.findUnique({
         where: { key: `mogent:whatsapp_config:${targetWorkspaceId}` },
       });
       if (dbSetting?.value) {
         const parsed = JSON.parse(dbSetting.value);
-        if (parsed.accessToken) {
-          await redisConnection.set(`mogent:whatsapp_config:${targetWorkspaceId}`, dbSetting.value).catch(() => {});
-          return parsed.accessToken;
-        }
+        if (parsed.accessToken) return parsed.accessToken;
       }
     } catch {}
   }
 
-  // 4. Check PostgreSQL system_settings for default
+  // 3. Check any Workspace in PostgreSQL with a token
   try {
-    const dbDefault = await prisma.systemSetting.findUnique({
-      where: { key: "mogent:whatsapp_config:default" },
+    const anyWs = await prisma.workspace.findFirst({
+      where: { whatsAppAccessToken: { not: null } },
+      select: { whatsAppAccessToken: true },
     });
-    if (dbDefault?.value) {
-      const parsed = JSON.parse(dbDefault.value);
-      if (parsed.accessToken) return parsed.accessToken;
-    }
+    if (anyWs?.whatsAppAccessToken) return anyWs.whatsAppAccessToken;
   } catch {}
 
-  // 5. Scan any mogent:whatsapp_config:* keys in Redis
-  try {
-    const keys = await redisConnection.keys("mogent:whatsapp_config:*");
-    for (const k of keys) {
-      const val = await redisConnection.get(k);
-      if (val) {
-        try {
-          const parsed = JSON.parse(val);
-          if (parsed.accessToken) return parsed.accessToken;
-        } catch {}
-      }
-    }
-  } catch {}
-
-  // 6. Check PostgreSQL systemSetting for any whatsapp config
+  // 4. Check PostgreSQL systemSetting default or any
   try {
     const anySetting = await prisma.systemSetting.findFirst({
       where: { key: { startsWith: "mogent:whatsapp_config:" } },
@@ -642,7 +600,7 @@ async function getWhatsAppAccessToken(targetWorkspaceId?: string): Promise<strin
     }
   } catch {}
 
-  // 7. Check FacebookPage table for any WhatsApp page token
+  // 5. Check FacebookPage table for any WhatsApp page token
   try {
     const waPage = await prisma.facebookPage.findFirst({
       where: {

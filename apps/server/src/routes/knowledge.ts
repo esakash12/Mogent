@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { prisma, KnowledgeType } from "@mogent/database";
-import { redisConnection } from "../redis";
 import { config } from "../config";
 import { AiProxyClient } from "../ai-client";
 import { authMiddleware } from "../middleware/auth";
@@ -47,13 +46,7 @@ knowledgeRouter.get("/", async (c) => {
       orderBy: { priority: "desc" },
     });
 
-    let wpPrompt = (workspace as any)?.whatsAppSystemPrompt;
-    if (!wpPrompt && targetWsId) {
-      wpPrompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWsId}`);
-    }
-    if (!wpPrompt) {
-      wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
-    }
+    const wpPrompt = (workspace as any)?.whatsAppSystemPrompt || "";
 
     const aboutItem = items.find((i) => i.category === "ABOUT_BUSINESS");
     let aboutData = {
@@ -152,14 +145,13 @@ knowledgeRouter.post("/system-prompt", async (c) => {
       }
     }
 
-    // Save WhatsApp prompt separately to Database & Redis strictly scoped by workspaceId
+    // Save WhatsApp prompt separately to Database strictly scoped by workspaceId
     if (whatsappPrompt !== undefined) {
       const cleanWp = (whatsappPrompt || "").trim();
       await prisma.workspace.update({
         where: { id: targetWorkspaceId },
         data: { whatsAppSystemPrompt: cleanWp || null },
       });
-      await redisConnection.set(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`, cleanWp);
     }
 
     return c.json({
@@ -184,11 +176,7 @@ knowledgeRouter.get("/whatsapp-prompt", async (c) => {
       where: { id: workspaceId },
       select: { whatsAppSystemPrompt: true },
     });
-    let prompt = ws?.whatsAppSystemPrompt;
-    if (!prompt) {
-      prompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${workspaceId}`);
-    }
-    return c.json({ success: true, prompt: prompt || "" });
+    return c.json({ success: true, prompt: ws?.whatsAppSystemPrompt || "" });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
   }
@@ -210,7 +198,6 @@ const handleSaveWhatsAppPrompt = async (c: any) => {
       data: { whatsAppSystemPrompt: cleanPrompt || null },
     });
 
-    await redisConnection.set(`mogent:whatsapp_system_prompt:${workspaceId}`, cleanPrompt);
     return c.json({
       success: true,
       message: "Dedicated WhatsApp system prompt saved successfully!",
@@ -580,13 +567,7 @@ knowledgeRouter.post("/playground", async (c) => {
     let systemPrompt = "";
 
     if (isWhatsApp) {
-      let wpPrompt = (workspace as any)?.whatsAppSystemPrompt;
-      if (!wpPrompt && targetWorkspaceId) {
-        wpPrompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${targetWorkspaceId}`);
-      }
-      if (!wpPrompt) {
-        wpPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
-      }
+      const wpPrompt = (workspace as any)?.whatsAppSystemPrompt;
       systemPrompt =
         wpPrompt?.trim() ||
         `আপনি "${primaryPage?.businessName || workspace?.name || "আমাদের শপ"}" এর একজন বাস্তব অভিজ্ঞ সেলস এক্সপার্ট ও শপ ওনার।

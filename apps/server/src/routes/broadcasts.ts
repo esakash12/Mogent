@@ -56,8 +56,10 @@ broadcastsRouter.get("/followup-config", async (c) => {
   }
 
   try {
-    const redisKey = `mogent:followup_config:${workspaceId}`;
-    const cached = await redisConnection.get(redisKey);
+    const configKey = `mogent:followup_config:${workspaceId}`;
+    const dbRecord = await prisma.systemSetting.findUnique({
+      where: { key: configKey },
+    });
 
     let followupData = {
       isEnabled: true,
@@ -68,15 +70,10 @@ broadcastsRouter.get("/followup-config", async (c) => {
       lastRunAt: null,
     };
 
-    if (cached) {
+    if (dbRecord?.value) {
       try {
-        followupData = { ...followupData, ...JSON.parse(cached) };
+        followupData = { ...followupData, ...JSON.parse(dbRecord.value) };
       } catch {}
-    }
-
-    const sentCountVal = await redisConnection.get(`mogent:followup_sent_count:${workspaceId}`);
-    if (sentCountVal) {
-      followupData.sentCount = Number(sentCountVal) || 0;
     }
 
     return c.json({ success: true, data: followupData });
@@ -98,7 +95,15 @@ broadcastsRouter.post("/followup-config", async (c) => {
     const body = await c.req.json();
     const { isEnabled, delayHours, messageText, pageId } = body;
 
+    const configKey = `mogent:followup_config:${workspaceId}`;
+    const existing = await prisma.systemSetting.findUnique({ where: { key: configKey } });
+    let existingData: any = {};
+    if (existing?.value) {
+      try { existingData = JSON.parse(existing.value); } catch {}
+    }
+
     const followupData = {
+      ...existingData,
       isEnabled: isEnabled !== false,
       delayHours: Number(delayHours) || 2,
       messageText: messageText?.trim() || "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির অর্ডার কি কনফার্ম করে দেব? যেকোনো সহায়তার জন্য জানাতে পারেন 😊",
@@ -106,8 +111,11 @@ broadcastsRouter.post("/followup-config", async (c) => {
       updatedAt: new Date().toISOString(),
     };
 
-    const redisKey = `mogent:followup_config:${workspaceId}`;
-    await redisConnection.set(redisKey, JSON.stringify(followupData));
+    await prisma.systemSetting.upsert({
+      where: { key: configKey },
+      update: { value: JSON.stringify(followupData) },
+      create: { key: configKey, value: JSON.stringify(followupData) },
+    });
 
     return c.json({
       success: true,
@@ -131,13 +139,15 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
   try {
     const targetWorkspaceId = workspaceId;
 
-    // 1. Fetch Follow-up Config
-    const redisKey = `mogent:followup_config:${targetWorkspaceId}`;
-    const cached = await redisConnection.get(redisKey);
-    let followupData = { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊", pageId: "ALL" };
-    if (cached) {
+    // 1. Fetch Follow-up Config from PostgreSQL
+    const configKey = `mogent:followup_config:${targetWorkspaceId}`;
+    const dbRecord = await prisma.systemSetting.findUnique({
+      where: { key: configKey },
+    });
+    let followupData = { isEnabled: true, delayHours: 2, messageText: "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊", pageId: "ALL", sentCount: 0 };
+    if (dbRecord?.value) {
       try {
-        followupData = { ...followupData, ...JSON.parse(cached) };
+        followupData = { ...followupData, ...JSON.parse(dbRecord.value) };
       } catch {}
     }
 
@@ -255,7 +265,21 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
     }
 
     if (totalSent > 0 && targetWorkspaceId) {
-      await redisConnection.incrby(`mogent:followup_sent_count:${targetWorkspaceId}`, totalSent);
+      try {
+        const configKey = `mogent:followup_config:${targetWorkspaceId}`;
+        const existing = await prisma.systemSetting.findUnique({ where: { key: configKey } });
+        let curData: any = {};
+        if (existing?.value) {
+          try { curData = JSON.parse(existing.value); } catch {}
+        }
+        curData.sentCount = (curData.sentCount || 0) + totalSent;
+        curData.lastRunAt = new Date().toISOString();
+        await prisma.systemSetting.upsert({
+          where: { key: configKey },
+          update: { value: JSON.stringify(curData) },
+          create: { key: configKey, value: JSON.stringify(curData) },
+        });
+      } catch {}
     }
 
     return c.json({

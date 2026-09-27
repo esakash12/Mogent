@@ -1,13 +1,25 @@
 import dotenv from "dotenv";
-
 import path from "path";
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+import fs from "fs";
+
+// Resolve single root .env across all execution contexts
+const candidateEnvPaths = [
+  path.resolve(__dirname, "../../../.env"),
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../../.env"),
+];
+for (const envPath of candidateEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
 
 export const config = {
   env: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT) || 4000,
   
-  // Redis Configuration
+  // Redis Configuration (strictly for BullMQ Queues and Debounce Locks)
   redis: {
     host: process.env.REDIS_HOST || "127.0.0.1",
     port: Number(process.env.REDIS_PORT) || 6379,
@@ -15,7 +27,7 @@ export const config = {
     db: Number(process.env.REDIS_DB) || 0,
   },
 
-  // AI Proxy Gateway
+  // AI Proxy Gateway (Models strictly untouched: gemini-3.5-flash-lite, gemini-3.1-flash-lite, gemma-4-31b)
   aiProxy: {
     url: process.env.AI_PROXY_URL || "http://localhost:5000",
     masterKey: process.env.MOGENT_AI_MASTER_KEY || "shohag_ai_master_secret_2026",

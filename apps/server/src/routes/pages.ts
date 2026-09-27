@@ -372,8 +372,6 @@ pagesRouter.delete("/:id", async (c) => {
 // -----------------------------------------------------------------------------
 // 8. GET WHATSAPP CONFIGURATION
 // -----------------------------------------------------------------------------
-import { redisConnection } from "../redis";
-
 pagesRouter.get("/whatsapp/config", async (c) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
@@ -381,23 +379,34 @@ pagesRouter.get("/whatsapp/config", async (c) => {
   }
 
   try {
-    let saved: any = {};
-    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
-    if (raw) {
-      try {
-        saved = JSON.parse(raw);
-      } catch {}
-    }
+    const ws = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: {
+        whatsAppNumber: true,
+        whatsAppPhoneNumberId: true,
+        whatsAppWabaId: true,
+        whatsAppAccessToken: true,
+        whatsAppAutoReply: true,
+      },
+    });
 
-    if (!saved?.accessToken && !saved?.phoneNumberId) {
+    let saved: any = {
+      phoneNumber: ws?.whatsAppNumber || "",
+      phoneNumberId: ws?.whatsAppPhoneNumberId || "",
+      wabaId: ws?.whatsAppWabaId || "",
+      accessToken: ws?.whatsAppAccessToken || "",
+      autoReplyEnabled: ws?.whatsAppAutoReply ?? true,
+    };
+
+    if (!saved.accessToken && !saved.phoneNumberId) {
       // Fallback to PostgreSQL system_settings table for this workspace
       const dbSetting = await prisma.systemSetting.findUnique({
         where: { key: `mogent:whatsapp_config:${workspaceId}` },
       });
       if (dbSetting?.value) {
         try {
-          saved = JSON.parse(dbSetting.value);
-          await redisConnection.set(`mogent:whatsapp_config:${workspaceId}`, dbSetting.value);
+          const parsed = JSON.parse(dbSetting.value);
+          saved = { ...saved, ...parsed };
         } catch {}
       }
     }
@@ -434,51 +443,39 @@ pagesRouter.post("/whatsapp/config", async (c) => {
     const body = await c.req.json();
     const { phoneNumber, phoneNumberId, wabaId, accessToken, autoReplyEnabled } = body;
 
+    const cleanPhone = (phoneNumber || "").trim();
+    const cleanPhoneId = (phoneNumberId || "").trim();
+    const cleanWabaId = (wabaId || "").trim();
+    const cleanToken = (accessToken || "").trim();
+    const autoReply = autoReplyEnabled ?? true;
+
+    // 100% Persistent in PostgreSQL Workspace Record
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        whatsAppNumber: cleanPhone || null,
+        whatsAppPhoneNumberId: cleanPhoneId || null,
+        whatsAppWabaId: cleanWabaId || null,
+        whatsAppAccessToken: cleanToken || null,
+        whatsAppAutoReply: autoReply,
+      },
+    });
+
     const configData = {
-      phoneNumber: (phoneNumber || "").trim(),
-      phoneNumberId: (phoneNumberId || "").trim(),
-      wabaId: (wabaId || "").trim(),
-      accessToken: (accessToken || "").trim(),
-      autoReplyEnabled: autoReplyEnabled ?? true,
+      phoneNumber: cleanPhone,
+      phoneNumberId: cleanPhoneId,
+      wabaId: cleanWabaId,
+      accessToken: cleanToken,
+      autoReplyEnabled: autoReply,
       updatedAt: new Date().toISOString(),
     };
 
-    const configJson = JSON.stringify(configData);
-
-    // Workspace-isolated persistence: Redis Cache + PostgreSQL system_settings Table
-    await redisConnection.set(
-      `mogent:whatsapp_config:${workspaceId}`,
-      configJson
-    );
-
-    try {
-      await prisma.systemSetting.upsert({
-        where: { key: `mogent:whatsapp_config:${workspaceId}` },
-        update: { value: configJson },
-        create: { key: `mogent:whatsapp_config:${workspaceId}`, value: configJson },
-      });
-    } catch (dbErr: any) {
-      console.warn("Could not save WhatsApp config to PostgreSQL system_settings:", dbErr.message);
-    }
-
-    // Save reverse lookups in Redis for incoming webhook routing
-    if (configData.phoneNumberId) {
-      await redisConnection.set(
-        `mogent:wa_phone_id_to_ws:${configData.phoneNumberId}`,
-        workspaceId,
-        "EX",
-        30 * 86400
-      );
-    }
-    const cleanDigits = configData.phoneNumber.replace(/\D/g, "");
-    if (cleanDigits) {
-      await redisConnection.set(
-        `mogent:wa_phone_to_ws:${cleanDigits}`,
-        workspaceId,
-        "EX",
-        30 * 86400
-      );
-    }
+    // Also persist in system_settings for redundancy
+    await prisma.systemSetting.upsert({
+      where: { key: `mogent:whatsapp_config:${workspaceId}` },
+      update: { value: JSON.stringify(configData) },
+      create: { key: `mogent:whatsapp_config:${workspaceId}`, value: JSON.stringify(configData) },
+    }).catch(() => {});
 
     try {
       await prisma.workspace.update({
@@ -544,8 +541,30 @@ pagesRouter.post("/whatsapp/test", async (c) => {
     const body = await c.req.json();
     const { testPhone } = body;
 
-    const raw = await redisConnection.get(`mogent:whatsapp_config:${workspaceId}`);
-    const saved = raw ? JSON.parse(raw) : {};
+    const ws = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true, whatsAppNumber: true },
+    });
+
+    const saved = {
+      phoneNumberId: ws?.whatsAppPhoneNumberId || "",
+      accessToken: ws?.whatsAppAccessToken || "",
+      phoneNumber: ws?.whatsAppNumber || "",
+    };
+
+    if (!saved.phoneNumberId || !saved.accessToken) {
+      const dbSetting = await prisma.systemSetting.findUnique({
+        where: { key: `mogent:whatsapp_config:${workspaceId}` },
+      });
+      if (dbSetting?.value) {
+        try {
+          const parsed = JSON.parse(dbSetting.value);
+          if (parsed.phoneNumberId) saved.phoneNumberId = parsed.phoneNumberId;
+          if (parsed.accessToken) saved.accessToken = parsed.accessToken;
+          if (parsed.phoneNumber) saved.phoneNumber = parsed.phoneNumber;
+        } catch {}
+      }
+    }
 
     if (!saved.phoneNumberId || !saved.accessToken) {
       return c.json({

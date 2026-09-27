@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { verify } from "hono/jwt";
 import { prisma, PaymentStatus, PaymentMethod } from "@mogent/database";
-import { redisConnection } from "../redis";
 import { config } from "../config";
 import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
 import { authMiddleware, adminAuthMiddleware } from "../middleware/auth";
@@ -162,11 +161,13 @@ billingRouter.get("/", authMiddleware, async (c) => {
 // -----------------------------------------------------------------------------
 billingRouter.get("/payment-config", async (c) => {
   try {
-    const redisVal = await redisConnection.get(REDIS_PAYMENT_CONFIG);
+    const dbRecord = await prisma.systemSetting.findUnique({
+      where: { key: REDIS_PAYMENT_CONFIG },
+    });
     let parsed: any = null;
-    if (redisVal) {
+    if (dbRecord?.value) {
       try {
-        parsed = JSON.parse(redisVal);
+        parsed = JSON.parse(dbRecord.value);
       } catch {}
     }
 

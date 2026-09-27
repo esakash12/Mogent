@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { verify } from "hono/jwt";
 import { prisma, EscalationReason } from "@mogent/database";
-import { redisConnection } from "../redis";
 import { telegramApi } from "../services/telegram-api";
 import { config } from "../config";
 import { authMiddleware } from "../middleware/auth";
@@ -175,9 +174,11 @@ automationRouter.get("/telegram", async (c) => {
     // Get Master Bot Username
     let botUsername = "MogentAlertBot";
     try {
-      const redisVal = await redisConnection.get("mogent:telegram_master_config");
-      if (redisVal) {
-        const parsed = JSON.parse(redisVal);
+      const dbRecord = await prisma.systemSetting.findUnique({
+        where: { key: "mogent:telegram_master_config" },
+      });
+      if (dbRecord?.value) {
+        const parsed = JSON.parse(dbRecord.value);
         if (parsed.botUsername) botUsername = parsed.botUsername.replace(/^@/, "");
       }
     } catch {}
@@ -250,9 +251,11 @@ automationRouter.post("/telegram/test", async (c) => {
 
     let botToken = tgConfig.botToken || config.telegram.botToken;
     try {
-      const redisVal = await redisConnection.get("mogent:telegram_master_config");
-      if (redisVal) {
-        const parsed = JSON.parse(redisVal);
+      const dbRecord = await prisma.systemSetting.findUnique({
+        where: { key: "mogent:telegram_master_config" },
+      });
+      if (dbRecord?.value) {
+        const parsed = JSON.parse(dbRecord.value);
         if (parsed.botToken) botToken = parsed.botToken;
       }
     } catch {}

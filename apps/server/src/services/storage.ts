@@ -1,5 +1,4 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { redisConnection } from "../redis";
 import { prisma } from "@mogent/database";
 import crypto from "crypto";
 import fs from "fs";
@@ -30,22 +29,14 @@ export class StorageService {
     const safeFolder = sanitizeUploadFolder(folder);
     const size = buffer.length;
 
-    // 1. Fetch Cloudflare R2 credentials from Redis, PostgreSQL, or Environment
+    // 1. Fetch Cloudflare R2 credentials from PostgreSQL or Environment
     let cfConfig: any = null;
     try {
-      const raw = await redisConnection.get("mogent:cloudflare_r2_config");
-      if (raw) {
-        cfConfig = JSON.parse(raw);
-      } else {
-        const dbSetting = await prisma.systemSetting.findUnique({
-          where: { key: "mogent:cloudflare_r2_config" },
-        });
-        if (dbSetting?.value) {
-          cfConfig = JSON.parse(dbSetting.value);
-          try {
-            await redisConnection.set("mogent:cloudflare_r2_config", dbSetting.value);
-          } catch {}
-        }
+      const dbSetting = await prisma.systemSetting.findUnique({
+        where: { key: "mogent:cloudflare_r2_config" },
+      });
+      if (dbSetting?.value) {
+        cfConfig = JSON.parse(dbSetting.value);
       }
     } catch (err: any) {
       console.warn("StorageService R2 config lookup notice:", err.message);

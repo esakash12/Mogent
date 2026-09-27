@@ -280,31 +280,24 @@ export class ConversationService {
       }
     } else {
       try {
-        const wsId = facebookPage?.workspaceId || "default";
-        let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
-        if (!raw && wsId !== "default") {
-          raw = await redisConnection.get("mogent:whatsapp_config:default");
+        const wsId = facebookPage?.workspaceId;
+        let ws: any = null;
+        if (wsId) {
+          ws = await prisma.workspace.findUnique({
+            where: { id: wsId },
+            select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
+          });
         }
-        let saved = raw ? JSON.parse(raw) : null;
+        if (!ws?.whatsAppPhoneNumberId || !ws?.whatsAppAccessToken) {
+          ws = await prisma.workspace.findFirst({
+            where: { whatsAppPhoneNumberId: { not: null }, whatsAppAccessToken: { not: null } },
+            select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
+          });
+        }
+        const phoneNumberId = ws?.whatsAppPhoneNumberId;
+        const accessToken = ws?.whatsAppAccessToken;
 
-        // Fallback: If not found directly under wsId, auto-scan existing WhatsApp configs in Redis
-        if (!saved?.phoneNumberId || !saved?.accessToken) {
-          try {
-            const keys = await redisConnection.keys("mogent:whatsapp_config:*");
-            for (const k of keys) {
-              if (k.endsWith(":default")) continue;
-              const candRaw = await redisConnection.get(k);
-              if (candRaw) {
-                const cand = JSON.parse(candRaw);
-                if (cand?.phoneNumberId && cand?.accessToken) {
-                  saved = cand;
-                  break;
-                }
-              }
-            }
-          } catch {}
-        }
-        if (saved?.phoneNumberId && saved?.accessToken) {
+        if (phoneNumberId && accessToken) {
           const cleanPhone = (customer.phoneNumber || customer.psid.replace("wa_", "")).replace(/\D/g, "");
           if (cleanPhone) {
             if (isMedia && mediaUrl) {
@@ -356,10 +349,10 @@ export class ConversationService {
                   formData.append("file", new File([new Uint8Array(bufferToSend)], finalFilename, { type: mimeType }));
                   formData.append("type", mimeType);
 
-                  const uploadRes = await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/media`, {
+                  const uploadRes = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/media`, {
                     method: "POST",
                     headers: {
-                      Authorization: `Bearer ${saved.accessToken}`,
+                      Authorization: `Bearer ${accessToken}`,
                     },
                     body: formData,
                   });
@@ -384,10 +377,10 @@ export class ConversationService {
                   ? { id: mediaId, caption: cleanText || undefined, filename: fileName || "document.pdf" }
                   : { link: mediaUrl, caption: cleanText || undefined, filename: fileName || "document.pdf" };
 
-                await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
                   method: "POST",
                   headers: {
-                    Authorization: `Bearer ${saved.accessToken}`,
+                    Authorization: `Bearer ${accessToken}`,
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({
@@ -402,10 +395,10 @@ export class ConversationService {
                   ? { id: mediaId, caption: cleanText || undefined }
                   : { link: mediaUrl, caption: cleanText || undefined };
 
-                await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
                   method: "POST",
                   headers: {
-                    Authorization: `Bearer ${saved.accessToken}`,
+                    Authorization: `Bearer ${accessToken}`,
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({
@@ -417,10 +410,10 @@ export class ConversationService {
                 });
               }
             } else if (cleanText) {
-              await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+              await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
                 method: "POST",
                 headers: {
-                  Authorization: `Bearer ${saved.accessToken}`,
+                  Authorization: `Bearer ${accessToken}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
@@ -624,17 +617,27 @@ export class ConversationService {
       const cleanMsg = initialMessage.trim();
       // Dispatch to WhatsApp Cloud API
       try {
-        const wsId = workspaceId || page.workspaceId || "default";
-        let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
-        if (!raw && wsId !== "default") {
-          raw = await redisConnection.get("mogent:whatsapp_config:default");
+        const wsId = workspaceId || page.workspaceId;
+        let ws: any = null;
+        if (wsId) {
+          ws = await prisma.workspace.findUnique({
+            where: { id: wsId },
+            select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
+          });
         }
-        const saved = raw ? JSON.parse(raw) : null;
-        if (saved?.phoneNumberId && saved?.accessToken) {
-          await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+        if (!ws?.whatsAppPhoneNumberId || !ws?.whatsAppAccessToken) {
+          ws = await prisma.workspace.findFirst({
+            where: { whatsAppPhoneNumberId: { not: null }, whatsAppAccessToken: { not: null } },
+            select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
+          });
+        }
+        const phoneNumberId = ws?.whatsAppPhoneNumberId;
+        const accessToken = ws?.whatsAppAccessToken;
+        if (phoneNumberId && accessToken) {
+          await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${saved.accessToken}`,
+              Authorization: `Bearer ${accessToken}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({

@@ -284,14 +284,7 @@ export function startMessageWorker() {
       // Context-aware system prompt & Channel Separation
       let systemPrompt = "";
       if (isWhatsApp) {
-        let wpCustomPrompt = page.workspace?.whatsAppSystemPrompt;
-        if (!wpCustomPrompt && page.workspaceId) {
-          wpCustomPrompt = await redisConnection.get(`mogent:whatsapp_system_prompt:${page.workspaceId}`);
-        }
-        if (!wpCustomPrompt) {
-          wpCustomPrompt = await redisConnection.get("mogent:whatsapp_system_prompt:default");
-        }
-
+        const wpCustomPrompt = page.workspace?.whatsAppSystemPrompt;
         if (wpCustomPrompt && wpCustomPrompt.trim()) {
           systemPrompt = wpCustomPrompt.trim();
         } else {
@@ -378,30 +371,27 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
                 return;
               }
 
-              // 1. Check workspace-specific Redis configuration
-              let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
-              let saved = raw ? JSON.parse(raw) : null;
-
-              // 2. Direct fallback to PostgreSQL workspace record
-              if (!saved?.phoneNumberId || !saved?.accessToken) {
-                const wsRecord = await prisma.workspace.findUnique({
-                  where: { id: wsId },
+              // Query PostgreSQL workspace record directly
+              let wsRecord = await prisma.workspace.findUnique({
+                where: { id: wsId },
+                select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
+              });
+              if (!wsRecord?.whatsAppPhoneNumberId || !wsRecord?.whatsAppAccessToken) {
+                wsRecord = await prisma.workspace.findFirst({
+                  where: { whatsAppPhoneNumberId: { not: null }, whatsAppAccessToken: { not: null } },
                   select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
                 });
-                if (wsRecord?.whatsAppPhoneNumberId && wsRecord?.whatsAppAccessToken) {
-                  saved = {
-                    phoneNumberId: wsRecord.whatsAppPhoneNumberId,
-                    accessToken: wsRecord.whatsAppAccessToken,
-                  };
-                }
               }
 
-              if (saved?.phoneNumberId && saved?.accessToken) {
+              const phoneNumberId = wsRecord?.whatsAppPhoneNumberId;
+              const accessToken = wsRecord?.whatsAppAccessToken;
+
+              if (phoneNumberId && accessToken) {
                 const cleanPhone = senderPsid.replace("wa_", "").replace(/\D/g, "");
-                await fetch(`https://graph.facebook.com/v20.0/${saved.phoneNumberId}/messages`, {
+                await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
                   method: "POST",
                   headers: {
-                    Authorization: `Bearer ${saved.accessToken}`,
+                    Authorization: `Bearer ${accessToken}`,
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({

@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { prisma } from "@mogent/database";
-import { redisConnection } from "../redis";
 import { config } from "../config";
 import { isValidBdPhone, cleanBdPhone, sanitizeText } from "@mogent/shared";
 import { adminAuthMiddleware } from "../middleware/auth";
@@ -10,7 +9,6 @@ export const adminRouter = new Hono();
 // Enforce strict Super Admin verification across all admin routes
 adminRouter.use("*", adminAuthMiddleware);
 
-const REDIS_KEYS_SET = "mogent:gemini_keys_pool";
 const REDIS_META_CONFIG = "mogent:meta_developer_config";
 const REDIS_TELEGRAM_MASTER_CONFIG = "mogent:telegram_master_config";
 const REDIS_CLOUDFLARE_CONFIG = "mogent:cloudflare_r2_config";
@@ -26,51 +24,27 @@ function safeParseJson(val: any, fallback: any = null): any {
 }
 
 /**
- * Retrieves configuration using Dual-Layer Architecture:
- * 1. Checks Redis cache first (sub-millisecond speed).
- * 2. If null, queries PostgreSQL system_settings table (permanent durability).
- * 3. Repopulates Redis automatically if found in database.
+ * Retrieves configuration directly from PostgreSQL system_settings table (durable & persistent).
  */
 async function getStoredConfig<T = any>(key: string): Promise<T | null> {
-  // 1. Check Redis cache first
-  try {
-    const redisVal = await redisConnection.get(key);
-    if (redisVal) {
-      return safeParseJson(redisVal, null);
-    }
-  } catch (err: any) {
-    console.warn(`[Config] Redis get warning for ${key}:`, err.message);
-  }
-
-  // 2. Fall back to PostgreSQL system_settings table (Durable)
   try {
     const dbRecord = await prisma.systemSetting.findUnique({
       where: { key },
     });
     if (dbRecord?.value) {
-      const parsed = safeParseJson(dbRecord.value, null);
-      // Auto-repopulate Redis cache so subsequent calls are instant
-      try {
-        await redisConnection.set(key, dbRecord.value);
-      } catch {}
-      return parsed;
+      return safeParseJson(dbRecord.value, null);
     }
   } catch (err: any) {
     console.warn(`[Config] PostgreSQL system_settings get warning for ${key}:`, err.message);
   }
-
   return null;
 }
 
 /**
- * Saves configuration with Dual-Layer Persistence:
- * 1. Writes to PostgreSQL system_settings table (ACID durable across server restarts).
- * 2. Writes to Redis cache for real-time reads.
+ * Saves configuration directly to PostgreSQL system_settings table (durable & persistent).
  */
 async function setStoredConfig(key: string, valueObj: any): Promise<void> {
-  const jsonStr = JSON.stringify(valueObj);
-
-  // 1. Persist to PostgreSQL system_settings for permanent durability
+  const jsonStr = typeof valueObj === "string" ? valueObj : JSON.stringify(valueObj);
   try {
     await prisma.systemSetting.upsert({
       where: { key },
@@ -79,13 +53,6 @@ async function setStoredConfig(key: string, valueObj: any): Promise<void> {
     });
   } catch (err: any) {
     console.warn(`[Config] PostgreSQL system_settings upsert warning for ${key}:`, err.message);
-  }
-
-  // 2. Cache into Redis for real-time speed
-  try {
-    await redisConnection.set(key, jsonStr);
-  } catch (err: any) {
-    console.warn(`[Config] Redis set warning for ${key}:`, err.message);
   }
 }
 
@@ -108,8 +75,8 @@ adminRouter.get("/overview", async (c) => {
       }),
     ]);
 
-    const customKeys = await redisConnection.smembers(REDIS_KEYS_SET);
-    const allKeys = Array.from(new Set([...customKeys]));
+    const keysList: any[] = (await getStoredConfig(REDIS_KEYS_METADATA)) || [];
+    const allKeys = Array.isArray(keysList) ? keysList.map((k: any) => k.key).filter(Boolean) : [];
 
     const recentClients = await Promise.all(
       recentWorkspaces.map(async (ws) => {
@@ -188,41 +155,8 @@ export function getModelTemplate(modelName?: string) {
 // -----------------------------------------------------------------------------
 adminRouter.get("/keys", async (c) => {
   try {
-    const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = safeParseJson(rawMeta, []);
-
-    // Fallback: If metadata is empty, load from set pool
-    if (!Array.isArray(keysList) || keysList.length === 0) {
-      const customKeys = await redisConnection.smembers(REDIS_KEYS_SET);
-      const allRawKeys = Array.from(new Set([...customKeys]));
-
-      keysList = allRawKeys.map((key, idx) => {
-        const masked = `${key.substring(0, 6)}...${key.substring(key.length - 4)}`;
-        const role = idx === 0 ? "PRIMARY" : idx === 1 ? "SECONDARY" : "BACKUP";
-        const { model, template } = getModelTemplate("gemini-3.5-flash-lite");
-        return {
-          id: `k-${idx + 1}`,
-          key,
-          maskedKey: masked,
-          name: `API Key #${idx + 1}`,
-          role,
-          model,
-          rpmUsed: 6,
-          rpmLimit: template.defaultRpm,
-          tpmUsed: 33460,
-          tpmLimit: template.defaultTpm,
-          rpdUsed: 162,
-          rpdLimit: template.defaultRpd,
-          status: "HEALTHY",
-          isEnabled: true,
-          lastUsed: "Active in Pool",
-        };
-      });
-
-      if (keysList.length > 0) {
-        await redisConnection.set(REDIS_KEYS_METADATA, JSON.stringify(keysList));
-      }
-    }
+    let keysList: any[] = (await getStoredConfig(REDIS_KEYS_METADATA)) || [];
+    if (!Array.isArray(keysList)) keysList = [];
 
     // Calculate Model Quota Aggregates for all 3 models
     const modelsSummary = Object.keys(MODEL_TEMPLATES).map((modelKey) => {
@@ -273,8 +207,7 @@ adminRouter.post("/keys", async (c) => {
     const { model: selectedModel, template } = getModelTemplate(model);
     const keyRole = role || "BACKUP";
 
-    const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = safeParseJson(rawMeta, []);
+    let keysList: any[] = (await getStoredConfig(REDIS_KEYS_METADATA)) || [];
     if (!Array.isArray(keysList)) keysList = [];
 
     const newKeyObj = {
@@ -297,8 +230,7 @@ adminRouter.post("/keys", async (c) => {
     };
 
     keysList.unshift(newKeyObj);
-    await redisConnection.set(REDIS_KEYS_METADATA, JSON.stringify(keysList));
-    await redisConnection.sadd(REDIS_KEYS_SET, cleanKey);
+    await setStoredConfig(REDIS_KEYS_METADATA, keysList);
 
     return c.json({
       success: true,
@@ -318,8 +250,7 @@ adminRouter.put("/keys/:id", async (c) => {
   const { id } = c.req.param();
   try {
     const body = await c.req.json();
-    const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = safeParseJson(rawMeta, []);
+    let keysList: any[] = (await getStoredConfig(REDIS_KEYS_METADATA)) || [];
     if (!Array.isArray(keysList)) keysList = [];
 
     const index = keysList.findIndex((k) => k.id === id || k.key === id || k.maskedKey === id);
@@ -344,7 +275,7 @@ adminRouter.put("/keys/:id", async (c) => {
     };
 
     keysList[index] = updated;
-    await redisConnection.set(REDIS_KEYS_METADATA, JSON.stringify(keysList));
+    await setStoredConfig(REDIS_KEYS_METADATA, keysList);
 
     return c.json({
       success: true,
@@ -370,8 +301,7 @@ adminRouter.post("/keys/:id/model", async (c) => {
       return c.json({ success: false, error: "Invalid model selected" }, 400);
     }
 
-    const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = safeParseJson(rawMeta, []);
+    let keysList: any[] = (await getStoredConfig(REDIS_KEYS_METADATA)) || [];
     if (!Array.isArray(keysList)) keysList = [];
 
     const keyObj = keysList.find((k) => k.id === id || k.key === id || k.maskedKey === id);
@@ -383,7 +313,7 @@ adminRouter.post("/keys/:id/model", async (c) => {
     keyObj.rpmLimit = template.defaultRpm;
     keyObj.tpmLimit = template.defaultTpm;
     keyObj.rpdLimit = template.defaultRpd;
-    await redisConnection.set(REDIS_KEYS_METADATA, JSON.stringify(keysList));
+    await setStoredConfig(REDIS_KEYS_METADATA, keysList);
 
     return c.json({
       success: true,
@@ -401,17 +331,11 @@ adminRouter.post("/keys/:id/model", async (c) => {
 adminRouter.delete("/keys/:id", async (c) => {
   const { id } = c.req.param();
   try {
-    const rawMeta = await redisConnection.get(REDIS_KEYS_METADATA);
-    let keysList: any[] = safeParseJson(rawMeta, []);
+    let keysList: any[] = (await getStoredConfig(REDIS_KEYS_METADATA)) || [];
     if (!Array.isArray(keysList)) keysList = [];
 
-    const keyObj = keysList.find((k) => k.id === id || k.key === id || k.maskedKey === id);
-    if (keyObj) {
-      await redisConnection.srem(REDIS_KEYS_SET, keyObj.key);
-    }
-
     keysList = keysList.filter((k) => k.id !== id && k.key !== id && k.maskedKey !== id);
-    await redisConnection.set(REDIS_KEYS_METADATA, JSON.stringify(keysList));
+    await setStoredConfig(REDIS_KEYS_METADATA, keysList);
 
     return c.json({ success: true, message: "Key removed from rotation pool successfully!" });
   } catch (error: any) {

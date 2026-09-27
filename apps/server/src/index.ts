@@ -553,16 +553,152 @@ async function syncDatabaseSchema() {
       console.warn("WhatsApp Deduplication notice:", dedupErr.message);
     }
 
-    // 5. Auto-hydrate Redis & runtime config from PostgreSQL system_settings
+    // 5. ZERO-DATA-LOSS MIGRATION: Safely migrate legacy Redis configs to PostgreSQL before cleaning Redis
+    try {
+      console.log("🔄 Running Zero-Data-Loss check: migrating any legacy Redis configs to PostgreSQL...");
+
+      // A. Migrate WhatsApp configs: mogent:whatsapp_config:<workspaceId>
+      const wpKeys = await redisConnection.keys("mogent:whatsapp_config:*");
+      for (const k of wpKeys) {
+        try {
+          const raw = await redisConnection.get(k);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          const parts = k.split(":");
+          const wsId = parts[2]; // workspace ID or "default"
+
+          if (wsId && wsId !== "default") {
+            const ws = await prisma.workspace.findUnique({ where: { id: wsId } });
+            if (ws) {
+              await prisma.workspace.update({
+                where: { id: wsId },
+                data: {
+                  whatsAppNumber: ws.whatsAppNumber || parsed.number || parsed.whatsAppNumber || null,
+                  whatsAppPhoneNumberId: ws.whatsAppPhoneNumberId || parsed.phoneNumberId || parsed.whatsAppPhoneNumberId || null,
+                  whatsAppWabaId: ws.whatsAppWabaId || parsed.wabaId || parsed.whatsAppWabaId || null,
+                  whatsAppAccessToken: ws.whatsAppAccessToken || parsed.accessToken || parsed.whatsAppAccessToken || null,
+                  whatsAppAutoReply: ws.whatsAppAutoReply ?? parsed.autoReply ?? true,
+                },
+              });
+            }
+          } else if (wsId === "default") {
+            const firstWs = await prisma.workspace.findFirst({
+              where: { whatsAppPhoneNumberId: null },
+              orderBy: { createdAt: "asc" },
+            });
+            if (firstWs) {
+              await prisma.workspace.update({
+                where: { id: firstWs.id },
+                data: {
+                  whatsAppNumber: firstWs.whatsAppNumber || parsed.number || null,
+                  whatsAppPhoneNumberId: parsed.phoneNumberId || null,
+                  whatsAppWabaId: parsed.wabaId || null,
+                  whatsAppAccessToken: parsed.accessToken || null,
+                },
+              });
+            }
+          }
+          await redisConnection.del(k);
+        } catch (e: any) {
+          console.warn(`[Migration] WhatsApp config migration error for key ${k}:`, e.message);
+        }
+      }
+
+      // B. Migrate WhatsApp system prompts: mogent:whatsapp_system_prompt:<workspaceId>
+      const wpPromptKeys = await redisConnection.keys("mogent:whatsapp_system_prompt:*");
+      for (const k of wpPromptKeys) {
+        try {
+          const raw = await redisConnection.get(k);
+          if (!raw) continue;
+          const wsId = k.replace("mogent:whatsapp_system_prompt:", "");
+          if (wsId && wsId !== "default") {
+            const ws = await prisma.workspace.findUnique({ where: { id: wsId } });
+            if (ws && !ws.whatsAppSystemPrompt) {
+              await prisma.workspace.update({
+                where: { id: wsId },
+                data: { whatsAppSystemPrompt: raw.trim() },
+              });
+            }
+          }
+          await redisConnection.del(k);
+        } catch (e: any) {
+          console.warn(`[Migration] WhatsApp prompt migration error for key ${k}:`, e.message);
+        }
+      }
+
+      // C. Migrate Custom Prompts: mogent:prompt:<pageId>
+      const pagePromptKeys = await redisConnection.keys("mogent:prompt:*");
+      for (const k of pagePromptKeys) {
+        try {
+          const raw = await redisConnection.get(k);
+          if (!raw) continue;
+          const pageId = k.replace("mogent:prompt:", "");
+          const page = await prisma.facebookPage.findFirst({ where: { pageId } });
+          if (page && !page.systemPrompt) {
+            await prisma.facebookPage.update({
+              where: { id: page.id },
+              data: { systemPrompt: raw.trim() },
+            });
+          }
+          await redisConnection.del(k);
+        } catch (e: any) {
+          console.warn(`[Migration] Page prompt migration error for key ${k}:`, e.message);
+        }
+      }
+
+      // D. Migrate Follow-up configs: mogent:followup_config:<workspaceId>
+      const followupKeys = await redisConnection.keys("mogent:followup_config:*");
+      for (const k of followupKeys) {
+        try {
+          const raw = await redisConnection.get(k);
+          if (!raw) continue;
+          const existing = await prisma.systemSetting.findUnique({ where: { key: k } });
+          if (!existing) {
+            await prisma.systemSetting.create({ data: { key: k, value: raw } });
+          }
+          await redisConnection.del(k);
+        } catch (e: any) {
+          console.warn(`[Migration] Followup config migration error for key ${k}:`, e.message);
+        }
+      }
+
+      // E. Migrate Admin Settings: meta_developer_config, telegram_master_config, cloudflare_r2_config, payment_gateway_config, gemini_keys_metadata
+      const adminKeys = [
+        "mogent:meta_developer_config",
+        "mogent:telegram_master_config",
+        "mogent:cloudflare_r2_config",
+        "mogent:payment_gateway_config",
+        "mogent:gemini_keys_metadata",
+      ];
+      for (const adminKey of adminKeys) {
+        try {
+          const raw = await redisConnection.get(adminKey);
+          if (!raw) continue;
+          const existing = await prisma.systemSetting.findUnique({ where: { key: adminKey } });
+          if (!existing) {
+            await prisma.systemSetting.create({ data: { key: adminKey, value: raw } });
+          }
+          await redisConnection.del(adminKey);
+        } catch (e: any) {
+          console.warn(`[Migration] Admin setting migration error for key ${adminKey}:`, e.message);
+        }
+      }
+
+      // Clean up legacy Gemini keys pool set
+      await redisConnection.del("mogent:gemini_keys_pool", "mogent:gemini_pool_keys").catch(() => {});
+
+      console.log("✅ Zero-Data-Loss Migration completed: All legacy Redis data safely in PostgreSQL!");
+    } catch (migrErr: any) {
+      console.warn("⚠️ Zero-Data-Loss migration notice:", migrErr.message);
+    }
+
+    // 6. Hydrate runtime memory config directly from PostgreSQL system_settings
     try {
       const allSettings = await prisma.systemSetting.findMany();
       if (allSettings && allSettings.length > 0) {
-        console.log(`📦 Hydrating ${allSettings.length} system settings from PostgreSQL into Redis & memory...`);
+        console.log(`📦 Hydrating ${allSettings.length} system settings from PostgreSQL into memory...`);
         for (const item of allSettings) {
           try {
-            await redisConnection.set(item.key, item.value);
-
-            // Hydrate runtime config object
             const parsed = JSON.parse(item.value);
             if (item.key === "mogent:meta_developer_config") {
               if (parsed.appId) config.facebook.appId = parsed.appId;
@@ -576,7 +712,7 @@ async function syncDatabaseSchema() {
             console.warn(`Failed hydrating setting ${item.key}:`, itemErr.message);
           }
         }
-        console.log("✅ System settings successfully hydrated into Redis & memory!");
+        console.log("✅ System settings successfully loaded into memory!");
       }
     } catch (hydrErr: any) {
       console.warn("⚠️ System settings hydration notice:", hydrErr.message);
@@ -614,9 +750,11 @@ async function syncTelegramWebhook() {
   try {
     let token = process.env.TELEGRAM_BOT_TOKEN || config.telegram.botToken || "";
     try {
-      const redisVal = await redisConnection.get("mogent:telegram_master_config");
-      if (redisVal) {
-        const parsed = JSON.parse(redisVal);
+      const dbRecord = await prisma.systemSetting.findUnique({
+        where: { key: "mogent:telegram_master_config" },
+      });
+      if (dbRecord?.value) {
+        const parsed = JSON.parse(dbRecord.value);
         if (parsed.botToken) token = parsed.botToken;
       }
     } catch {}

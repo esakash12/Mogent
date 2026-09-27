@@ -9,7 +9,20 @@ import { GeminiService } from "./gemini-client";
 import { createAiProxyRoutes } from "./routes";
 
 import path from "path";
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+import fs from "fs";
+
+const candidatePaths = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../../.env"),
+  path.resolve(__dirname, "../../../.env"),
+  path.resolve(__dirname, "../../.env"),
+];
+for (const envPath of candidatePaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
 
 const port = Number(process.env.AI_PROXY_PORT) || 5000;
 const defaultModel = process.env.DEFAULT_GEMINI_MODEL || "gemini-3.5-flash-lite";

@@ -29,9 +29,11 @@ export function startTelegramWorker() {
       // Load master bot token if not set locally
       if (!botToken) {
         try {
-          const redisVal = await redisConnection.get("mogent:telegram_master_config");
-          if (redisVal) {
-            const parsed = JSON.parse(redisVal);
+          const dbRecord = await prisma.systemSetting.findUnique({
+            where: { key: "mogent:telegram_master_config" },
+          });
+          if (dbRecord?.value) {
+            const parsed = JSON.parse(dbRecord.value);
             if (parsed.botToken) botToken = parsed.botToken;
           }
         } catch {}
