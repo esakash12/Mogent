@@ -1,1092 +1,557 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  BookOpen,
-  Zap,
-  PlayCircle,
-  Plus,
-  Search,
+  Sparkles,
+  Send,
+  Loader2,
+  Bot,
+  User,
+  Package,
+  Layers,
   CheckCircle2,
   Trash2,
-  Send,
-  Bot,
-  Sliders,
-  Sparkles,
-  RotateCcw,
-  Clock,
+  Plus,
+  RefreshCw,
+  ShoppingBag,
+  TrendingUp,
+  ShieldCheck,
   ChevronRight,
-  MessageCircle,
-  Phone,
-  MapPin,
-  Shield,
-  HelpCircle,
-  Loader2,
-  X,
+  MessageSquare,
+  Sliders,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "@/lib/toast";
 import {
-  fetchKnowledgeAndWhatsApp,
-  createKnowledgeItem,
-  deleteKnowledgeItem,
-  saveWhatsAppProtocol,
-  testPlaygroundChat,
-  saveSystemPrompt,
+  fetchCoPilotSession,
+  sendCoPilotMessage,
+  fetchBusinessMemories,
+  deleteBusinessMemory,
+  toggleBusinessMemory,
   fetchPages,
+  BusinessMemoryItem,
+  CoPilotSessionData,
 } from "@/lib/api";
 
-export default function AIAutomationSectorPage() {
-  const [activeTab, setActiveTab] = useState<"KNOWLEDGE" | "PROMPT" | "WHATSAPP_CONTACT" | "RULES" | "PLAYGROUND">("KNOWLEDGE");
+const QUICK_PROMPTS = [
+  { label: "🎙️ শপ ইন্টারভিউ শুরু করো", prompt: "আসসালামু আলাইকুম, আমাদের শপ সেটআপ করার জন্য তোমার কী কী তথ্য লাগবে জিজ্ঞেস করো।" },
+  { label: "🎁 নতুন অফার শেখাও", prompt: "আজকে থেকে কেউ যদি ২টা পাঞ্জাবি নেয় তবে তাকে ১০০ টাকা ডিসকাউন্ট দিবা আর ডেলিভারি চার্জ ফ্রি বলবা।" },
+  { label: "🚚 ডেলিভারি নিয়ম", prompt: "আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৮০ টাকা এবং ঢাকার বাইরে ১৩০ টাকা। ঢাকার বাইরে ক্যাশ অন ডেলিভারিতে ১৫০ টাকা অগ্রিম নিবা।" },
+  { label: "📦 প্রোডাক্ট যোগ করো", prompt: "একটি নতুন প্রোডাক্ট যোগ করো: প্রিমিয়াম ব্ল্যাক পাঞ্জাবি, দাম ১৪৫০ টাকা, রেগুলার ১৬০০, সাইজ M, L, XL, স্টক ৩০টি।" },
+  { label: "📊 সেলস রিপোর্ট", prompt: "আজকে কয়টা অর্ডার আসল এবং মোট সেলস কত হয়েছে জানাও তো?" },
+  { label: "📜 বর্তমান সমস্ত নিয়ম", prompt: "আমার শপে এখন পর্যন্ত কী কী অফার ও নিয়ম চালু আছে তার তালিকা দেখাও।" },
+];
+
+export default function CoPilotPage() {
+  const [activeTab, setActiveTab] = useState<"CHAT" | "MEMORIES">("CHAT");
+  const [session, setSession] = useState<CoPilotSessionData | null>(null);
+  const [memories, setMemories] = useState<BusinessMemoryItem[]>([]);
   const [pages, setPages] = useState<any[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string>("ALL");
+  const [inputValue, setInputValue] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [refreshingMemories, setRefreshingMemories] = useState(false);
 
-  // --- 0. CUSTOM SYSTEM PROMPT & PERSONA STATE ---
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [whatsappPrompt, setWhatsappPrompt] = useState("");
-  const [channelPromptTab, setChannelPromptTab] = useState<"MESSENGER" | "WHATSAPP">("MESSENGER");
-  const [playgroundChannel, setPlaygroundChannel] = useState<"MESSENGER" | "WHATSAPP">("MESSENGER");
-  const [businessName, setBusinessName] = useState("");
-  const [promptSaved, setPromptSaved] = useState(false);
-  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // --- 1. KNOWLEDGE STATE ---
-  const [knowledgeItems, setKnowledgeItems] = useState<any[]>([]);
-  const [knowledgeSearch, setKnowledgeSearch] = useState("");
-  const [showAddKnowledge, setShowAddKnowledge] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newContent, setNewContent] = useState("");
-  const [newCategory, setNewCategory] = useState("PRODUCT_CATALOG");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
-  // --- 2. WHATSAPP & CONTACT SHARING STATE ---
-  const [whatsAppMode, setWhatsAppMode] = useState<"ON_DEMAND" | "ALWAYS" | "DISABLED">("ON_DEMAND");
-  const [whatsAppNumber, setWhatsAppNumber] = useState("+8801819234567");
-  const [hotlineNumber, setHotlineNumber] = useState("09612345678");
-  const [officeAddress, setOfficeAddress] = useState("Level 4, House 12, Road 4, Dhanmondi, Dhaka");
-  const [whatsAppPrefillText, setWhatsAppPrefillText] = useState("Hello! I saw your products on Facebook and want to place an order.");
-  const [contactSaved, setContactSaved] = useState(false);
-  const [isSavingContact, setIsSavingContact] = useState(false);
-
-  // Load from DB & Support Multi-Page Switch
-  const loadPageConfig = async (pageId = selectedPageId) => {
+  const loadData = async () => {
     try {
-      const [data, pagesList] = await Promise.all([
-        fetchKnowledgeAndWhatsApp(pageId),
+      setLoading(true);
+      const [sessionData, memoriesData, pagesList] = await Promise.all([
+        fetchCoPilotSession(),
+        fetchBusinessMemories(selectedPageId),
         fetchPages(),
       ]);
 
-      if (Array.isArray(pagesList)) {
-        setPages(pagesList);
-      }
-
-      if (data) {
-        if (data.systemPrompt !== undefined) setSystemPrompt(data.systemPrompt || "");
-        if (data.whatsappPrompt !== undefined) setWhatsappPrompt(data.whatsappPrompt || "");
-        if (data.businessName !== undefined) setBusinessName(data.businessName || "");
-        if (data.items && Array.isArray(data.items)) {
-          setKnowledgeItems(data.items);
-        }
-        if (data.whatsAppProtocol) {
-          setWhatsAppMode(data.whatsAppProtocol.mode as any);
-          if (data.whatsAppProtocol.number) setWhatsAppNumber(data.whatsAppProtocol.number);
-          if (data.whatsAppProtocol.hotline) setHotlineNumber(data.whatsAppProtocol.hotline);
-          if (data.whatsAppProtocol.address) setOfficeAddress(data.whatsAppProtocol.address);
-          if (data.whatsAppProtocol.prefillText) setWhatsAppPrefillText(data.whatsAppProtocol.prefillText);
-        }
-      }
+      if (sessionData) setSession(sessionData);
+      if (Array.isArray(memoriesData)) setMemories(memoriesData);
+      if (Array.isArray(pagesList)) setPages(pagesList);
     } catch (err) {
-      console.error("Failed to load page AI config:", err);
+      console.error("CoPilot load error:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("mogent_active_page_id") : null;
-    const initialPage = saved || "ALL";
-    setSelectedPageId(initialPage);
-    loadPageConfig(initialPage);
+    loadData();
+  }, [selectedPageId]);
 
-    const handleGlobalPageChange = (e: any) => {
-      const newPageId = e.detail?.pageId || "ALL";
-      setSelectedPageId(newPageId);
-      loadPageConfig(newPageId);
+  useEffect(() => {
+    if (activeTab === "CHAT") {
+      scrollToBottom();
+    }
+  }, [session?.messages, activeTab]);
+
+  const handleSendMessage = async (customText?: string) => {
+    const textToSend = (customText || inputValue).trim();
+    if (!textToSend || sending) return;
+
+    setInputValue("");
+    setSending(true);
+
+    // Optimistic UI push
+    const optimisticMsg: any = {
+      id: `temp-${Date.now()}`,
+      sender: "OWNER",
+      content: textToSend,
+      createdAt: new Date().toISOString(),
     };
 
-    window.addEventListener("mogent_page_changed", handleGlobalPageChange);
-    return () => window.removeEventListener("mogent_page_changed", handleGlobalPageChange);
-  }, []);
-
-  const handleAddKnowledge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim() || !newContent.trim()) return;
-
-    setIsSubmitting(true);
-    const created = await createKnowledgeItem({
-      title: newTitle.trim(),
-      category: newCategory,
-      content: newContent.trim(),
+    setSession((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        messages: [...(prev.messages || []), optimisticMsg],
+      };
     });
-    setIsSubmitting(false);
-
-    if (created) {
-      setKnowledgeItems((prev) => [created, ...prev]);
-      setShowAddKnowledge(false);
-    }
-
-    setNewTitle("");
-    setNewContent("");
-  };
-
-  const handleDeleteKnowledge = async (id: string) => {
-    setKnowledgeItems((prev) => prev.filter((i) => i.id !== id));
-    await deleteKnowledgeItem(id);
-  };
-
-  const handleSaveContactProtocol = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingContact(true);
-    const res = await saveWhatsAppProtocol({
-      mode: whatsAppMode,
-      number: whatsAppNumber,
-      hotline: hotlineNumber,
-      address: officeAddress,
-      prefillText: whatsAppPrefillText,
-    });
-    setIsSavingContact(false);
-    if (res) {
-      setContactSaved(true);
-      setTimeout(() => setContactSaved(false), 3000);
-    }
-  };
-
-  const handleSaveSystemPrompt = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingPrompt(true);
-    const res = await saveSystemPrompt({
-      systemPrompt,
-      whatsappPrompt,
-      businessName,
-      pageId: selectedPageId,
-    });
-    setIsSavingPrompt(false);
-    if (res && (res.success || !res.error)) {
-      setPromptSaved(true);
-      setTimeout(() => setPromptSaved(false), 2500);
-    }
-  };
-
-  // --- 3. RULES STATE ---
-  const [rules] = useState<any[]>([
-    {
-      id: "1",
-      name: "অর্ডার ট্র্যাকিং ও ডেলিভারি স্ট্যাটাস",
-      keywords: ["tracking", "order status", "ডেলিভারি কবে পাব", "পার্সেল"],
-      reply: "আপনার অর্ডার ট্র্যাক করতে মেহেরবানি করে আপনার অর্ডার নাম্বার অথবা মোবাইল নাম্বারটি দিন।",
-      hits: 12,
-    },
-    {
-      id: "2",
-      name: "রিটার্ন ও এক্সচেঞ্জ পলিসি",
-      keywords: ["রিটার্ন", "এক্সচেঞ্জ", "change", "ফেরত"],
-      reply: "পণ্য হাতে পাওয়ার পর কোনো সমস্যা থাকলে ৭ দিনের মধ্যে আমাদের জানালে আমরা ফ্রিতে রিপ্লেস করে দেব।",
-      hits: 8,
-    },
-  ]);
-
-  // --- 4. PLAYGROUND STATE ---
-  const [simMessages, setSimMessages] = useState<
-    Array<{ role: string; content: string; thinking?: string; button?: { title: string; url: string } }>
-  >([
-    {
-      role: "model",
-      content: "আসসালামু আলাইকুম! কীভাবে সাহায্য করতে পারি? আপনার অর্ডার বা যেকোনো তথ্যের জন্য বলতে পারেন।",
-      thinking: "Persona initialized with friendly Bangladeshi sales moderator tone.",
-    },
-  ]);
-  const [testInput, setTestInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-
-  const handleSimSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!testInput.trim() || isTyping) return;
-    const q = testInput;
-    setTestInput("");
-
-    const updatedHistory = [...simMessages, { role: "user", content: q }];
-    setSimMessages(updatedHistory);
-    setIsTyping(true);
 
     try {
-      const res = await testPlaygroundChat(
-        q,
-        simMessages.map((m) => ({ role: m.role, content: m.content })),
-        selectedPageId,
-        playgroundChannel
-      );
-
-      if (res.success && res.data) {
-        setSimMessages((prev) => [
-          ...prev,
-          {
-            role: "model",
-            content: res.data.replyText || "কোনো উত্তর পাওয়া যায়নি।",
-            thinking: res.data.thinking || "Generated via Mogent AI Engine with Knowledge Base.",
-            button: res.data.button,
-          },
-        ]);
-      } else {
-        setSimMessages((prev) => [
-          ...prev,
-          {
-            role: "model",
-            content: res.error || "AI সার্ভারের সাথে যোগাযোগ করা যায়নি। অনুগ্রহ করে নিশ্চিত করুন যে আপনার জেমিনি কী একটিভ আছে।",
-            thinking: "Error communicating with AI Proxy Gateway.",
-          },
-        ]);
+      const res = await sendCoPilotMessage(textToSend, selectedPageId);
+      if (res && res.session) {
+        setSession(res.session);
+        if (res.action && res.action.type !== "NONE") {
+          toast.success(res.action.summary || "কো-পাইলট অ্যাকশন কার্যকর করেছে!");
+          // Refresh memories in background
+          const refreshedMemories = await fetchBusinessMemories(selectedPageId);
+          setMemories(refreshedMemories);
+        }
       }
     } catch (err: any) {
-      setSimMessages((prev) => [
-        ...prev,
-        {
-          role: "model",
-          content: "একটি ত্রুটি হয়েছে: " + err.message,
-          thinking: "Connection error",
-        },
-      ]);
+      toast.error(err.message || "মেসেজ পাঠানো সম্ভব হয়নি।");
     } finally {
-      setIsTyping(false);
+      setSending(false);
     }
   };
 
-  return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-7xl mx-auto">
-      {/* Top Sector Tabs Bar & Page Switcher */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E2E8F0] pb-5">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] flex items-center gap-2.5">
-              <Bot className="w-6 h-6 text-[#F59E0B]" />
-              <span>AI Automation Studio</span>
-            </h1>
-            {selectedPageId !== "ALL" && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] font-semibold font-mono">
-                📄 {pages.find((p) => p.id === selectedPageId)?.name || "Selected Channel"}
+  const handleToggleMemory = async (id: string, currentStatus: boolean) => {
+    try {
+      await toggleBusinessMemory(id, !currentStatus);
+      setMemories((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, isActive: !currentStatus } : m))
+      );
+      toast.success(!currentStatus ? "রুল সক্রিয় করা হয়েছে" : "রুল নিষ্ক্রিয় করা হয়েছে");
+    } catch (err: any) {
+      toast.error("রুল আপডেট করা যায়নি");
+    }
+  };
+
+  const handleDeleteMemory = async (id: string) => {
+    if (!confirm("আপনি কি নিশ্চিত এই নিয়মটি মুছে ফেলতে চান?")) return;
+    try {
+      await deleteBusinessMemory(id);
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+      toast.success("নিয়মটি মুছে ফেলা হয়েছে");
+    } catch (err: any) {
+      toast.error("মুছে ফেলা সম্ভব হয়নি");
+    }
+  };
+
+  const renderActionCard = (actionType?: string | null, payloadStr?: string | null) => {
+    if (!actionType || actionType === "NONE" || !payloadStr) return null;
+    let payload: any = null;
+    try {
+      payload = JSON.parse(payloadStr);
+    } catch {
+      return null;
+    }
+
+    if (actionType === "TEACH_RULE" && payload.data) {
+      return (
+        <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-start gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-emerald-200">
+              {payload.summary || "নতুন রুল সক্রিয় হয়েছে"}
+            </span>
+            <p className="text-emerald-300/80 leading-relaxed">
+              {payload.data.instruction}
+            </p>
+            {payload.data.condition && (
+              <span className="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono">
+                শর্ত: {payload.data.condition}
               </span>
             )}
           </div>
-          <p className="text-xs text-[#64748B] mt-1">
-            Train your AI agent, configure WhatsApp & contact protocols, instant rules, and test responses in real-time.
+        </div>
+      );
+    }
+
+    if (actionType === "CREATE_PRODUCT" && payload.data) {
+      return (
+        <div className="mt-2.5 p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-300 flex items-start gap-2.5">
+          <Package className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5 flex-1">
+            <span className="font-semibold text-blue-200">
+              {payload.summary || "প্রোডাক্ট ডাটাবেজে যুক্ত হয়েছে"}
+            </span>
+            <div className="flex items-center gap-3 mt-1 text-[11px] text-blue-200">
+              <span>মূল্য: ৳{payload.data.price}</span>
+              <span>স্টক: {payload.data.stockCount ?? 100}টি</span>
+              <span>ক্যাটাগরি: {payload.data.category || "General"}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (actionType === "STATS_REPORT" && payload.data) {
+      const { todayOrdersCount, pendingOrdersCount, totalOrdersCount, totalRevenue } = payload.data;
+      return (
+        <div className="mt-2.5 p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-200">
+          <div className="flex items-center gap-2 font-semibold text-purple-300 mb-2">
+            <TrendingUp className="w-4 h-4 text-purple-400" />
+            <span>লাইভ স্টোর রিপোর্ট (PostgreSQL Live)</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="p-2 rounded-lg bg-black/40 border border-purple-500/20">
+              <span className="text-[10px] text-gray-400 block">আজকের অর্ডার</span>
+              <span className="text-base font-bold text-emerald-400">{todayOrdersCount || 0}</span>
+            </div>
+            <div className="p-2 rounded-lg bg-black/40 border border-purple-500/20">
+              <span className="text-[10px] text-gray-400 block">পেন্ডিং অর্ডার</span>
+              <span className="text-base font-bold text-amber-400">{pendingOrdersCount || 0}</span>
+            </div>
+            <div className="p-2 rounded-lg bg-black/40 border border-purple-500/20">
+              <span className="text-[10px] text-gray-400 block">মোট অর্ডার</span>
+              <span className="text-base font-bold text-white">{totalOrdersCount || 0}</span>
+            </div>
+            <div className="p-2 rounded-lg bg-black/40 border border-purple-500/20">
+              <span className="text-[10px] text-gray-400 block">মোট সেলস</span>
+              <span className="text-base font-bold text-emerald-400">৳{(totalRevenue || 0).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-5">
+        <div>
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 text-emerald-400 shadow-sm shadow-emerald-500/10">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Mogent Business Co-Pilot
+            </h1>
+            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              Autonomous
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            আপনার শপ পরিচালনা করুন সাধারণ চ্যাটেই — এআই নিজেই নিয়ম শিখবে, অফার সেট করবে, প্রোডাক্ট ম্যানেজ করবে এবং কাস্টমার সেলস ক্লোজ করবে।
           </p>
         </div>
 
-        {/* Sector Navigation Tabs */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#F1F5F9] border border-[#E2E8F0] overflow-x-auto">
-          <button
-            onClick={() => setActiveTab("KNOWLEDGE")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap",
-              activeTab === "KNOWLEDGE"
-                ? "bg-white text-[#0F172A] shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            )}
-          >
-            <BookOpen className="w-3.5 h-3.5 text-[#2563EB]" />
-            <span>Knowledge Base</span>
-          </button>
+        {/* Multi-Page Selector & Tab Toggle */}
+        <div className="flex flex-wrap items-center gap-2">
+          {pages.length > 0 && (
+            <select
+              value={selectedPageId}
+              onChange={(e) => setSelectedPageId(e.target.value)}
+              className="text-xs px-3 py-2 rounded-xl bg-card border border-border text-foreground hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="ALL">🌐 All Channels (Workspace-wide)</option>
+              {pages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  📄 {p.name}
+                </option>
+              ))}
+            </select>
+          )}
 
-          <button
-            onClick={() => setActiveTab("PROMPT")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap",
-              activeTab === "PROMPT"
-                ? "bg-white text-[#0F172A] shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            )}
-          >
-            <Bot className="w-3.5 h-3.5 text-[#9333EA]" />
-            <span>Custom System Prompt</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("WHATSAPP_CONTACT")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap",
-              activeTab === "WHATSAPP_CONTACT"
-                ? "bg-white text-[#0F172A] shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            )}
-          >
-            <MessageCircle className="w-3.5 h-3.5 text-[#16A34A]" />
-            <span>WhatsApp & Contact</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("RULES")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap",
-              activeTab === "RULES"
-                ? "bg-white text-[#0F172A] shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            )}
-          >
-            <Zap className="w-3.5 h-3.5 text-[#F59E0B]" />
-            <span>Rules & Triggers</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("PLAYGROUND")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap",
-              activeTab === "PLAYGROUND"
-                ? "bg-white text-[#0F172A] shadow-xs"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            )}
-          >
-            <PlayCircle className="w-3.5 h-3.5 text-[#4F46E5]" />
-            <span>Playground</span>
-          </button>
+          <div className="flex items-center rounded-xl bg-card border border-border p-1">
+            <button
+              onClick={() => setActiveTab("CHAT")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all",
+                activeTab === "CHAT"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Co-Pilot Chat</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("MEMORIES")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all",
+                activeTab === "MEMORIES"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Learned Rules ({memories.length})</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* TAB 1: KNOWLEDGE BASE */}
-      {/* ========================================================================= */}
-      {activeTab === "KNOWLEDGE" && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-              <input
-                type="text"
-                placeholder="Search knowledge items..."
-                value={knowledgeSearch}
-                onChange={(e) => setKnowledgeSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-white border border-[#CBD5E1] text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B] placeholder:text-[#94A3B8] shadow-xs"
-              />
+      {loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[420px] rounded-2xl bg-card border border-border">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-3" />
+          <p className="text-xs text-muted-foreground">বিজনেস কো-পাইলট লোড হচ্ছে...</p>
+        </div>
+      ) : activeTab === "CHAT" ? (
+        /* TAB 1: CO-PILOT CHAT INTERFACE */
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-[640px]">
+          {/* Quick Action Sidebar */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="p-4 rounded-2xl bg-card border border-border space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <span>দ্রুত শেখানোর প্রম্পট</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                নিচের যেকোনো টপিক ক্লিক করলে কো-পাইলট স্বয়ংক্রিয়ভাবে প্রম্পট টাইপ করে কাজ শুরু করবে:
+              </p>
+              <div className="space-y-1.5">
+                {QUICK_PROMPTS.map((qp, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSendMessage(qp.prompt)}
+                    disabled={sending}
+                    className="w-full text-left p-2.5 rounded-xl bg-muted/40 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-transparent text-xs text-muted-foreground hover:text-emerald-400 transition-all flex items-center justify-between group disabled:opacity-50"
+                  >
+                    <span className="font-medium text-[11px] truncate">{qp.label}</span>
+                    <ChevronRight className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Memory Stats */}
+            <div className="p-4 rounded-2xl bg-card border border-border space-y-2.5">
+              <span className="text-xs font-semibold text-foreground block">
+                সক্রিয় মেমোরি স্টেট
+              </span>
+              <div className="flex items-center justify-between text-xs py-1.5 border-b border-border/50">
+                <span className="text-muted-foreground">সংরক্ষিত নিয়মসমূহ:</span>
+                <span className="font-semibold text-emerald-400">{memories.length}টি রুল</span>
+              </div>
+              <div className="flex items-center justify-between text-xs py-1.5 border-b border-border/50">
+                <span className="text-muted-foreground">ডাটাবেজ স্টোরেজ:</span>
+                <span className="font-semibold text-foreground">100% PostgreSQL</span>
+              </div>
+              <div className="flex items-center justify-between text-xs py-1.5">
+                <span className="text-muted-foreground">কাস্টমার চ্যাট সিঙ্ক:</span>
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> লাইভ সিঙ্কড
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Chat Stream */}
+          <div className="lg:col-span-3 flex flex-col rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
+            {/* Chat Messages */}
+            <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 max-h-[540px]">
+              {session?.messages && session.messages.length > 0 ? (
+                session.messages.map((msg, index) => {
+                  const isOwner = msg.sender === "OWNER";
+                  return (
+                    <div
+                      key={msg.id || index}
+                      className={cn(
+                        "flex items-start gap-3 text-xs sm:text-sm",
+                        isOwner ? "flex-row-reverse" : "flex-row"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm",
+                          isOwner
+                            ? "bg-emerald-600 text-white"
+                            : "bg-gradient-to-br from-teal-500 to-emerald-600 text-white"
+                        )}
+                      >
+                        {isOwner ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                      </div>
+
+                      <div
+                        className={cn(
+                          "max-w-[85%] sm:max-w-[75%] rounded-2xl p-3.5 shadow-sm leading-relaxed",
+                          isOwner
+                            ? "bg-emerald-600 text-white rounded-tr-none"
+                            : "bg-muted/70 text-foreground border border-border/50 rounded-tl-none"
+                        )}
+                      >
+                        <p className="whitespace-pre-line">{msg.content}</p>
+                        {!isOwner && renderActionCard(msg.actionType, msg.actionPayload)}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="flex flex-col items-center justify-center min-h-[300px] text-center p-6 text-muted-foreground">
+                  <Sparkles className="w-8 h-8 text-emerald-500 mb-2 opacity-60" />
+                  <p className="text-xs">কো-পাইলট প্রস্তুত। কোনো মেসেজ লিখে পাঠানো শুরু করুন।</p>
+                </div>
+              )}
+              {sending && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                  <span>কো-পাইলট আপনার নিয়মটি বিশ্লেষণ ও কার্যকর করছে...</span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Bar */}
+            <div className="p-3 sm:p-4 border-t border-border bg-card/60 backdrop-blur">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="বাংলায় বলুন (যেমন: 'আজকে থেকে কেউ ২টা নিলে ১০০ টাকা ছাড় দাও' বা 'প্রোডাক্ট যোগ করো')..."
+                  disabled={sending}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-muted/40 border border-border text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputValue.trim() || sending}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 disabled:opacity-50 shadow-sm shadow-emerald-600/20"
+                >
+                  {sending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>পাঠান</span>
+                      <Send className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* TAB 2: DYNAMIC ZERO-SCHEMA MEMORIES */
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                সংরক্ষিত ডায়নামিক নিয়ম ও পলিসিসমূহ
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                চ্যাটের মাধ্যমে আপনি যা যা শিখিয়েছেন তা এখানে পারমানেন্টলি PostgreSQL-এ সেভ রয়েছে এবং মেসেঞ্জার ও হোয়াটসঅ্যাপে লাইভ কাজ করছে।
+              </p>
             </div>
 
             <button
-              onClick={() => setShowAddKnowledge(true)}
-              className="px-4 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black text-xs font-bold flex items-center gap-2 transition-colors shadow-xs cursor-pointer w-fit"
+              onClick={async () => {
+                setRefreshingMemories(true);
+                const data = await fetchBusinessMemories(selectedPageId);
+                setMemories(data);
+                setRefreshingMemories(false);
+              }}
+              disabled={refreshingMemories}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border text-xs text-muted-foreground hover:text-foreground transition-all"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add Knowledge Entry</span>
+              <RefreshCw className={cn("w-3.5 h-3.5", refreshingMemories && "animate-spin")} />
+              <span>রিফ্রেশ</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {knowledgeItems
-              .filter(
-                (k) =>
-                  k.title.toLowerCase().includes(knowledgeSearch.toLowerCase()) ||
-                  k.content.toLowerCase().includes(knowledgeSearch.toLowerCase())
-              )
-              .map((item) => (
-                <div
-                  key={item.id}
-                  className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] transition-all flex flex-col justify-between space-y-4"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]">
-                        {item.category}
-                      </span>
+          {memories.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-card border border-border text-center space-y-2">
+              <Info className="w-8 h-8 text-muted-foreground mx-auto opacity-40" />
+              <h3 className="text-sm font-semibold text-foreground">এখনো কোনো ডায়নামিক রুল নেই</h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                কো-পাইলট চ্যাটে যান এবং বাংলায় যেকোনো অফার, শর্ত বা নিয়ম বলুন। এআই স্বয়ংক্রিয়ভাবে তা এখানে যুক্ত করে নিবে।
+              </p>
+              <button
+                onClick={() => setActiveTab("CHAT")}
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>কো-পাইলট চ্যাটে যান</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {memories.map((mem) => {
+                return (
+                  <div
+                    key={mem.id}
+                    className={cn(
+                      "p-4 rounded-2xl border transition-all flex flex-col justify-between",
+                      mem.isActive
+                        ? "bg-card border-border hover:border-emerald-500/40"
+                        : "bg-muted/30 border-border/40 opacity-60"
+                    )}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          {mem.category}
+                        </span>
+                        {mem.facebookPage && (
+                          <span className="text-[10px] text-muted-foreground">
+                            📄 {mem.facebookPage.name}
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="text-sm font-semibold text-foreground">{mem.title}</h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {mem.instruction}
+                      </p>
+
+                      {mem.condition && (
+                        <div className="p-2 rounded-lg bg-black/30 border border-border/40 text-[11px] font-mono text-emerald-300">
+                          শর্ত: {mem.condition}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-border/40 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">
+                          {mem.isActive ? "সক্রিয়" : "নিষ্ক্রিয়"}
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={mem.isActive}
+                          onChange={() => handleToggleMemory(mem.id, mem.isActive)}
+                          className="toggle-checkbox w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </div>
+
                       <button
-                        onClick={() => handleDeleteKnowledge(item.id)}
-                        className="text-[#94A3B8] hover:text-red-500 p-1 rounded-lg hover:bg-red-50 transition-colors"
+                        onClick={() => handleDeleteMemory(mem.id)}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        title="মুছে ফেলুন"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <h3 className="font-bold text-sm text-[#0F172A]">{item.title}</h3>
-                    <p className="text-xs text-[#475569] leading-relaxed bg-[#F8FAFC] p-3 rounded-xl border border-[#E2E8F0]">
-                      {item.content}
-                    </p>
                   </div>
-                  <div className="pt-2 border-t border-[#F1F5F9] flex items-center justify-between text-[11px] text-[#10B981]">
-                    <span className="flex items-center gap-1.5 font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#10B981]" /> Active in Mogent AI Context
-                    </span>
-                  </div>
-                </div>
-              ))}
-          </div>
-
-          {/* Add Knowledge Modal */}
-          {showAddKnowledge && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
-              <div className="w-full max-w-lg rounded-2xl border border-[#E2E8F0] bg-white p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
-                <div className="flex items-center justify-between border-b border-[#F1F5F9] pb-3">
-                  <h3 className="text-sm font-bold text-[#0F172A]">Add Knowledge Base Entry</h3>
-                  <button
-                    onClick={() => setShowAddKnowledge(false)}
-                    className="p-1 rounded-lg text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleAddKnowledge} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#475569] mb-1">Title *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Return Policy or Size Chart"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#475569] mb-1">Category</label>
-                    <select
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B]"
-                    >
-                      <option value="PRODUCT_CATALOG">Product Catalog</option>
-                      <option value="POLICY">Policy</option>
-                      <option value="FAQ">FAQ</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#475569] mb-1">Knowledge Content *</label>
-                    <textarea
-                      rows={4}
-                      required
-                      placeholder="Type details for AI to learn..."
-                      value={newContent}
-                      onChange={(e) => setNewContent(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B] leading-relaxed"
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-2 border-t border-[#F1F5F9]">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddKnowledge(false)}
-                      className="px-4 py-2.5 rounded-xl border border-[#CBD5E1] text-xs font-bold text-[#64748B] hover:bg-[#F8FAFC]"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-5 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs disabled:opacity-50 shadow-xs cursor-pointer"
-                    >
-                      {isSubmitting ? "Saving..." : "Save Entry"}
-                    </button>
-                  </div>
-                </form>
-              </div>
+                );
+              })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 2: CUSTOM SYSTEM PROMPT & PERSONA INSTRUCTIONS */}
-      {/* ========================================================================= */}
-      {activeTab === "PROMPT" && (
-        <form onSubmit={handleSaveSystemPrompt} className="space-y-6 max-w-4xl animate-in fade-in duration-200">
-          <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs space-y-6">
-            <div className="flex items-center justify-between border-b border-[#F1F5F9] pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#FAF5FF] border border-[#E9D5FF] flex items-center justify-center text-[#9333EA]">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-[#0F172A]">Custom AI System Prompt & Persona</h3>
-                  <p className="text-xs text-[#64748B]">
-                    Messenger ও WhatsApp এর জন্য আলাদা আলাদা প্রম্পট ও কাস্টম নিয়ম নির্ধারণ করুন।
-                  </p>
-                </div>
-              </div>
-              {promptSaved && (
-                <span className="text-xs font-bold text-[#10B981] flex items-center gap-1.5 bg-[#DCFCE7] px-3 py-1 rounded-full border border-[#BBF7D0]">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> সেভ হয়েছে!
-                </span>
-              )}
-            </div>
-
-            {/* Brand / Store Name */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-[#475569]">
-                Brand or Business Name
-              </label>
-              <input
-                type="text"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                placeholder="e.g. Dream Fashion BD"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
-              />
-            </div>
-
-            {/* Channel Persona Switcher */}
-            <div className="flex items-center gap-2 p-1 bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl w-fit">
-              <button
-                type="button"
-                onClick={() => setChannelPromptTab("MESSENGER")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer",
-                  channelPromptTab === "MESSENGER"
-                    ? "bg-white text-[#1D4ED8] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                )}
-              >
-                <MessageCircle className="w-3.5 h-3.5 text-[#2563EB]" />
-                🔵 Messenger AI প্রম্পট
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannelPromptTab("WHATSAPP")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer",
-                  channelPromptTab === "WHATSAPP"
-                    ? "bg-white text-[#15803D] shadow-xs"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                )}
-              >
-                <Phone className="w-3.5 h-3.5 text-[#16A34A]" />
-                🟢 WhatsApp Master Closer প্রম্পট
-              </button>
-            </div>
-
-            {/* --- MESSENGER TAB --- */}
-            {channelPromptTab === "MESSENGER" && (
-              <div className="space-y-5 animate-in fade-in duration-150">
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-[#64748B]">
-                    Messenger Quick Templates:
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSystemPrompt(
-                          `আপনি "${businessName || "আমাদের শপ"}" এর একজন অভিজ্ঞ, ভদ্র এবং অত্যন্ত আন্তরিক বাস্তব মানব সেলস মডারেটর।\n\nকাজের নিয়মাবলী:\n১. সবসময় বাংলায় মিষ্টি ভাষায় কথা বলবেন এবং কাস্টমারকে সম্মান দিয়ে "আপনি" সম্বোধন করবেন।\n২. কাস্টমার কোনো প্রোডাক্ট পছন্দ করলে তাকে সাইজ ও কালার সিলেক্ট করতে সহায়তা করবেন।\n৩. অর্ডার কনফার্ম করতে কাস্টমারের কাছে তার নাম, মোবাইল নাম্বার এবং সম্পূর্ণ ডেলিভারি ঠিকানা চাইবেন।\n৪. আমাদের ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা এবং ঢাকার বাইরে ১২০ টাকা।\n৫. কোনো তথ্য অজানা থাকলে কাস্টমারকে বলবেন যে আমাদের ম্যানেজার শীঘ্রই তার সাথে যোগাযোগ করবেন।`
-                        )
-                      }
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] font-bold text-[#0F172A] transition-colors shadow-2xs"
-                    >
-                      🛍️ E-Commerce Sales Executive (Bangla)
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSystemPrompt(
-                          `You are an elite customer support representative for "${businessName || "Our Brand"}".\n\nKey Directives:\n- Maintain a professional, polite, and empathetic tone at all times.\n- Answer customer inquiries concisely based strictly on provided knowledge base.\n- When a lead or inquiry is urgent, collect their phone number for instant manager callback.\n- Do not fabricate facts or pricing not present in the catalog.`
-                        )
-                      }
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] font-bold text-[#0F172A] transition-colors shadow-2xs"
-                    >
-                      👔 Professional Support (English)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-[#475569]">
-                      Facebook Messenger System Instructions
-                    </label>
-                    <span className="text-[11px] font-mono text-[#94A3B8]">
-                      {systemPrompt.length} characters
-                    </span>
-                  </div>
-                  <textarea
-                    rows={11}
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    placeholder={`এখানে আপনার ফেসবুক মেসেঞ্জারের জন্য বিস্তারিত প্রম্পট ও নিয়ম লিখুন...\n\nযেমন:\n- আপনি অমুক কোম্পানির সেলস এক্সিকিউটিভ\n- কাস্টমার দাম জানতে চাইলে প্রাইস লিস্ট অনুযায়ী উত্তর দেবেন\n- কাস্টমার প্রোডাক্ট অর্ডার করতে চাইলে ঠিকানা ও ফোন নাম্বার সংগ্রহ করবেন`}
-                    className="w-full p-4 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] font-sans leading-relaxed resize-y"
-                  />
-                  <p className="text-[11px] text-[#64748B]">
-                    💡 <strong>Tip:</strong> ফেসবুক মেসেঞ্জারে কাস্টমারদের সাথে বিস্তারিত আলোচনা ও অর্ডার কনফার্মেশনের জন্য এটি ব্যবহৃত হয়।
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* --- WHATSAPP TAB --- */}
-            {channelPromptTab === "WHATSAPP" && (
-              <div className="space-y-5 animate-in fade-in duration-150">
-                <div className="p-4 rounded-xl bg-[#DCFCE7] border border-[#BBF7D0] text-xs text-[#15803D] leading-relaxed">
-                  <strong>✨ WhatsApp Master Closer মোড:</strong> আপনি শুধুমাত্র আপনার পণ্যের বেসিক রেট বা নিয়ম দিয়ে দিবেন। AI নিজে থেকেই একজন অভিজ্ঞ শপ ওনারের মতো <strong>১-২ লাইনে অত্যন্ত সংক্ষিপ্ত, মিষ্টি ও পয়েন্ট-টু-পয়েন্ট</strong> উত্তর দিয়ে কাস্টমার ক্লোজ করবে।
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-[#64748B]">
-                    WhatsApp Masterclass Templates:
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWhatsappPrompt(
-                          `আপনি "${businessName || "আমাদের শপ"}" এর একজন বাস্তব অভিজ্ঞ সেলস এক্সপার্ট ও শপ ওনার। কাস্টমার মাত্রই WhatsApp এ নক দিয়েছেন।\n\nকাজের মূল নিয়মাবলী:\n১. উত্তর সবসময় খুব ছোট হবে (৯০% রিপ্লাই ১ থেকে ২ টি বাক্যের মধ্যে)। অপ্রয়োজনীয় বড় লম্বা প্যারাগ্রাফ একদম দেবেন না।\n২. কাস্টমার যা জানতে চাইবে আগে হুবহু সেটার সরাসরি উত্তর দিন, তারপর কথা এগিয়ে নেওয়ার জন্য পাল্টা মিষ্টি প্রশ্ন করুন।\n৩. কাস্টমার প্রোডাক্ট বা সার্ভিসের কথা বললে আগে নিশ্চিত করুন (যেমন: "জী স্যার, আপনি কি এটা করতে চাচ্ছেন?")।\n৪. কাস্টমার দাম জানতে চাইলে সংক্ষেপে দাম বলে সাইজ/পরিমাণ জেনে নিন।\n৫. ছবি বা ফাইল দেওয়ার পর ধন্যবাদ দিয়ে ডেলিভারির জন্য নাম ও ঠিকানা চেয়ে অর্ডার ফাইনাল করুন।\n৬. আপনি ইতিমধ্যে WhatsApp এ আছেন, তাই ভুলেও WhatsApp নাম্বার বা লিংক দেবেন না।`
-                        )
-                      }
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] font-bold text-[#0F172A] transition-colors shadow-2xs"
-                    >
-                      ⚡ দ্রুত সেলস ক্লোজার (১-২ লাইনে উত্তর)
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWhatsappPrompt(
-                          `আপনি "${businessName || "প্রাইম প্রিন্ট"}" এর প্রধান সেলস এক্সপার্ট। কাস্টমার NID কার্ড, পিভিসি কার্ড বা প্রিন্টিং সার্ভিসের জন্য WhatsApp এ এসেছেন।\n\nকাজের নিয়মাবলী:\n১. কাস্টমার প্রিন্ট করতে চাইলে সরাসরি উত্তর দিন: "জী স্যার, আপনি কি NID কার্ড প্রিন্ট করতে চাচ্ছেন? আপনার NID কার্ডের উভয় পাশের ছবি বা PDF ফাইলটি এখানে পাঠান।"\n২. কাস্টমার ফাইল পাঠালে চেক করে রেগুলার ও প্রিমিয়াম কার্ডের রেট সংক্ষেপে বলুন এবং তার কয়টি কপি লাগবে তা জেনে নিন।\n৩. ডেলিভারি চার্জ ঢাকার ভেতরে ৬০ টাকা, ঢাকার বাইরে ১২০ টাকা জানিয়ে সম্পূর্ণ ডেলিভারি ঠিকানা ও সচল মোবাইল নম্বর নিয়ে অর্ডার কনফার্ম করুন।\n৪. প্রতিটি উত্তর মাত্র ১-২ লাইনে বাস্তব মানুষের মতো আন্তরিকভাবে দিন।`
-                        )
-                      }
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] font-bold text-[#0F172A] transition-colors shadow-2xs"
-                    >
-                      🖨️ NID ও প্রিন্টিং সার্ভিস স্পেশালিস্ট
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setWhatsappPrompt(
-                          `আপনি "${businessName || "আমাদের ব্র্যান্ড"}" এর একজন প্রো-লেভেল সেলস ক্লোজার।\n\nনিয়মাবলী:\n১. কাস্টমার কোনো প্রোডাক্টের কথা জানতে চাইলে আগে হ্যাঁ/না উত্তর দিয়ে সাইজ বা কালার পছন্দ জিজ্ঞেস করুন।\n২. কাস্টমার পছন্দ করলে সাথে সাথে ডেলিভারি চার্জ (ঢাকার ভেতরে ৬০ টাকা, ঢাকার বাইরে ১২০ টাকা) উল্লেখ করে নাম, মোবাইল নম্বর ও ঠিকানা চেয়ে নিন।\n৩. কোনো তথ্য কাস্টমার আগের মেসেজে দিয়ে দিলে সেটা আর দ্বিতীয়বার জিজ্ঞেস করবেন না।\n৪. সব উত্তর সংক্ষিপ্ত, মিষ্টি ও প্রফেশনাল রাখবেন।`
-                        )
-                      }
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] text-[11px] font-bold text-[#0F172A] transition-colors shadow-2xs"
-                    >
-                      📦 ই-কমার্স সরাসরি অর্ডার কনফার্ম
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-[#475569]">
-                      WhatsApp System Instructions
-                    </label>
-                    <span className="text-[11px] font-mono text-[#94A3B8]">
-                      {whatsappPrompt.length} characters
-                    </span>
-                  </div>
-                  <textarea
-                    rows={11}
-                    value={whatsappPrompt}
-                    onChange={(e) => setWhatsappPrompt(e.target.value)}
-                    placeholder={`এখানে WhatsApp এর জন্য আপনার বেসিক নিয়মাবলী ও পণ্যের রেট লিখে রাখুন...\n\nযেমন:\n- কাস্টমার NID প্রিন্ট করতে চাইলে ছবি চাইতে হবে\n- ১ পিসের দাম ১৫০ টাকা, ২ পিস ২৫০ টাকা\n- ঢাকার ভেতরে ডেলিভারি ৬০ টাকা, বাইরে ১২০ টাকা\n- উত্তর সবসময় ১-২ লাইনে মানুষের মতো মিষ্টি করে দিতে হবে`}
-                    className="w-full p-4 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#16A34A] focus:ring-1 focus:ring-[#16A34A] font-sans leading-relaxed resize-y"
-                  />
-                  <p className="text-[11px] text-[#64748B]">
-                    🛡️ <strong>WhatsApp Guard:</strong> WhatsApp এর জন্য এআই কখনো নিজেকে বট বলবে না, কখনোই "WhatsApp এ মেসেজ দিন" বলবে না, এবং কাস্টমারের পূর্ববর্তী চ্যাট ইতিহাস মনে রাখবে।
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end pt-2 border-t border-[#F1F5F9]">
-              <button
-                type="submit"
-                disabled={isSavingPrompt}
-                className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black text-xs font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-              >
-                {isSavingPrompt ? "Saving All Prompts..." : "Save AI Personas & Prompts"}
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: WHATSAPP & CONTACT SHARING PROTOCOL */}
-      {/* ========================================================================= */}
-      {activeTab === "WHATSAPP_CONTACT" && (
-        <form onSubmit={handleSaveContactProtocol} className="space-y-6 max-w-3xl animate-in fade-in duration-200">
-          <div className="p-6 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs space-y-6">
-            <div className="flex items-center justify-between border-b border-[#F1F5F9] pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#DCFCE7] border border-[#BBF7D0] flex items-center justify-center text-[#16A34A]">
-                  <MessageCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-[#0F172A]">WhatsApp & Contact Sharing Protocol</h3>
-                  <p className="text-xs text-[#64748B]">Control how and when your business contact details are shared with buyers.</p>
-                </div>
-              </div>
-              {contactSaved && (
-                <div className="p-2.5 rounded-xl bg-[#DCFCE7] border border-[#BBF7D0] text-[#15803D] text-xs flex items-center gap-2 animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-[#16A34A]" />
-                  <span className="font-bold">সফলভাবে সেভ হয়েছে!</span>
-                </div>
-              )}
-            </div>
-
-            {/* 3 Core Behavior Modes */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-[#475569]">
-                When should the AI share your WhatsApp & Phone Contact?
-              </label>
-
-              <div className="grid grid-cols-1 gap-3">
-                {/* Option 1: On Demand Only */}
-                <div
-                  onClick={() => setWhatsAppMode("ON_DEMAND")}
-                  className={cn(
-                    "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
-                    whatsAppMode === "ON_DEMAND"
-                      ? "bg-[#FFFBEB] border-[#F59E0B] text-[#0F172A] shadow-xs"
-                      : "bg-white border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1]"
-                  )}
-                >
-                  <input
-                    type="radio"
-                    checked={whatsAppMode === "ON_DEMAND"}
-                    onChange={() => setWhatsAppMode("ON_DEMAND")}
-                    className="mt-1 accent-[#F59E0B]"
-                  />
-                  <div>
-                    <p className="font-bold text-xs text-[#0F172A]">
-                      🎯 On-Demand Only (Recommended)
-                    </p>
-                    <p className="text-[11px] text-[#64748B] mt-0.5 leading-relaxed">
-                      The AI will <strong>ONLY</strong> provide your WhatsApp number, Hotline, or Office Address when a customer explicitly asks: <em>"নাম্বার দিন", "ফোন দিন", "WhatsApp নাম্বার", "Call me", "যোগাযোগের ঠিকানা"</em>.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Option 2: Always in Every Message */}
-                <div
-                  onClick={() => setWhatsAppMode("ALWAYS")}
-                  className={cn(
-                    "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
-                    whatsAppMode === "ALWAYS"
-                      ? "bg-[#DCFCE7] border-[#16A34A] text-[#0F172A] shadow-xs"
-                      : "bg-white border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1]"
-                  )}
-                >
-                  <input
-                    type="radio"
-                    checked={whatsAppMode === "ALWAYS"}
-                    onChange={() => setWhatsAppMode("ALWAYS")}
-                    className="mt-1 accent-[#16A34A]"
-                  />
-                  <div>
-                    <p className="font-bold text-xs text-[#15803D]">
-                      💬 Persistent WhatsApp Link in Every Message
-                    </p>
-                    <p className="text-[11px] text-[#64748B] mt-0.5 leading-relaxed">
-                      Every single message sent by the AI will automatically attach a direct clickable <strong>"Chat on WhatsApp"</strong> link at the bottom.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Option 3: Disabled */}
-                <div
-                  onClick={() => setWhatsAppMode("DISABLED")}
-                  className={cn(
-                    "p-4 rounded-xl border transition-all cursor-pointer flex items-start gap-3",
-                    whatsAppMode === "DISABLED"
-                      ? "bg-[#FEF2F2] border-[#DC2626] text-[#0F172A] shadow-xs"
-                      : "bg-white border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1]"
-                  )}
-                >
-                  <input
-                    type="radio"
-                    checked={whatsAppMode === "DISABLED"}
-                    onChange={() => setWhatsAppMode("DISABLED")}
-                    className="mt-1 accent-[#DC2626]"
-                  />
-                  <div>
-                    <p className="font-bold text-xs text-[#DC2626]">
-                      🚫 Never Share Contact Info (Disabled)
-                    </p>
-                    <p className="text-[11px] text-[#64748B] mt-0.5 leading-relaxed">
-                      The AI will keep all communication strictly within the active chat channel and will decline sharing phone/WhatsApp.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Contact Information Fields */}
-            {whatsAppMode !== "DISABLED" && (
-              <div className="space-y-4 pt-4 border-t border-[#F1F5F9] animate-in fade-in">
-                <h4 className="font-bold text-xs text-[#0F172A]">Official Business Contact Details</h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#64748B] mb-1.5">Official WhatsApp Number</label>
-                    <div className="relative">
-                      <MessageCircle className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#16A34A]" />
-                      <input
-                        type="text"
-                        value={whatsAppNumber}
-                        onChange={(e) => setWhatsAppNumber(e.target.value)}
-                        placeholder="+8801819234567"
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#16A34A] focus:ring-1 focus:ring-[#16A34A]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[#64748B] mb-1.5">Customer Support Hotline / Call</label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                      <input
-                        type="text"
-                        value={hotlineNumber}
-                        onChange={(e) => setHotlineNumber(e.target.value)}
-                        placeholder="09612345678 or 01700000000"
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] font-mono focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#64748B] mb-1.5">Physical Shop / Office Address</label>
-                  <div className="relative">
-                    <MapPin className="w-4 h-4 absolute left-3 top-3 text-[#94A3B8]" />
-                    <textarea
-                      rows={2}
-                      value={officeAddress}
-                      onChange={(e) => setOfficeAddress(e.target.value)}
-                      placeholder="Shop 12, Block D, Dhanmondi, Dhaka"
-                      className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B] leading-relaxed"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#64748B] mb-1.5">WhatsApp Pre-filled Customer Greeting Message</label>
-                  <input
-                    type="text"
-                    value={whatsAppPrefillText}
-                    onChange={(e) => setWhatsAppPrefillText(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
-                  />
-                  <span className="text-[10px] text-[#94A3B8] mt-1 block">
-                    When customer taps the link, this text will be pre-filled for them in WhatsApp.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end pt-2 border-t border-[#F1F5F9]">
-              <button
-                type="submit"
-                disabled={isSavingContact}
-                className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs transition-colors shadow-xs disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-              >
-                {isSavingContact ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving Protocol...
-                  </>
-                ) : (
-                  "Save Contact Protocol"
-                )}
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 4: RULES & TRIGGERS */}
-      {/* ========================================================================= */}
-      {activeTab === "RULES" && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
-              <span className="text-xs font-bold text-[#64748B]">Active Triggers</span>
-              <p className="text-2xl font-black text-[#0F172A] mt-1">{rules.length}</p>
-            </div>
-            <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
-              <span className="text-xs font-bold text-[#64748B]">Instant Hits</span>
-              <p className="text-2xl font-black text-[#10B981] mt-1">20</p>
-            </div>
-            <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs">
-              <span className="text-xs font-bold text-[#64748B]">Response Speed</span>
-              <p className="text-2xl font-black text-[#4F46E5] mt-1">Instant (0ms)</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {rules.map((r) => (
-              <div
-                key={r.id}
-                className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-[#F59E0B]" />
-                    <h3 className="font-bold text-sm text-[#0F172A]">{r.name}</h3>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-[#64748B]">{r.hits} triggered</span>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {(r.keywords || []).map((k: string, i: number) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-0.5 rounded-lg bg-[#F1F5F9] border border-[#E2E8F0] text-[11px] font-mono font-semibold text-[#0F172A]"
-                    >
-                      "{k}"
-                    </span>
-                  ))}
-                </div>
-
-                <p className="text-xs text-[#475569] bg-[#F8FAFC] p-3 rounded-xl border border-[#E2E8F0] leading-relaxed">
-                  <span className="text-[#0F172A] font-bold">Instant Reply: </span>
-                  {r.reply}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 5: AI PLAYGROUND SIMULATOR */}
-      {/* ========================================================================= */}
-      {activeTab === "PLAYGROUND" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[580px] animate-in fade-in duration-200">
-          <div className="lg:col-span-2 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs flex flex-col overflow-hidden">
-            <div className="h-12 px-4 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F8FAFC] text-xs text-[#64748B]">
-              <div className="flex items-center gap-1.5 p-1 bg-white border border-[#CBD5E1] rounded-xl shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setPlaygroundChannel("MESSENGER")}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                    playgroundChannel === "MESSENGER"
-                      ? "bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  )}
-                >
-                  <MessageCircle className="w-3 h-3 text-[#2563EB]" />
-                  Messenger
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPlaygroundChannel("WHATSAPP")}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer",
-                    playgroundChannel === "WHATSAPP"
-                      ? "bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0]"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  )}
-                >
-                  <Phone className="w-3 h-3 text-[#16A34A]" />
-                  WhatsApp
-                </button>
-              </div>
-
-              <button
-                onClick={() =>
-                  setSimMessages([
-                    {
-                      role: "model",
-                      content:
-                        playgroundChannel === "WHATSAPP"
-                          ? "জী স্যার, বলুন কীভাবে সহযোগিতা করতে পারি?"
-                          : "আসসালামু আলাইকুম! কীভাবে সাহায্য করতে পারি? আপনার অর্ডার বা যেকোনো তথ্যের জন্য বলতে পারেন।",
-                      thinking: `Session reset for ${playgroundChannel}.`,
-                    },
-                  ])
-                }
-                className="hover:text-[#0F172A] flex items-center gap-1.5 text-xs font-bold text-[#64748B] p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" /> Reset
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8FAFC]">
-              {simMessages.map((m, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "flex flex-col max-w-[85%]",
-                    m.role === "user" ? "self-end items-end ml-auto" : "self-start items-start"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "px-4 py-2.5 rounded-2xl text-xs leading-relaxed shadow-xs",
-                      m.role === "user"
-                        ? "bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] rounded-tr-sm font-medium"
-                        : "bg-white border border-[#E2E8F0] text-[#0F172A] rounded-tl-sm"
-                    )}
-                  >
-                    <p className="whitespace-pre-wrap">{m.content}</p>
-
-                    {m.button && (
-                      <div className="mt-3 pt-2 border-t border-[#E2E8F0]">
-                        <a
-                          href={m.button.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-2 px-3 rounded-xl bg-[#DCFCE7] hover:bg-[#BBF7D0] border border-[#86EFAC] text-[#15803D] text-xs font-bold flex items-center justify-center gap-2 transition-all text-center shadow-xs cursor-pointer"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 text-[#16A34A]" />
-                          <span>{m.button.title}</span>
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                  {m.thinking && (
-                    <div className="mt-1 p-2 rounded-xl bg-white border border-[#E2E8F0] text-[10px] font-mono text-[#64748B] shadow-2xs">
-                      <span className="text-[#D97706] font-bold">Brain Logic: </span>
-                      {m.thinking}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {isTyping && (
-                <div className="p-3 rounded-xl bg-white border border-[#E2E8F0] text-xs text-[#64748B] flex items-center gap-2 shadow-xs">
-                  <Sparkles className="w-3.5 h-3.5 text-[#4F46E5] animate-spin" />
-                  <span>AI generating reply...</span>
-                </div>
-              )}
-            </div>
-
-            <form onSubmit={handleSimSend} className="p-3 border-t border-[#E2E8F0] bg-white flex gap-2">
-              <input
-                type="text"
-                value={testInput}
-                onChange={(e) => setTestInput(e.target.value)}
-                placeholder="Test question (e.g. আপনাদের ফোন নাম্বার বা কন্টাক্ট দিন / দাম কত?)..."
-                className="flex-1 px-4 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#CBD5E1] text-xs text-[#0F172A] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
-              />
-              <button
-                type="submit"
-                disabled={!testInput.trim()}
-                className="px-4 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-xs disabled:opacity-50 cursor-pointer shadow-xs"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </form>
-          </div>
-
-          <div className="p-5 rounded-2xl border border-[#E2E8F0] bg-white shadow-xs space-y-4">
-            <h3 className="font-bold text-sm text-[#0F172A]">Active Test Config</h3>
-            <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1.5 text-xs">
-              <span className="font-bold text-[#64748B] block">WhatsApp Sharing Mode</span>
-              <span className="font-mono text-[#16A34A] font-bold">
-                {whatsAppMode === "ON_DEMAND"
-                  ? "On-Demand (When asked)"
-                  : whatsAppMode === "ALWAYS"
-                  ? "Every Message"
-                  : "Disabled"}
-              </span>
-            </div>
-            <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1.5 text-xs">
-              <span className="font-bold text-[#64748B] block">Active WhatsApp Number</span>
-              <span className="font-mono font-bold text-[#0F172A]">{whatsAppNumber}</span>
-            </div>
-            <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1.5 text-xs">
-              <span className="font-bold text-[#64748B] block">Customer Support Hotline</span>
-              <span className="font-mono font-bold text-[#0F172A]">{hotlineNumber}</span>
-            </div>
-          </div>
         </div>
       )}
     </div>

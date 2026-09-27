@@ -101,6 +101,7 @@ model User {
   memberships   WorkspaceMember[]
   sessions      Session[]
   accounts      Account[]
+  copilotSessions CoPilotSession[]
 
   @@map("users")
 }
@@ -155,6 +156,8 @@ model Workspace {
   orders          Order[]
   facebookComments FacebookComment[]
   broadcastCampaigns BroadcastCampaign[]
+  businessMemories BusinessMemory[]
+  copilotSessions  CoPilotSession[]
 
   // WhatsApp & Contact Sharing Protocol
   whatsAppMode          String   @default("ON_DEMAND") // ON_DEMAND, ALWAYS, DISABLED
@@ -232,6 +235,7 @@ model FacebookPage {
   conversations Conversation[]
   knowledgeBase KnowledgeBase[]
   facebookComments FacebookComment[]
+  businessMemories BusinessMemory[]
 
   @@index([workspaceId])
   @@map("facebook_pages")
@@ -510,6 +514,8 @@ model Product {
   imageUrl     String?   @db.Text
   category     String?   @default("General")
   inStock      Boolean   @default(true)
+  stockCount   Int?      @default(100)
+  visualDescription String? @db.Text
   salesCount   Int       @default(0)
 
   createdAt    DateTime  @default(now())
@@ -654,4 +660,64 @@ model BroadcastCampaign {
   @@map("broadcast_campaigns")
 }
 
+// ----------------------------------------------------
+// BUSINESS MEMORY & DYNAMIC RULES (ZERO-SCHEMA KNOWLEDGE)
+// ----------------------------------------------------
 
+model BusinessMemory {
+  id           String        @id @default(cuid())
+  workspaceId  String
+  pageId       String?       // Optional page-specific scoping
+  category     String        // DISCOUNT_OFFER, DELIVERY_POLICY, BUSINESS_FACT, SALES_BEHAVIOR, FAQ, CUSTOM_RULE
+  title        String
+  instruction  String        @db.Text
+  condition    String?       // e.g. "quantity >= 2", "time >= 22:00", "district != Dhaka"
+  rawOwnerText String?       @db.Text
+  confidence   Float         @default(1.0)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage FacebookPage? @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, category, isActive])
+  @@map("business_memories")
+}
+
+// ----------------------------------------------------
+// COPILOT SESSIONS & CHAT-BASED STORE MANAGEMENT
+// ----------------------------------------------------
+
+model CoPilotSession {
+  id             String           @id @default(cuid())
+  workspaceId    String
+  userId         String
+  title          String           @default("Store Assistant Chat")
+  interviewStage String           @default("ACTIVE") // ONBOARDING, INTERVIEWING, ACTIVE
+  contextState   String?          @db.Text // JSON metadata tracking store onboarding progress
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       CoPilotMessage[]
+
+  @@index([workspaceId, userId])
+  @@map("copilot_sessions")
+}
+
+model CoPilotMessage {
+  id            String         @id @default(cuid())
+  sessionId     String
+  sender        String         // "OWNER" | "COPILOT"
+  content       String         @db.Text
+  actionType    String?        // "MEMORY_SAVED" | "PRODUCT_CREATED" | "PRODUCT_UPDATED" | "POLICY_UPDATED" | "STATS_REPORT" | "NONE"
+  actionPayload String?        @db.Text // JSON of action executed
+  createdAt     DateTime       @default(now())
+
+  session       CoPilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("copilot_messages")
+}

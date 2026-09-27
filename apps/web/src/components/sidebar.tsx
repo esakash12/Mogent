@@ -40,6 +40,14 @@ interface NavItem {
 
 const yourAiNav: NavItem[] = [
   {
+    name: "AI Co-Pilot",
+    nameBn: "AI Co-Pilot",
+    href: "/dashboard/ai",
+    icon: Sparkles,
+    badge: "Smart",
+    matchPrefixes: ["/dashboard/ai"],
+  },
+  {
     name: "Products",
     nameBn: "Products",
     href: "/dashboard/products",
@@ -51,7 +59,7 @@ const yourAiNav: NavItem[] = [
     nameBn: "Knowledge Base",
     href: "/dashboard/knowledge",
     icon: BookOpen,
-    matchPrefixes: ["/dashboard/knowledge", "/dashboard/ai"],
+    matchPrefixes: ["/dashboard/knowledge"],
   },
   {
     name: "Services",

@@ -245,20 +245,80 @@ export function startMessageWorker() {
           };
         });
 
-      // Fetch Knowledge Base
-      const knowledgeItems = await prisma.knowledgeBase.findMany({
-        where: {
-          workspaceId: page.workspaceId,
-          isActive: true,
-          OR: [{ facebookPageId: page.id }, { facebookPageId: null }],
-        },
-        orderBy: { priority: "desc" },
-        take: 15,
-      });
+      // Fetch Knowledge Base, Dynamic Business Memories, and Product Catalog
+      const [knowledgeItems, dynamicMemories, storeProducts] = await Promise.all([
+        prisma.knowledgeBase.findMany({
+          where: {
+            workspaceId: page.workspaceId,
+            isActive: true,
+            OR: [{ facebookPageId: page.id }, { facebookPageId: null }],
+          },
+          orderBy: { priority: "desc" },
+          take: 15,
+        }),
+        prisma.businessMemory.findMany({
+          where: {
+            workspaceId: page.workspaceId,
+            isActive: true,
+            OR: [{ pageId: page.id }, { pageId: null }],
+          },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        }),
+        prisma.product.findMany({
+          where: {
+            workspaceId: page.workspaceId,
+            inStock: true,
+          },
+          take: 30,
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
 
       const knowledgeContext = knowledgeItems.map(
         (k) => `[${k.type} - ${k.title}]: ${k.content}`
       );
+
+      // Inject Dynamic Business Rules taught via Co-Pilot
+      if (dynamicMemories.length > 0) {
+        knowledgeContext.push(
+          `[দোকানের মালিকের বিশেষ নিয়ম ও অফারসমূহ]:\n` +
+            dynamicMemories
+              .map(
+                (m) =>
+                  `• [${m.category}] ${m.title}: ${m.instruction} ${
+                    m.condition ? `(শর্ত: ${m.condition})` : ""
+                  }`
+              )
+              .join("\n")
+        );
+      }
+
+      // Inject Live Product Catalog & Inventory
+      if (storeProducts.length > 0) {
+        knowledgeContext.push(
+          `[স্টোরের লাইভ প্রডাক্ট ক্যাটালগ ও স্টক তালিকা]:\n` +
+            storeProducts
+              .map(
+                (p) =>
+                  `• ${p.name}: বর্তমান বিক্রয় মূল্য ৳${p.price}${
+                    p.regularPrice ? ` (আসল মূল্য ৳${p.regularPrice})` : ""
+                  }, স্টক: ${p.stockCount ?? 100}টি, ক্যাটাগরি: ${
+                    p.category || "General"
+                  }${p.description ? `, বিবরণ: ${p.description}` : ""}${
+                    p.visualDescription ? `, দেখতে: ${p.visualDescription}` : ""
+                  }`
+              )
+              .join("\n")
+        );
+      }
+
+      // Visual recognition instructions if customer attached an image
+      if (mediaType === "IMAGE") {
+        knowledgeContext.push(
+          `[ছবি শনাক্তকরণ নির্দেশ]: কাস্টমার একটি ছবি বা স্ক্রিনশট পাঠিয়েছেন। উপরে দেওয়া প্রডাক্ট ক্যাটালগের সাথে মিলিয়ে দেখুন এটি কোন প্রডাক্ট। প্রডাক্টটি শনাক্ত করে সরাসরি বলুন "জী ভাইয়া, এটা আমাদের [প্রোডাক্টের নাম]" এবং এর দাম ও অফার জানিয়ে সাইজ ও ডেলিভারি ঠিকানা চান।`
+        );
+      }
 
       // Inject WhatsApp & Business Contacts into Knowledge Context ONLY if not on WhatsApp
       if (!isWhatsAppRecipient && page.workspace?.whatsAppNumber) {

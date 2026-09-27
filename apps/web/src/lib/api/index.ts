@@ -16,3 +16,4 @@ export * from "./automation";
 export * from "./admin";
 export * from "./broadcasts";
 export * from "./comments";
+export * from "./copilot";

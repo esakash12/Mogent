@@ -20,6 +20,7 @@ import { automationRouter } from "./routes/automation";
 import { broadcastsRouter } from "./routes/broadcasts";
 import { uploadRouter } from "./routes/upload";
 import { commentsRouter } from "./routes/comments";
+import { copilotRouter } from "./routes/copilot";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
 import { createRateLimiter } from "./middleware/rate-limiter";
@@ -137,6 +138,7 @@ app.route("/api/broadcasts", broadcastsRouter);
 app.route("/api/campaigns", broadcastsRouter);
 app.route("/api/upload", uploadRouter);
 app.route("/api/comments", commentsRouter);
+app.route("/api/copilot", copilotRouter);
 
 // Public Static Media Handler for Local Fallback Storage
 app.get("/uploads/*", async (c) => {
@@ -284,6 +286,18 @@ async function syncDatabaseSchema() {
           WHEN others THEN NULL;
         END;
 
+        -- Products table: CoPilot & Visual search support
+        BEGIN
+          ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "stockCount" INTEGER DEFAULT 100;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "visualDescription" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+
         -- Escalation rules table: Hit tracking
         BEGIN
           ALTER TABLE "escalation_rules" ADD COLUMN IF NOT EXISTS "hitsCount" INTEGER DEFAULT 0;
@@ -371,6 +385,54 @@ async function syncDatabaseSchema() {
       );
     `);
 
+    // 5.1 Create business_memories table if it does not exist (Zero-Schema Memory)
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "business_memories" (
+        "id" TEXT NOT NULL,
+        "workspaceId" TEXT NOT NULL,
+        "pageId" TEXT,
+        "category" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "instruction" TEXT NOT NULL,
+        "condition" TEXT,
+        "rawOwnerText" TEXT,
+        "confidence" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "business_memories_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    // 5.2 Create copilot_sessions table if it does not exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "copilot_sessions" (
+        "id" TEXT NOT NULL,
+        "workspaceId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "title" TEXT NOT NULL DEFAULT 'Store Assistant Chat',
+        "interviewStage" TEXT NOT NULL DEFAULT 'ACTIVE',
+        "contextState" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "copilot_sessions_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    // 5.3 Create copilot_messages table if it does not exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "copilot_messages" (
+        "id" TEXT NOT NULL,
+        "sessionId" TEXT NOT NULL,
+        "sender" TEXT NOT NULL,
+        "content" TEXT NOT NULL,
+        "actionType" TEXT,
+        "actionPayload" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "copilot_messages_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
     // 6. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_updated" ON "conversations"("facebookPageId", "updatedAt" DESC);
@@ -389,6 +451,9 @@ async function syncDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS "idx_fb_comments_workspace" ON "facebook_comments"("workspaceId", "createdAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_fb_comments_page" ON "facebook_comments"("facebookPageId");
       CREATE INDEX IF NOT EXISTS "idx_broadcast_campaigns_workspace" ON "broadcast_campaigns"("workspaceId", "createdAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_business_memories_workspace" ON "business_memories"("workspaceId", "category", "isActive");
+      CREATE INDEX IF NOT EXISTS "idx_copilot_sessions_workspace" ON "copilot_sessions"("workspaceId", "userId");
+      CREATE INDEX IF NOT EXISTS "idx_copilot_messages_session" ON "copilot_messages"("sessionId", "createdAt");
     `);
 
     // 7. Non-Destructive Backfills for Multi-Tenancy Lockdown
