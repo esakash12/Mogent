@@ -53,7 +53,7 @@ export class ConversationsController {
         if (!conv) {
           return c.json({ success: false, error: "Conversation not found" }, 404);
         }
-        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        const convWorkspaceId = conv.workspaceId || conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
         if (convWorkspaceId && convWorkspaceId !== workspaceId) {
           return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
         }
@@ -91,7 +91,7 @@ export class ConversationsController {
         if (!conv) {
           return c.json({ success: false, error: "Conversation not found" }, 404);
         }
-        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        const convWorkspaceId = conv.workspaceId || conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
         if (convWorkspaceId && convWorkspaceId !== workspaceId) {
           return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
         }
@@ -132,7 +132,7 @@ export class ConversationsController {
         if (!conv) {
           return c.json({ success: false, error: "Conversation not found" }, 404);
         }
-        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        const convWorkspaceId = conv.workspaceId || conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
         if (convWorkspaceId && convWorkspaceId !== workspaceId) {
           return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
         }
@@ -163,7 +163,7 @@ export class ConversationsController {
         if (!conv) {
           return c.json({ success: false, error: "Conversation not found" }, 404);
         }
-        const convWorkspaceId = conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
+        const convWorkspaceId = conv.workspaceId || conv.facebookPage?.workspaceId || conv.customer?.workspaceId;
         if (convWorkspaceId && convWorkspaceId !== workspaceId) {
           return c.json({ success: false, error: "Forbidden: You do not have access to this conversation" }, 403);
         }

@@ -167,28 +167,20 @@ export function useInbox() {
         hasMoreOlderRef.current = data.length >= 30;
         setNewIncomingCount(0);
         if (data.length > 0) {
-          const hasMessenger = data.some((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) !== "WHATSAPP");
-          const hasWhatsApp = data.some((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) === "WHATSAPP");
-          
-          let finalChannelTab = "MESSENGER";
-          if (typeof window !== "undefined") {
-            const saved = localStorage.getItem("mogent_inbox_channel_tab");
-            if (saved) {
-              finalChannelTab = saved;
-            } else if (!hasMessenger && hasWhatsApp) {
-              finalChannelTab = "WHATSAPP";
-              setChannelTab("WHATSAPP");
-            }
-          }
-
           if (typeof window !== "undefined" && window.innerWidth >= 768) {
             setSelectedId((prev) => {
               if (prev && data.some((c) => c.id === prev)) return prev;
-              const targetList = data.filter((c) => {
-                const ch = c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER");
-                return ch === finalChannelTab;
-              });
-              return targetList.length > 0 ? targetList[0].id : data[0].id;
+              const currentFilter = (typeof window !== "undefined" ? localStorage.getItem("mogent_inbox_channel_filter") : null) || channelFilter || "ALL";
+              let list = data;
+              if (currentFilter === "MESSENGER") {
+                list = data.filter((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) !== "WHATSAPP");
+              } else if (currentFilter === "WHATSAPP") {
+                list = data.filter((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) === "WHATSAPP");
+              } else if (currentFilter.startsWith("PAGE:")) {
+                const pid = currentFilter.replace("PAGE:", "");
+                list = data.filter((c) => c.pageId === pid);
+              }
+              return list.length > 0 ? list[0].id : data[0].id;
             });
           }
         }

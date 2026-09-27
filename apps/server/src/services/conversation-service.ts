@@ -540,8 +540,15 @@ export class ConversationService {
     // Strict deduplication: Search for existing customer across the ENTIRE workspace
     let customer = await prisma.customer.findFirst({
       where: {
-        facebookPage: { workspaceId },
-        OR: [{ psid: targetPsid }, { phoneNumber: cleanPhone }],
+        OR: [
+          { workspaceId },
+          { facebookPage: { workspaceId } },
+        ],
+        AND: [
+          {
+            OR: [{ psid: targetPsid }, { phoneNumber: cleanPhone }],
+          },
+        ],
       },
     });
 
@@ -549,6 +556,7 @@ export class ConversationService {
       const nameParts = (name || "WhatsApp Customer").trim().split(" ");
       customer = await prisma.customer.create({
         data: {
+          workspaceId,
           facebookPageId: page.id, // Use the initially resolved page
           psid: targetPsid,
           firstName: nameParts[0] || "WhatsApp",
@@ -563,26 +571,37 @@ export class ConversationService {
         const foundPage = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } });
         if (foundPage) page = foundPage;
       }
+      const updateData: any = {
+        channel: "WHATSAPP",
+        phoneNumber: cleanPhone || customer.phoneNumber,
+      };
+      if (!customer.workspaceId) {
+        updateData.workspaceId = workspaceId;
+      }
       await prisma.customer.update({
         where: { id: customer.id },
-        data: {
-          channel: "WHATSAPP",
-          phoneNumber: cleanPhone || customer.phoneNumber,
-        },
+        data: updateData,
       });
     }
 
     let conversation = await prisma.conversation.findFirst({
       where: {
         customerId: customer.id,
-        facebookPageId: page.id,
+        channel: "WHATSAPP",
+        OR: [
+          { workspaceId },
+          { facebookPage: { workspaceId } },
+          { facebookPageId: page.id },
+        ],
       },
       include: { customer: true, facebookPage: true },
+      orderBy: { updatedAt: "desc" },
     });
 
     if (!conversation) {
       conversation = await prisma.conversation.create({
         data: {
+          workspaceId,
           facebookPageId: page.id,
           customerId: customer.id,
           status: "OPEN",
@@ -593,7 +612,11 @@ export class ConversationService {
     } else {
       await prisma.conversation.update({
         where: { id: conversation.id },
-        data: { channel: "WHATSAPP", updatedAt: new Date() },
+        data: {
+          workspaceId: conversation.workspaceId || workspaceId,
+          channel: "WHATSAPP",
+          updatedAt: new Date(),
+        },
       });
     }
 

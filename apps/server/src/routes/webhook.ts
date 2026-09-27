@@ -312,6 +312,15 @@ webhookRouter.post("/facebook", handleIngest);
 // -----------------------------------------------------------------------------
 webhookRouter.post("/telegram", async (c) => {
   try {
+    const secretToken = (process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+    if (secretToken) {
+      const incomingSecret = c.req.header("X-Telegram-Bot-Api-Secret-Token") || c.req.header("x-telegram-bot-api-secret-token");
+      if (incomingSecret !== secretToken) {
+        console.warn("❌ [Telegram Webhook] Unauthorized: Invalid secret token");
+        return c.text("Unauthorized", 401);
+      }
+    }
+
     const update = await c.req.json();
     const msg = update.message;
     if (!msg || !msg.text) return c.json({ ok: true });
@@ -542,14 +551,17 @@ async function resolveWhatsAppWorkspace(
     } catch {}
   }
 
-  // 4. Safe single-tenant fallback to first workspace in DB
+  // 4. Safe single-tenant fallback ONLY if there is exactly 1 workspace in the system
   try {
-    const ws = await prisma.workspace.findFirst({ select: { id: true } });
-    if (ws) {
-      if (phoneNumberId) {
-        await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, ws.id, "EX", 7 * 86400);
+    const wsCount = await prisma.workspace.count();
+    if (wsCount === 1) {
+      const ws = await prisma.workspace.findFirst({ select: { id: true } });
+      if (ws) {
+        if (phoneNumberId) {
+          await redisConnection.set(`mogent:wa_phone_id_to_ws:${phoneNumberId}`, ws.id, "EX", 7 * 86400);
+        }
+        return ws.id;
       }
-      return ws.id;
     }
   } catch {}
 
@@ -841,14 +853,22 @@ webhookRouter.post("/whatsapp", async (c) => {
                 // Strict deduplication: Search for existing customer across the ENTIRE workspace
                 let customer = await prisma.customer.findFirst({
                   where: {
-                    facebookPage: { workspaceId: targetWorkspaceId },
-                    OR: [{ psid: targetPsid }, { phoneNumber: fromPhone }],
+                    OR: [
+                      { workspaceId: targetWorkspaceId },
+                      { facebookPage: { workspaceId: targetWorkspaceId } },
+                    ],
+                    AND: [
+                      {
+                        OR: [{ psid: targetPsid }, { phoneNumber: fromPhone }],
+                      },
+                    ],
                   },
                 });
 
                 if (!customer) {
                   customer = await prisma.customer.create({
                     data: {
+                      workspaceId: targetWorkspaceId,
                       facebookPageId: page.id, // Use the resolved WhatsApp page
                       psid: targetPsid,
                       firstName: contactName,
@@ -863,6 +883,9 @@ webhookRouter.post("/whatsapp", async (c) => {
                     if (foundPage) page = foundPage;
                   }
                   const updateData: any = { channel: "WHATSAPP" };
+                  if (!customer.workspaceId) {
+                    updateData.workspaceId = targetWorkspaceId;
+                  }
                   if (contactName && contactName !== `+${fromPhone}` && (!customer.firstName || customer.firstName === "WhatsApp Tester" || customer.firstName.startsWith("+"))) {
                     updateData.firstName = contactName;
                   }
@@ -872,13 +895,24 @@ webhookRouter.post("/whatsapp", async (c) => {
                   });
                 }
 
+                // Look for existing WhatsApp conversation for this customer across the workspace
                 let conversation = await prisma.conversation.findFirst({
-                  where: { customerId: customer.id, facebookPageId: page.id },
+                  where: {
+                    customerId: customer.id,
+                    channel: "WHATSAPP",
+                    OR: [
+                      { workspaceId: targetWorkspaceId },
+                      { facebookPage: { workspaceId: targetWorkspaceId } },
+                      { facebookPageId: page.id },
+                    ],
+                  },
+                  orderBy: { updatedAt: "desc" },
                 });
 
                 if (!conversation) {
                   conversation = await prisma.conversation.create({
                     data: {
+                      workspaceId: targetWorkspaceId,
                       facebookPageId: page.id,
                       customerId: customer.id,
                       status: "OPEN",
@@ -889,6 +923,7 @@ webhookRouter.post("/whatsapp", async (c) => {
                   await prisma.conversation.update({
                     where: { id: conversation.id },
                     data: {
+                      workspaceId: conversation.workspaceId || targetWorkspaceId,
                       channel: "WHATSAPP",
                       updatedAt: new Date(),
                       lastCustomerMessageAt: new Date(Number(msg.timestamp) * 1000 || Date.now()),

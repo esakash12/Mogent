@@ -101,6 +101,7 @@ export function startMessageWorker() {
         const profile = await facebookApi.fetchCustomerProfile(pageAccessToken, senderPsid);
         customer = await prisma.customer.create({
           data: {
+            workspaceId: page.workspaceId,
             facebookPageId: page.id,
             psid: senderPsid,
             firstName: profile?.first_name || null,
@@ -111,17 +112,19 @@ export function startMessageWorker() {
             gender: profile?.gender || null,
           },
         });
-      } else if (!customer.firstName || customer.firstName === "Customer" || customer.firstName.startsWith("Customer #") || !customer.profilePic) {
+      } else if (!customer.firstName || customer.firstName === "Customer" || customer.firstName.startsWith("Customer #") || !customer.profilePic || !customer.workspaceId) {
         // Re-fetch profile if name was previously missing or defaulted to placeholder
         const profile = await facebookApi.fetchCustomerProfile(pageAccessToken, senderPsid);
-        if (profile?.first_name || profile?.profile_pic) {
+        const updateData: any = {};
+        if (profile?.first_name) updateData.firstName = profile.first_name;
+        if (profile?.last_name) updateData.lastName = profile.last_name;
+        if (profile?.profile_pic) updateData.profilePic = profile.profile_pic;
+        if (!customer.workspaceId) updateData.workspaceId = page.workspaceId;
+
+        if (Object.keys(updateData).length > 0) {
           customer = await prisma.customer.update({
             where: { id: customer.id },
-            data: {
-              firstName: profile?.first_name || customer.firstName,
-              lastName: profile?.last_name || customer.lastName,
-              profilePic: profile?.profile_pic || customer.profilePic,
-            },
+            data: updateData,
           });
         }
       }
@@ -138,6 +141,7 @@ export function startMessageWorker() {
       if (!conversation) {
         conversation = await prisma.conversation.create({
           data: {
+            workspaceId: page.workspaceId,
             facebookPageId: page.id,
             customerId: customer.id,
             status: "OPEN",

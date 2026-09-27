@@ -615,14 +615,23 @@ pagesRouter.post("/whatsapp/test", async (c) => {
         const targetPsid = `wa_${cleanPhone}`;
         let customer = await prisma.customer.findFirst({
           where: {
-            facebookPageId: page.id,
-            OR: [{ psid: targetPsid }, { phoneNumber: cleanPhone }],
+            OR: [
+              { workspaceId: page.workspaceId },
+              { facebookPageId: page.id },
+              { facebookPage: { workspaceId: page.workspaceId } },
+            ],
+            AND: [
+              {
+                OR: [{ psid: targetPsid }, { phoneNumber: cleanPhone }],
+              },
+            ],
           },
         });
 
         if (!customer) {
           customer = await prisma.customer.create({
             data: {
+              workspaceId: page.workspaceId,
               facebookPageId: page.id,
               psid: targetPsid,
               firstName: "WhatsApp Tester",
@@ -632,19 +641,32 @@ pagesRouter.post("/whatsapp/test", async (c) => {
             },
           });
         } else {
+          const updateData: any = { channel: "WHATSAPP" };
+          if (!customer.workspaceId) {
+            updateData.workspaceId = page.workspaceId;
+          }
           await prisma.customer.update({
             where: { id: customer.id },
-            data: { channel: "WHATSAPP" },
+            data: updateData,
           });
         }
 
         let conv = await prisma.conversation.findFirst({
-          where: { customerId: customer.id, facebookPageId: page.id },
+          where: {
+            customerId: customer.id,
+            channel: "WHATSAPP",
+            OR: [
+              { workspaceId: page.workspaceId },
+              { facebookPageId: page.id },
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
         });
 
         if (!conv) {
           conv = await prisma.conversation.create({
             data: {
+              workspaceId: page.workspaceId,
               facebookPageId: page.id,
               customerId: customer.id,
               status: "OPEN",
@@ -654,7 +676,11 @@ pagesRouter.post("/whatsapp/test", async (c) => {
         } else {
           await prisma.conversation.update({
             where: { id: conv.id },
-            data: { channel: "WHATSAPP", updatedAt: new Date() },
+            data: {
+              workspaceId: conv.workspaceId || page.workspaceId,
+              channel: "WHATSAPP",
+              updatedAt: new Date(),
+            },
           });
         }
 

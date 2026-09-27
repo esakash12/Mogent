@@ -443,7 +443,46 @@ async function syncDatabaseSchema() {
     // 6. WhatsApp Conversation Deduplication & Orphan Cleanup
     try {
       console.log("🧹 Running WhatsApp Deduplication & Orphan Cleanup...");
-      // Get all WhatsApp customers that have a phone number
+      // 6.1 Backfill workspaceId on any legacy Customer & Conversation records
+      await prisma.$executeRawUnsafe(`
+        UPDATE customers c
+        SET "workspaceId" = p."workspaceId"
+        FROM facebook_pages p
+        WHERE c."facebookPageId" = p.id AND c."workspaceId" IS NULL;
+      `).catch(() => {});
+
+      await prisma.$executeRawUnsafe(`
+        UPDATE conversations conv
+        SET "workspaceId" = p."workspaceId"
+        FROM facebook_pages p
+        WHERE conv."facebookPageId" = p.id AND conv."workspaceId" IS NULL;
+      `).catch(() => {});
+
+      // 6.2 Merge duplicate WhatsApp conversations belonging to the SAME customer
+      const customersWithMultipleConvs = await prisma.customer.findMany({
+        include: {
+          conversations: {
+            where: { channel: "WHATSAPP" },
+            orderBy: { updatedAt: "desc" },
+          },
+        },
+      });
+
+      for (const cust of customersWithMultipleConvs) {
+        if (cust.conversations.length > 1) {
+          const [primaryConv, ...dupConvs] = cust.conversations;
+          for (const dup of dupConvs) {
+            await prisma.message.updateMany({
+              where: { conversationId: dup.id },
+              data: { conversationId: primaryConv.id },
+            });
+            await prisma.conversation.delete({ where: { id: dup.id } }).catch(() => {});
+          }
+          console.log(`✅ Merged ${dupConvs.length} duplicate WhatsApp conversation thread(s) for customer ${cust.firstName || cust.phoneNumber} (${cust.id})`);
+        }
+      }
+
+      // 6.3 Merge duplicate Customers having the same WhatsApp phone number in the same Workspace
       const waCustomers = await prisma.customer.findMany({
         where: {
           phoneNumber: { not: "" },
@@ -451,17 +490,22 @@ async function syncDatabaseSchema() {
         },
         include: {
           facebookPage: { select: { workspaceId: true } },
-          conversations: { select: { id: true, facebookPageId: true } }
-        }
+          conversations: {
+            where: { channel: "WHATSAPP" },
+            orderBy: { updatedAt: "desc" },
+            select: { id: true, facebookPageId: true },
+          },
+        },
       });
 
       // Group by WorkspaceID + CleanPhone
       const groupMap: Record<string, typeof waCustomers> = {};
       for (const cust of waCustomers) {
-        if (!cust.facebookPage?.workspaceId || !cust.phoneNumber) continue;
+        const wsId = cust.workspaceId || cust.facebookPage?.workspaceId;
+        if (!wsId || !cust.phoneNumber) continue;
         const cleanPhone = cust.phoneNumber.replace(/\D/g, "");
         if (!cleanPhone) continue;
-        const key = `${cust.facebookPage.workspaceId}:${cleanPhone}`;
+        const key = `${wsId}:${cleanPhone}`;
         if (!groupMap[key]) groupMap[key] = [];
         groupMap[key].push(cust);
       }
@@ -469,17 +513,12 @@ async function syncDatabaseSchema() {
       for (const key of Object.keys(groupMap)) {
         const group = groupMap[key];
         if (group.length > 1) {
-          // Sort to find the primary customer (the one with the most recent updated conversation, or just the first)
-          // For simplicity, we keep the first one as primary
           const primary = group[0];
-          
+
           for (let i = 1; i < group.length; i++) {
             const duplicate = group[i];
-            
-            // Move all messages from duplicate conversations to the primary conversation
-            // If primary doesn't have a conversation, we just move the duplicate's conversation to primary customer
             let primaryConv = primary.conversations[0];
-            
+
             for (const dupConv of duplicate.conversations) {
               if (primaryConv) {
                 // Move messages
@@ -498,7 +537,13 @@ async function syncDatabaseSchema() {
                 primaryConv = { id: dupConv.id, facebookPageId: primary.facebookPageId };
               }
             }
-            
+
+            // Move orders from duplicate customer to primary
+            await prisma.order.updateMany({
+              where: { customerId: duplicate.id },
+              data: { customerId: primary.id },
+            });
+
             // Delete duplicate customer
             await prisma.customer.delete({ where: { id: duplicate.id } }).catch(() => {});
           }
