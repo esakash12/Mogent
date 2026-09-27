@@ -1,4 +1,4 @@
-﻿import { prisma } from "@mogent/database";
+import { prisma } from "@mogent/database";
 import { telegramAlertsQueue } from "../queue/message-queue";
 
 export interface CreateOrderInput {
@@ -17,6 +17,7 @@ export interface CreateOrderInput {
   paymentMethod?: string;
   status?: string;
   pageId?: string;
+  channel?: string;
   notes?: string;
   isAiGenerated?: boolean;
 }
@@ -27,30 +28,21 @@ export async function createOrder(input: CreateOrderInput) {
   const finalAmount = Number(input.totalAmount || input.amount || 0);
   const finalStatus = input.status || "CONFIRMED";
   const finalPaymentMethod = input.paymentMethod || "COD";
+  const channel = input.channel || (finalPhone ? "WHATSAPP" : "MESSENGER");
 
-  // 1. Resolve Workspace
-  let targetWorkspaceId = input.workspaceId;
-  if (!targetWorkspaceId) {
-    const defaultWs = await prisma.workspace.findFirst({
-      orderBy: { updatedAt: "desc" },
-    });
-    targetWorkspaceId = defaultWs?.id;
-  }
-
-  // 2. Resolve Customer (Guaranteed Valid Customer ID for Foreign Key)
+  // 1. Resolve Customer if customerId or conversationId passed
   let targetCustomer: any = null;
 
-  // A. Check if input.customerId is a valid customer ID
   if (input.customerId) {
     targetCustomer = await prisma.customer.findUnique({
       where: { id: input.customerId },
+      include: { facebookPage: true },
     });
 
-    // If not a customer, check if it is a conversation ID passed as customerId
     if (!targetCustomer) {
       const conv = await prisma.conversation.findUnique({
         where: { id: input.customerId },
-        include: { customer: true },
+        include: { customer: { include: { facebookPage: true } } },
       });
       if (conv?.customer) {
         targetCustomer = conv.customer;
@@ -58,54 +50,33 @@ export async function createOrder(input: CreateOrderInput) {
     }
   }
 
-  // B. Check if input.conversationId is passed
   if (!targetCustomer && input.conversationId) {
     const conv = await prisma.conversation.findUnique({
       where: { id: input.conversationId },
-      include: { customer: true },
+      include: { customer: { include: { facebookPage: true } } },
     });
     if (conv?.customer) {
       targetCustomer = conv.customer;
     }
   }
 
-  // C. Resolve Target Page
-  let targetPageId = input.pageId;
-  if (!targetPageId || targetPageId === "ALL") {
-    if (targetCustomer?.facebookPageId) {
-      targetPageId = targetCustomer.facebookPageId;
-    } else {
-      const page = await prisma.facebookPage.findFirst({
-        where: targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {},
-      });
-      targetPageId = page?.id;
-    }
+  // 2. Resolve Workspace strictly
+  let targetWorkspaceId = input.workspaceId;
+  if (!targetWorkspaceId) {
+    targetWorkspaceId = targetCustomer?.workspaceId || targetCustomer?.facebookPage?.workspaceId;
   }
 
-  if (!targetPageId) {
-    const anyPage = await prisma.facebookPage.findFirst();
-    if (anyPage) {
-      targetPageId = anyPage.id;
-    } else if (targetWorkspaceId) {
-      const newPage = await prisma.facebookPage.create({
-        data: {
-          workspaceId: targetWorkspaceId,
-          pageId: `store-${Date.now()}`,
-          name: "Store Orders",
-          category: "Store Orders",
-          encryptedAccessToken: "direct_token",
-          tokenIv: "direct_iv",
-          tokenTag: "direct_tag",
-          verifyToken: "mogent_fb_verify_token_secure",
-        },
-      });
-      targetPageId = newPage.id;
-    } else {
-      throw new Error("No Facebook page or workspace available for order creation.");
-    }
+  if (!targetWorkspaceId) {
+    throw new Error("Workspace ID is required for order creation.");
   }
 
-  // D. Find by phone number if still not resolved
+  // 3. Resolve Facebook Page ID (Optional - WhatsApp or direct orders have null)
+  let targetPageId = input.pageId && input.pageId !== "ALL" ? input.pageId : null;
+  if (!targetPageId && targetCustomer?.facebookPageId) {
+    targetPageId = targetCustomer.facebookPageId;
+  }
+
+  // 4. Resolve / Create Customer strictly within Workspace
   const cleanName = (input.customerName || targetCustomer?.firstName || "").trim();
   const parts = cleanName.split(" ").filter(Boolean);
   const firstName = parts[0] || targetCustomer?.firstName || "Customer";
@@ -114,15 +85,14 @@ export async function createOrder(input: CreateOrderInput) {
   if (!targetCustomer && finalPhone) {
     targetCustomer = await prisma.customer.findFirst({
       where: {
-        facebookPageId: targetPageId,
+        workspaceId: targetWorkspaceId,
         phoneNumber: finalPhone,
       },
     });
   }
 
-  // E. Update existing customer or create a new one
   if (targetCustomer) {
-    if (cleanName || finalAddress || finalPhone) {
+    if (cleanName || finalAddress || finalPhone || !targetCustomer.workspaceId) {
       targetCustomer = await prisma.customer.update({
         where: { id: targetCustomer.id },
         data: {
@@ -130,13 +100,16 @@ export async function createOrder(input: CreateOrderInput) {
           lastName: lastName || targetCustomer.lastName,
           phoneNumber: finalPhone || targetCustomer.phoneNumber,
           deliveryAddress: finalAddress || targetCustomer.deliveryAddress,
+          workspaceId: targetCustomer.workspaceId || targetWorkspaceId,
         },
       });
     }
   } else {
     targetCustomer = await prisma.customer.create({
       data: {
+        workspaceId: targetWorkspaceId,
         facebookPageId: targetPageId,
+        channel,
         psid: `ord-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         firstName,
         lastName,
@@ -147,7 +120,7 @@ export async function createOrder(input: CreateOrderInput) {
     });
   }
 
-  // 3. Format Items
+  // 5. Format Items
   let orderItems: any = input.items;
   if (!orderItems) {
     orderItems = [{ name: input.productName || "Standard Order", quantity: 1, unitPrice: finalAmount }];
@@ -157,9 +130,10 @@ export async function createOrder(input: CreateOrderInput) {
 
   const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  // 4. Create Order in Database
+  // 6. Create Order with direct Workspace relation
   const createdOrder = await prisma.order.create({
     data: {
+      workspaceId: targetWorkspaceId,
       customerId: targetCustomer.id,
       orderNumber,
       items: orderItems,
@@ -171,7 +145,7 @@ export async function createOrder(input: CreateOrderInput) {
     },
   });
 
-  // 5. Increment Customer Metrics & Tag
+  // 7. Increment Customer Metrics & Tag
   const existingTags = targetCustomer.tags || [];
   const updatedTags = Array.from(new Set([...existingTags, "CONFIRMED_BUYER", "ORDER_ACTIVE"]));
 

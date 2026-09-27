@@ -1,7 +1,6 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -152,6 +151,10 @@ model Workspace {
   escalationRules EscalationRule[]
   telegramConfigs TelegramConfig[]
   customers       Customer[]
+  conversations   Conversation[]
+  orders          Order[]
+  facebookComments FacebookComment[]
+  broadcastCampaigns BroadcastCampaign[]
 
   // WhatsApp & Contact Sharing Protocol
   whatsAppMode          String   @default("ON_DEMAND") // ON_DEMAND, ALWAYS, DISABLED
@@ -228,6 +231,7 @@ model FacebookPage {
   customers     Customer[]
   conversations Conversation[]
   knowledgeBase KnowledgeBase[]
+  facebookComments FacebookComment[]
 
   @@index([workspaceId])
   @@map("facebook_pages")
@@ -239,7 +243,7 @@ model FacebookPage {
 
 model Customer {
   id             String    @id @default(cuid())
-  facebookPageId String
+  facebookPageId String?
   psid           String    // Page-Scoped User ID (from Messenger)
   firstName      String?
   lastName       String?
@@ -268,7 +272,7 @@ model Customer {
 
   workspaceId   String?
   workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  facebookPage  FacebookPage   @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+  facebookPage  FacebookPage?  @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   orders        Order[]
 
@@ -285,7 +289,8 @@ model Customer {
 
 model Conversation {
   id             String             @id @default(cuid())
-  facebookPageId String
+  workspaceId    String?
+  facebookPageId String?
   customerId     String
   status         ConversationStatus @default(OPEN)
   channel        String             @default("MESSENGER") // MESSENGER, WHATSAPP, TELEGRAM
@@ -300,11 +305,13 @@ model Conversation {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  facebookPage FacebookPage     @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+  workspace    Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage FacebookPage?    @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
   customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
   messages     Message[]
   escalations  EscalationEvent[]
 
+  @@index([workspaceId])
   @@index([facebookPageId, status])
   @@index([facebookPageId, updatedAt])
   @@index([updatedAt])
@@ -445,6 +452,7 @@ model EscalationEvent {
 
 model Order {
   id          String      @id @default(cuid())
+  workspaceId String?
   customerId  String
   orderNumber String      @unique
   items       Json        // Array of { product, quantity, unitPrice }
@@ -459,8 +467,10 @@ model Order {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  workspace   Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
+  @@index([workspaceId])
   @@index([customerId])
   @@index([customerId, createdAt])
   @@index([status])
@@ -586,4 +596,62 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+// ----------------------------------------------------
+// FACEBOOK COMMENTS & MODERATION (DURABLE POSTGRES STORAGE)
+// ----------------------------------------------------
+
+model FacebookComment {
+  id             String       @id // Facebook Comment ID
+  workspaceId    String
+  facebookPageId String
+  postId         String?
+  postTitle      String?
+  authorName     String
+  authorId       String?
+  authorPic      String?
+  message        String       @db.Text
+  createdTime    DateTime     @default(now())
+  sentiment      String       @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE
+  category       String       @default("SAFE")    // SAFE, BAD, SPAM, OFFENSIVE
+  isHidden       Boolean      @default(false)
+  likeCount      Int          @default(0)
+  repliesCount   Int          @default(0)
+  replies        Json?        // Array of { id, authorName, message, createdTime }
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage   FacebookPage @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, category])
+  @@index([facebookPageId, createdTime])
+  @@map("facebook_comments")
+}
+
+// ----------------------------------------------------
+// BROADCASTS & CAMPAIGNS (DURABLE AUDIT HISTORY)
+// ----------------------------------------------------
+
+model BroadcastCampaign {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  title           String
+  message         String    @db.Text
+  channel         String    @default("ALL") // ALL, MESSENGER, WHATSAPP
+  facebookPageId  String?
+  recipientsCount Int       @default(0)
+  sentCount       Int       @default(0)
+  status          String    @default("SENT") // DRAFT, SENDING, SENT, FAILED
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("broadcast_campaigns")
+}
+
 

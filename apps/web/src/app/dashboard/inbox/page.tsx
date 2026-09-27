@@ -25,6 +25,11 @@ export default function LiveInboxPage() {
     filteredConversations,
     messengerConversations,
     whatsAppConversations,
+    allCount,
+    messengerCount,
+    whatsAppCount,
+    pages,
+    channelFilter,
     selectedId,
     setSelectedId,
     activeConv,
@@ -158,10 +163,12 @@ export default function LiveInboxPage() {
       >
         {/* Channel Switcher */}
         <ChannelTabs
-          channelTab={channelTab}
+          channelFilter={channelFilter}
           onSwitchChannel={handleSwitchChannel}
-          messengerCount={messengerConversations.length}
-          whatsAppCount={whatsAppConversations.length}
+          allCount={allCount}
+          messengerCount={messengerCount}
+          whatsAppCount={whatsAppCount}
+          pages={pages}
         />
 
         {/* Search & Action Header */}

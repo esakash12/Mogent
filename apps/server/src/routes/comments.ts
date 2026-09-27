@@ -36,7 +36,7 @@ export interface FacebookCommentItem {
 // -----------------------------------------------------------------------------
 // HELPER: Auto-Classify Sentiment and Moderation Category
 // -----------------------------------------------------------------------------
-function classifyComment(text: string): {
+export function classifyComment(text: string): {
   sentiment: "POSITIVE" | "NEUTRAL" | "NEGATIVE";
   category: "SAFE" | "BAD" | "SPAM" | "OFFENSIVE";
 } {
@@ -144,119 +144,13 @@ function classifyComment(text: string): {
 }
 
 // -----------------------------------------------------------------------------
-// HELPER: Generate Initial Sample Comments if Page is Fresh
-// -----------------------------------------------------------------------------
-function generateSeedComments(pageName: string, pageId: string): FacebookCommentItem[] {
-  const now = Date.now();
-  return [
-    {
-      id: `fb_cmt_${pageId}_1`,
-      pageId,
-      pageName,
-      postId: "post_101",
-      postTitle: "আমাদের নতুন ঈদ কালেকশন ২০২৬ প্রিমিয়াম কটন পাঞ্জাবি",
-      authorName: "Tanvir Ahmed",
-      authorId: "user_101",
-      authorPic: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60",
-      message: "ভাই আপনাদের প্রোডাক্টের কোয়ালিটি একদম খারাপ! ডেলিভারি পাইছি ৩ দিন পর তাও ছেঁড়া ছিল। অবিলম্বে রিফান্ড দেন!",
-      createdTime: new Date(now - 1000 * 60 * 35).toISOString(),
-      sentiment: "NEGATIVE",
-      category: "BAD",
-      isHidden: false,
-      likeCount: 2,
-      repliesCount: 0,
-      replies: [],
-    },
-    {
-      id: `fb_cmt_${pageId}_2`,
-      pageId,
-      pageName,
-      postId: "post_102",
-      postTitle: "অফিসিয়াল মেম্বারশিপ এবং গিফট ভাউচার অফার",
-      authorName: "Rifat Hasan",
-      authorId: "user_102",
-      authorPic: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=60",
-      message: "ঘরে বসে পার্ট টাইম দিনে ২০০০ টাকা আয় করতে চাইলে টেলিগ্রামে যোগাযোগ করুন 👉 https://t.me/freeincome2026",
-      createdTime: new Date(now - 1000 * 60 * 95).toISOString(),
-      sentiment: "NEGATIVE",
-      category: "SPAM",
-      isHidden: true,
-      likeCount: 0,
-      repliesCount: 0,
-      replies: [],
-    },
-    {
-      id: `fb_cmt_${pageId}_3`,
-      pageId,
-      pageName,
-      postId: "post_101",
-      postTitle: "আমাদের নতুন ঈদ কালেকশন ২০২৬ প্রিমিয়াম কটন পাঞ্জাবি",
-      authorName: "Kamrul Islam",
-      authorId: "user_103",
-      authorPic: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=60",
-      message: "এরা একটা বাটপার পেজ! অ্যাডভান্স টাকা নিয়া মেসেজের রিপ্লে দেয় না, ভুলেও কেউ অর্ডার কইরেন না scammer!",
-      createdTime: new Date(now - 1000 * 60 * 180).toISOString(),
-      sentiment: "NEGATIVE",
-      category: "OFFENSIVE",
-      isHidden: false,
-      likeCount: 4,
-      repliesCount: 0,
-      replies: [],
-    },
-    {
-      id: `fb_cmt_${pageId}_4`,
-      pageId,
-      pageName,
-      postId: "post_103",
-      postTitle: "লেটেস্ট ক্যাজুয়াল স্নিকার্স ব্ল্যাক এডিশন",
-      authorName: "Nusrat Jahan",
-      authorId: "user_104",
-      authorPic: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=60",
-      message: "এই জুতার সাইজ ৪০ কি এভেইলেবল আছে? আর ঢাকার ভিতরে হোম ডেলিভারি চার্জ কত পরবে জানাবেন প্লিজ।",
-      createdTime: new Date(now - 1000 * 60 * 240).toISOString(),
-      sentiment: "NEUTRAL",
-      category: "SAFE",
-      isHidden: false,
-      likeCount: 1,
-      repliesCount: 1,
-      replies: [
-        {
-          id: `rep_${pageId}_4_1`,
-          authorName: pageName,
-          message: "জি আপু সাইজ ৪০ এভেইলেবল আছে! ঢাকার ভিতরে ডেলিভারি চার্জ ৭০ টাকা। ইনবক্সে মেসেজ দিন প্লিজ।",
-          createdTime: new Date(now - 1000 * 60 * 200).toISOString(),
-        },
-      ],
-    },
-    {
-      id: `fb_cmt_${pageId}_5`,
-      pageId,
-      pageName,
-      postId: "post_103",
-      postTitle: "লেটেস্ট ক্যাজুয়াল স্নিকার্স ব্ল্যাক এডিশন",
-      authorName: "Shakil Mahmud",
-      authorId: "user_105",
-      authorPic: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=60",
-      message: "আলহামদুলিল্লাহ পার্সেলটা কালকে হাতে পেয়েছি, কোয়ালিটি অনেক বেশি প্রিমিয়াম! প্যাকেজিং অনেক সুন্দর ছিল।",
-      createdTime: new Date(now - 1000 * 60 * 360).toISOString(),
-      sentiment: "POSITIVE",
-      category: "SAFE",
-      isHidden: false,
-      likeCount: 5,
-      repliesCount: 0,
-      replies: [],
-    },
-  ];
-}
-
-// -----------------------------------------------------------------------------
-// 1. GET /api/comments - List and Moderate Facebook Comments
+// 1. GET /api/comments - Fetch Real Facebook Comments for Workspace
 // -----------------------------------------------------------------------------
 commentsRouter.get("/", async (c) => {
   const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
-  const tab = (c.req.query("tab") || "ALL").toUpperCase();
-  const search = (c.req.query("search") || "").trim().toLowerCase();
-  const pageIdFilter = c.req.query("pageId");
+  const tab = c.req.query("tab") || "ALL"; // ALL, BAD, SPAM, OFFENSIVE
+  const pageId = c.req.query("pageId");
+  const search = (c.req.query("search") || "").toLowerCase().trim();
 
   try {
     if (!workspaceId) {
@@ -267,12 +161,13 @@ commentsRouter.get("/", async (c) => {
       });
     }
 
-    // 1. Load Facebook pages for workspace
+    // 1. Fetch connected pages for workspace
+    const pageFilter: any = { workspaceId };
+    if (pageId && pageId !== "ALL") {
+      pageFilter.id = pageId;
+    }
     const pages = await prisma.facebookPage.findMany({
-      where: {
-        workspaceId,
-        ...(pageIdFilter && pageIdFilter !== "ALL" ? { id: pageIdFilter } : {}),
-      },
+      where: pageFilter,
     });
 
     if (pages.length === 0) {
@@ -283,93 +178,121 @@ commentsRouter.get("/", async (c) => {
       });
     }
 
-    // 2. Check Redis cached comments for this workspace
-    const cacheKey = `mogent:comments_cache:${workspaceId}`;
-    let cachedJson = await redisConnection.get(cacheKey);
-    let allComments: FacebookCommentItem[] = [];
+    // 2. Fetch real comments from PostgreSQL database
+    const dbComments = await prisma.facebookComment.findMany({
+      where: {
+        workspaceId,
+        ...(pageId && pageId !== "ALL" ? { facebookPageId: pageId } : {}),
+      },
+      include: {
+        facebookPage: {
+          select: { id: true, name: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
 
-    if (cachedJson) {
-      try {
-        allComments = JSON.parse(cachedJson);
-      } catch {
-        allComments = [];
-      }
-    }
+    // 3. Map DB comments to response format
+    let allComments: FacebookCommentItem[] = dbComments.map((cmt) => {
+      const repliesList = Array.isArray(cmt.replies) ? (cmt.replies as any[]) : [];
+      return {
+        id: cmt.id,
+        pageId: cmt.facebookPageId,
+        pageName: cmt.facebookPage?.name || "Facebook Page",
+        postId: cmt.postId || undefined,
+        postTitle: cmt.postTitle || "Facebook Post",
+        authorName: cmt.authorName || "Facebook User",
+        authorId: cmt.authorId || undefined,
+        authorPic: cmt.authorPic || (cmt.authorId ? `https://graph.facebook.com/${cmt.authorId}/picture?type=square` : undefined),
+        message: cmt.message,
+        createdTime: cmt.createdTime.toISOString(),
+        sentiment: (cmt.sentiment as any) || "NEUTRAL",
+        category: (cmt.category as any) || "SAFE",
+        isHidden: cmt.isHidden,
+        likeCount: cmt.likeCount,
+        repliesCount: cmt.repliesCount || repliesList.length,
+        replies: repliesList,
+      };
+    });
 
-    // 3. If cache empty, attempt live fetch from Facebook Graph API
+    // 4. If DB is empty, attempt a non-blocking background sync from Facebook Graph API
     if (allComments.length === 0) {
-      let liveComments: FacebookCommentItem[] = [];
-
       for (const page of pages) {
-        let pageToken = "";
+        if (!page.encryptedAccessToken || !page.pageId) continue;
         try {
-          pageToken = decryptToken(
+          const pageToken = decryptToken(
             page.encryptedAccessToken,
             page.tokenIv,
             page.tokenTag,
             config.tokenEncryptionKey
           );
-        } catch (e) {
-          console.warn(`Could not decrypt token for page ${page.name}`);
-        }
+          if (!pageToken) continue;
 
-        if (pageToken && page.pageId) {
-          try {
-            // Fetch recent posts with comments
-            const fbRes = await fetch(
-              `https://graph.facebook.com/${config.facebook.graphVersion}/${page.pageId}/feed?fields=id,message,created_time,comments{id,message,from,created_time,comment_count,like_count,is_hidden}&limit=15&access_token=${pageToken}`
-            );
-            if (fbRes.ok) {
-              const fbData = await fbRes.json();
-              const posts = fbData.data || [];
+          const fbRes = await fetch(
+            `https://graph.facebook.com/${config.facebook.graphVersion}/${page.pageId}/feed?fields=id,message,created_time,comments{id,message,from,created_time,comment_count,like_count,is_hidden}&limit=10&access_token=${pageToken}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
 
-              for (const post of posts) {
-                const cList = post.comments?.data || [];
-                for (const cmt of cList) {
-                  const classification = classifyComment(cmt.message || "");
-                  liveComments.push({
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            const posts = fbData.data || [];
+
+            for (const post of posts) {
+              const cList = post.comments?.data || [];
+              for (const cmt of cList) {
+                const classification = classifyComment(cmt.message || "");
+                const saved = await prisma.facebookComment.upsert({
+                  where: { id: cmt.id },
+                  update: {
+                    isHidden: Boolean(cmt.is_hidden),
+                  },
+                  create: {
                     id: cmt.id,
-                    pageId: page.id,
-                    pageName: page.name,
-                    postId: post.id,
+                    postId: post.id || null,
                     postTitle: post.message ? post.message.slice(0, 80) : "Facebook Post",
+                    facebookPageId: page.id,
+                    workspaceId,
                     authorName: cmt.from?.name || "Facebook User",
-                    authorId: cmt.from?.id,
-                    authorPic: cmt.from?.id
-                      ? `https://graph.facebook.com/${cmt.from.id}/picture?type=square`
-                      : undefined,
+                    authorId: cmt.from?.id || null,
                     message: cmt.message || "",
-                    createdTime: cmt.created_time || new Date().toISOString(),
                     sentiment: classification.sentiment,
                     category: classification.category,
                     isHidden: Boolean(cmt.is_hidden),
                     likeCount: cmt.like_count || 0,
                     repliesCount: cmt.comment_count || 0,
-                    replies: [],
-                  });
-                }
+                    createdTime: cmt.created_time ? new Date(cmt.created_time) : new Date(),
+                  },
+                });
+
+                allComments.push({
+                  id: saved.id,
+                  pageId: page.id,
+                  pageName: page.name,
+                  postId: saved.postId || undefined,
+                  postTitle: saved.postTitle || "Facebook Post",
+                  authorName: saved.authorName,
+                  authorId: saved.authorId || undefined,
+                  authorPic: saved.authorId ? `https://graph.facebook.com/${saved.authorId}/picture?type=square` : undefined,
+                  message: saved.message,
+                  createdTime: saved.createdTime.toISOString(),
+                  sentiment: classification.sentiment,
+                  category: classification.category,
+                  isHidden: saved.isHidden,
+                  likeCount: saved.likeCount,
+                  repliesCount: saved.repliesCount,
+                  replies: [],
+                });
               }
             }
-          } catch (graphErr: any) {
-            console.warn(`Facebook comments Graph API error for page ${page.name}:`, graphErr.message);
           }
+        } catch (graphErr: any) {
+          console.warn(`Facebook comments Graph API sync notice for page ${page.name}:`, graphErr.message);
         }
       }
-
-      // If live Graph API returned comments, use them; otherwise seed initial comments for the pages
-      if (liveComments.length > 0) {
-        allComments = liveComments;
-      } else {
-        for (const page of pages) {
-          allComments.push(...generateSeedComments(page.name, page.id));
-        }
-      }
-
-      // Cache for 10 minutes
-      await redisConnection.set(cacheKey, JSON.stringify(allComments), "EX", 600);
     }
 
-    // 4. Calculate category counts
+    // 5. Calculate category counts
     const counts = {
       all: allComments.length,
       bad: allComments.filter((c) => c.category === "BAD").length,
@@ -377,9 +300,8 @@ commentsRouter.get("/", async (c) => {
       offensive: allComments.filter((c) => c.category === "OFFENSIVE").length,
     };
 
-    // 5. Apply tab and search filtering
+    // 6. Apply tab and search filtering
     let filtered = allComments;
-
     if (tab !== "ALL") {
       filtered = filtered.filter((c) => c.category === tab);
     }
@@ -435,7 +357,7 @@ commentsRouter.post("/:commentId/reply", async (c) => {
       createdTime: new Date().toISOString(),
     };
 
-    // 2. If valid page token, post to Facebook Graph API
+    // 2. If valid page token, post to Meta Graph API
     if (page?.encryptedAccessToken) {
       try {
         const token = decryptToken(
@@ -444,7 +366,7 @@ commentsRouter.post("/:commentId/reply", async (c) => {
           page.tokenTag,
           config.tokenEncryptionKey
         );
-        if (token && !commentId.startsWith("fb_cmt_")) {
+        if (token) {
           await fetch(`https://graph.facebook.com/${config.facebook.graphVersion}/${commentId}/comments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -456,22 +378,21 @@ commentsRouter.post("/:commentId/reply", async (c) => {
       }
     }
 
-    // 3. Update Redis cache with the reply
-    if (workspaceId) {
-      const cacheKey = `mogent:comments_cache:${workspaceId}`;
-      const cachedJson = await redisConnection.get(cacheKey);
-      if (cachedJson) {
-        try {
-          const list: FacebookCommentItem[] = JSON.parse(cachedJson);
-          const cmtIndex = list.findIndex((item) => item.id === commentId);
-          if (cmtIndex !== -1) {
-            list[cmtIndex].replies = [...(list[cmtIndex].replies || []), newReply];
-            list[cmtIndex].repliesCount = list[cmtIndex].replies.length;
-            await redisConnection.set(cacheKey, JSON.stringify(list), "EX", 600);
-          }
-        } catch {}
-      }
-    }
+    // 3. Persist reply to database JSON array
+    const existing = await prisma.facebookComment.findUnique({
+      where: { id: commentId },
+    });
+
+    const currentReplies = Array.isArray(existing?.replies) ? (existing.replies as any[]) : [];
+    const updatedReplies = [...currentReplies, newReply];
+
+    await prisma.facebookComment.updateMany({
+      where: { id: commentId },
+      data: {
+        replies: updatedReplies,
+        repliesCount: updatedReplies.length,
+      },
+    });
 
     return c.json({
       success: true,
@@ -503,7 +424,7 @@ commentsRouter.post("/:commentId/hide", async (c) => {
       page = await prisma.facebookPage.findFirst({ where: { workspaceId } });
     }
 
-    if (page?.encryptedAccessToken && !commentId.startsWith("fb_cmt_")) {
+    if (page?.encryptedAccessToken) {
       try {
         const token = decryptToken(
           page.encryptedAccessToken,
@@ -523,21 +444,11 @@ commentsRouter.post("/:commentId/hide", async (c) => {
       }
     }
 
-    // 2. Update Redis cache
-    if (workspaceId) {
-      const cacheKey = `mogent:comments_cache:${workspaceId}`;
-      const cachedJson = await redisConnection.get(cacheKey);
-      if (cachedJson) {
-        try {
-          const list: FacebookCommentItem[] = JSON.parse(cachedJson);
-          const cmtIndex = list.findIndex((item) => item.id === commentId);
-          if (cmtIndex !== -1) {
-            list[cmtIndex].isHidden = isHidden;
-            await redisConnection.set(cacheKey, JSON.stringify(list), "EX", 600);
-          }
-        } catch {}
-      }
-    }
+    // 2. Persist to database
+    await prisma.facebookComment.updateMany({
+      where: { id: commentId },
+      data: { isHidden },
+    });
 
     return c.json({
       success: true,
@@ -565,7 +476,7 @@ commentsRouter.delete("/:commentId", async (c) => {
       page = await prisma.facebookPage.findFirst({ where: { workspaceId } });
     }
 
-    if (page?.encryptedAccessToken && !commentId.startsWith("fb_cmt_")) {
+    if (page?.encryptedAccessToken) {
       try {
         const token = decryptToken(
           page.encryptedAccessToken,
@@ -583,18 +494,10 @@ commentsRouter.delete("/:commentId", async (c) => {
       }
     }
 
-    // Update Redis cache
-    if (workspaceId) {
-      const cacheKey = `mogent:comments_cache:${workspaceId}`;
-      const cachedJson = await redisConnection.get(cacheKey);
-      if (cachedJson) {
-        try {
-          const list: FacebookCommentItem[] = JSON.parse(cachedJson);
-          const filtered = list.filter((item) => item.id !== commentId);
-          await redisConnection.set(cacheKey, JSON.stringify(filtered), "EX", 600);
-        } catch {}
-      }
-    }
+    // Delete from database
+    await prisma.facebookComment.deleteMany({
+      where: { id: commentId },
+    });
 
     return c.json({
       success: true,

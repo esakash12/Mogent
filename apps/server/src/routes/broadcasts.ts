@@ -12,7 +12,42 @@ export const broadcastsRouter = new Hono();
 broadcastsRouter.use("*", authMiddleware);
 
 // -----------------------------------------------------------------------------
-// 1. GET AUTOMATED FOLLOW-UP CONFIG
+// 1. GET BROADCAST CAMPAIGNS HISTORY
+// -----------------------------------------------------------------------------
+broadcastsRouter.get("/campaigns", async (c) => {
+  const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
+  if (!workspaceId) {
+    return c.json({ success: false, error: "Missing workspace ID" }, 400);
+  }
+
+  try {
+    const campaigns = await prisma.broadcastCampaign.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    return c.json({
+      success: true,
+      data: campaigns.map((cmp) => ({
+        id: cmp.id,
+        title: cmp.title,
+        channel: cmp.channel,
+        message: cmp.message,
+        recipientsCount: cmp.recipientsCount,
+        sentCount: cmp.sentCount,
+        failedCount: Math.max(0, cmp.recipientsCount - cmp.sentCount),
+        status: cmp.status,
+        date: cmp.createdAt.toISOString(),
+      })),
+    });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 2. GET AUTOMATED FOLLOW-UP CONFIG
 // -----------------------------------------------------------------------------
 broadcastsRouter.get("/followup-config", async (c) => {
   const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
@@ -26,7 +61,7 @@ broadcastsRouter.get("/followup-config", async (c) => {
 
     let followupData = {
       isEnabled: true,
-      delayHours: 2, // 2 Hours default
+      delayHours: 2,
       messageText: "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊",
       pageId: "ALL",
       sentCount: 0,
@@ -39,7 +74,6 @@ broadcastsRouter.get("/followup-config", async (c) => {
       } catch {}
     }
 
-    // Get total sent count for workspace
     const sentCountVal = await redisConnection.get(`mogent:followup_sent_count:${workspaceId}`);
     if (sentCountVal) {
       followupData.sentCount = Number(sentCountVal) || 0;
@@ -52,7 +86,7 @@ broadcastsRouter.get("/followup-config", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
-// 2. SAVE AUTOMATED FOLLOW-UP CONFIG
+// 3. SAVE AUTOMATED FOLLOW-UP CONFIG
 // -----------------------------------------------------------------------------
 broadcastsRouter.post("/followup-config", async (c) => {
   const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
@@ -86,7 +120,7 @@ broadcastsRouter.post("/followup-config", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
-// 3. TRIGGER / RUN FOLLOW-UP SCAN (SINGLE-DELIVERY GUARANTEE)
+// 4. TRIGGER / RUN FOLLOW-UP SCAN (SINGLE-DELIVERY GUARANTEE)
 // -----------------------------------------------------------------------------
 broadcastsRouter.post("/trigger-followup", async (c) => {
   const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
@@ -123,10 +157,6 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
     const pages = await prisma.facebookPage.findMany({
       where: pagesWhere,
     });
-
-    if (pages.length === 0) {
-      return c.json({ success: true, message: "No active Facebook pages found.", sentCount: 0 });
-    }
 
     let totalSent = 0;
     let totalChecked = 0;
@@ -169,14 +199,12 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
       totalChecked += idleConversations.length;
 
       for (const conv of idleConversations) {
-        // Guarantee: Check if follow-up was ALREADY sent to this conversation
         const sentLockKey = `mogent:followup_sent:${conv.id}`;
         const alreadySent = await redisConnection.get(sentLockKey);
         if (alreadySent) {
-          continue; // Strictly ONCE per customer
+          continue;
         }
 
-        // If the last message was already from AI asking for confirmation, avoid spamming
         const lastMsg = conv.messages[0];
         if (lastMsg && lastMsg.content === followupData.messageText) {
           await redisConnection.set(sentLockKey, "1", "EX", 86400 * 30);
@@ -184,8 +212,7 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
         }
 
         try {
-          // Send Messenger message if valid Facebook token exists
-          if (pageAccessToken && !pageAccessToken.startsWith("direct_")) {
+          if (pageAccessToken && !pageAccessToken.startsWith("direct_") && conv.customer?.psid) {
             try {
               await facebookApi.sendTextMessage(
                 pageAccessToken,
@@ -218,7 +245,7 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
             },
           });
 
-          // Mark as sent in Redis (30-day lock guarantees exactly 1 delivery)
+          // Mark as sent in Redis (30-day lock guarantees single delivery)
           await redisConnection.set(sentLockKey, "1", "EX", 86400 * 30);
           totalSent++;
         } catch (sendErr: any) {
@@ -227,7 +254,6 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
       }
     }
 
-    // Increment overall sent counter
     if (totalSent > 0 && targetWorkspaceId) {
       await redisConnection.incrby(`mogent:followup_sent_count:${targetWorkspaceId}`, totalSent);
     }
@@ -244,9 +270,8 @@ broadcastsRouter.post("/trigger-followup", async (c) => {
 });
 
 // -----------------------------------------------------------------------------
-// 4. INSTANT MANUAL BROADCAST
+// 5. POST /api/broadcasts/send - Broadcast Message (Messenger & WhatsApp)
 // -----------------------------------------------------------------------------
-// POST /api/broadcasts/send - Broadcast message to all customers
 broadcastsRouter.post("/send", async (c) => {
   const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
@@ -254,61 +279,143 @@ broadcastsRouter.post("/send", async (c) => {
   }
 
   try {
-    const { title, message, pageId } = await c.req.json();
+    const { title, message, channel = "MESSENGER", pageId } = await c.req.json();
     if (!title || !message) {
       return c.json({ success: false, error: "Title and message are required" }, 400);
     }
 
-    let pagesWhere: any = { workspaceId, isActive: true };
-    if (pageId && pageId !== "ALL") {
-      pagesWhere.id = pageId;
-    }
-
-    const pages = await prisma.facebookPage.findMany({
-      where: pagesWhere,
-      include: {
-        customers: {
-          take: 100,
-          orderBy: { updatedAt: "desc" },
-        },
-      },
-    });
-
     let recipientsCount = 0;
     let sentCount = 0;
+    let failedCount = 0;
 
-    for (const page of pages) {
-      let pageAccessToken: string;
-      try {
-        pageAccessToken = decryptToken(
-          page.encryptedAccessToken,
-          page.tokenIv,
-          page.tokenTag,
-          config.tokenEncryptionKey
-        );
-      } catch {
-        continue;
+    if (channel === "WHATSAPP") {
+      // Dispatch via WhatsApp Cloud API
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: {
+          whatsAppPhoneNumberId: true,
+          whatsAppAccessToken: true,
+        },
+      });
+
+      const phoneNumberId = workspace?.whatsAppPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const accessToken = workspace?.whatsAppAccessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+
+      const customers = await prisma.customer.findMany({
+        where: {
+          workspaceId,
+          channel: "WHATSAPP",
+          phoneNumber: { not: "" },
+        },
+        take: 200,
+        orderBy: { updatedAt: "desc" },
+      });
+
+      recipientsCount = customers.length;
+
+      if (phoneNumberId && accessToken && customers.length > 0) {
+        for (const cust of customers) {
+          const cleanPhone = cust.phoneNumber?.replace(/\D/g, "");
+          if (!cleanPhone) continue;
+
+          try {
+            const resp = await fetch(
+              `https://graph.facebook.com/${config.facebook.graphVersion}/${phoneNumberId}/messages`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  to: cleanPhone,
+                  type: "text",
+                  text: { body: message.trim() },
+                }),
+                signal: AbortSignal.timeout(5000),
+              }
+            );
+
+            if (resp.ok) {
+              sentCount++;
+            } else {
+              failedCount++;
+            }
+          } catch {
+            failedCount++;
+          }
+        }
+      }
+    } else {
+      // Dispatch via Messenger
+      let pagesWhere: any = { workspaceId, isActive: true };
+      if (pageId && pageId !== "ALL") {
+        pagesWhere.id = pageId;
       }
 
-      for (const customer of page.customers) {
-        recipientsCount++;
+      const pages = await prisma.facebookPage.findMany({
+        where: pagesWhere,
+        include: {
+          customers: {
+            where: { psid: { not: "" } },
+            take: 200,
+            orderBy: { updatedAt: "desc" },
+          },
+        },
+      });
+
+      for (const page of pages) {
+        let pageAccessToken: string;
         try {
-          await facebookApi.sendTextMessage(pageAccessToken, customer.psid, message);
-          sentCount++;
-        } catch {}
+          pageAccessToken = decryptToken(
+            page.encryptedAccessToken,
+            page.tokenIv,
+            page.tokenTag,
+            config.tokenEncryptionKey
+          );
+        } catch {
+          continue;
+        }
+
+        for (const customer of page.customers) {
+          recipientsCount++;
+          try {
+            await facebookApi.sendTextMessage(pageAccessToken, customer.psid, message);
+            sentCount++;
+          } catch {
+            failedCount++;
+          }
+        }
       }
     }
 
-    return c.json({
-      success: true,
-      message: `Broadcast "${title}" sent to ${sentCount} recipients!`,
+    // Persist campaign to database
+    const savedCampaign = await prisma.broadcastCampaign.create({
       data: {
-        id: `bc-${Date.now()}`,
-        title,
+        workspaceId,
+        title: title.trim(),
+        channel: channel || "MESSENGER",
+        facebookPageId: pageId && pageId !== "ALL" ? pageId : null,
+        message: message.trim(),
         recipientsCount,
         sentCount,
         status: "SENT",
-        date: new Date().toISOString(),
+      },
+    });
+
+    return c.json({
+      success: true,
+      message: `Broadcast "${title}" completed! ${sentCount} sent, ${failedCount} failed.`,
+      data: {
+        id: savedCampaign.id,
+        title: savedCampaign.title,
+        channel: savedCampaign.channel,
+        recipientsCount: savedCampaign.recipientsCount,
+        sentCount: savedCampaign.sentCount,
+        failedCount,
+        status: savedCampaign.status,
+        date: savedCampaign.createdAt.toISOString(),
       },
     });
   } catch (error: any) {
@@ -316,7 +423,9 @@ broadcastsRouter.post("/send", async (c) => {
   }
 });
 
-// POST /api/broadcasts/test-followup - Send instantaneous test follow-up to a specific customer/conversation
+// -----------------------------------------------------------------------------
+// 6. POST /api/broadcasts/test-followup - Send Instant Test Follow-up
+// -----------------------------------------------------------------------------
 broadcastsRouter.post("/test-followup", async (c) => {
   const workspaceId = (c as any).get("workspaceId") || c.req.header("x-workspace-id");
   if (!workspaceId) {
@@ -332,7 +441,7 @@ broadcastsRouter.post("/test-followup", async (c) => {
     // 1. Try finding conversation by conversationId
     if (conversationId && conversationId !== "DEFAULT_TEST_USER") {
       conversation = await prisma.conversation.findFirst({
-        where: { id: conversationId, facebookPage: { workspaceId } },
+        where: { id: conversationId, OR: [{ workspaceId }, { customer: { workspaceId } }] },
         include: { customer: true, facebookPage: true },
       });
     }
@@ -341,7 +450,7 @@ broadcastsRouter.post("/test-followup", async (c) => {
     const targetCustId = customerId || (!conversation ? conversationId : null);
     if (!conversation && targetCustId && targetCustId !== "DEFAULT_TEST_USER") {
       conversation = await prisma.conversation.findFirst({
-        where: { customerId: targetCustId, facebookPage: { workspaceId } },
+        where: { customerId: targetCustId, OR: [{ workspaceId }, { customer: { workspaceId } }] },
         include: { customer: true, facebookPage: true },
         orderBy: { updatedAt: "desc" },
       });
@@ -352,75 +461,26 @@ broadcastsRouter.post("/test-followup", async (c) => {
     if (!conversation && targetPhone) {
       conversation = await prisma.conversation.findFirst({
         where: {
-          facebookPage: { workspaceId },
-          customer: { phoneNumber: targetPhone },
+          customer: { phoneNumber: targetPhone, workspaceId },
         },
         include: { customer: true, facebookPage: true },
         orderBy: { updatedAt: "desc" },
       });
     }
 
-    // 4. Fallback: Find the most recent conversation in the authenticated workspace
+    // 4. Find most recent real conversation in this workspace
     if (!conversation) {
       conversation = await prisma.conversation.findFirst({
-        where: { facebookPage: { workspaceId } },
+        where: {
+          OR: [{ workspaceId }, { customer: { workspaceId } }],
+        },
         include: { customer: true, facebookPage: true },
         orderBy: { updatedAt: "desc" },
       });
     }
 
-    // 5. Fallback: If still no conversation, find or create target Facebook Page and Customer in this workspace
     if (!conversation) {
-      let page = await prisma.facebookPage.findFirst({
-        where: { workspaceId },
-      });
-
-      if (!page) {
-        page = await prisma.facebookPage.create({
-          data: {
-            workspaceId,
-            pageId: `store-${Date.now()}`,
-            name: "Default Store Page",
-            category: "Retail",
-            encryptedAccessToken: "direct_token",
-            tokenIv: "direct_iv",
-            tokenTag: "direct_tag",
-            verifyToken: "mogent_fb_verify_token_secure",
-          },
-        });
-      }
-
-      if (page) {
-        let customer = await prisma.customer.findFirst({
-          where: { facebookPageId: page.id },
-        });
-
-        if (!customer) {
-          customer = await prisma.customer.create({
-            data: {
-              facebookPageId: page.id,
-              psid: `test-lead-${Date.now()}`,
-              firstName: "Test",
-              lastName: "Customer",
-              phoneNumber: "01700000000",
-              sentimentScore: 0.95,
-            },
-          });
-        }
-
-        conversation = await prisma.conversation.create({
-          data: {
-            facebookPageId: page.id,
-            customerId: customer.id,
-            status: "OPEN",
-          },
-          include: { customer: true, facebookPage: true },
-        });
-      }
-    }
-
-    if (!conversation) {
-      return c.json({ success: false, error: "No active workspace or connected page found to test." }, 400);
+      return c.json({ success: false, error: "No active conversations found in this workspace to test." }, 400);
     }
 
     const page = conversation.facebookPage;
@@ -442,7 +502,7 @@ broadcastsRouter.post("/test-followup", async (c) => {
       (messageText || "").trim() ||
       "ভাইয়া, আপনার পছন্দের প্রোডাক্টটির বিষয়ে কোনো কিছু জানার ছিল কি? অর্ডারটি কনফার্ম করতে চাইলে আমাদের জানাতে পারেন 😊";
 
-    // 6. Live Send via Facebook Messenger API if valid token exists
+    // 5. Send Live Message if Messenger
     let liveDelivered = false;
     if (pageAccessToken && !pageAccessToken.startsWith("direct_") && conversation.customer?.psid) {
       try {
@@ -453,7 +513,7 @@ broadcastsRouter.post("/test-followup", async (c) => {
       }
     }
 
-    // 7. Save Message to PostgreSQL Database
+    // 6. Save Message to Database
     const savedMsg = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -465,7 +525,7 @@ broadcastsRouter.post("/test-followup", async (c) => {
       },
     });
 
-    // 8. Update Conversation Timestamps
+    // 7. Update Conversation Timestamps
     await prisma.conversation.update({
       where: { id: conversation.id },
       data: {

@@ -42,9 +42,9 @@ const yourAiNav: NavItem[] = [
   {
     name: "Products",
     nameBn: "Products",
-    href: "/dashboard/commerce",
+    href: "/dashboard/products",
     icon: Package,
-    matchPrefixes: ["/dashboard/commerce", "/dashboard/products"],
+    matchPrefixes: ["/dashboard/products", "/dashboard/commerce"],
   },
   {
     name: "Knowledge Base",
@@ -116,11 +116,11 @@ const activityNav: NavItem[] = [
     matchPrefixes: ["/dashboard/broadcasts", "/dashboard/campaigns"],
   },
   {
-    name: "Leads",
-    nameBn: "Leads",
-    href: "/dashboard/leads",
+    name: "Contacts",
+    nameBn: "Contacts",
+    href: "/dashboard/contacts",
     icon: Users,
-    matchPrefixes: ["/dashboard/leads", "/dashboard/contacts"],
+    matchPrefixes: ["/dashboard/contacts", "/dashboard/leads"],
   },
   {
     name: "Orders",
@@ -162,7 +162,7 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate, className }: SidebarProps = {}) {
   const pathname = usePathname();
-  const { user, workspace, logout } = useAuth();
+  const { user, workspace, workspaces, switchWorkspace, logout } = useAuth();
   const [pagesList, setPagesList] = useState<any[]>([]);
   const [activePageId, setActivePageId] = useState<string>("ALL");
   const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
@@ -302,6 +302,9 @@ export function Sidebar({ onNavigate, className }: SidebarProps = {}) {
           {/* Business Switcher Dropdown */}
           {pageDropdownOpen && (
             <div className="absolute top-full left-0 right-0 mt-1.5 p-1.5 rounded-xl bg-white border border-[#E5E7EB] shadow-lg z-50 space-y-1">
+              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                Facebook Pages
+              </div>
               <button
                 onClick={() => handlePageSwitch("ALL")}
                 className={cn(
@@ -325,6 +328,33 @@ export function Sidebar({ onNavigate, className }: SidebarProps = {}) {
                   <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
                 </button>
               ))}
+
+              {workspaces && workspaces.length > 1 && (
+                <>
+                  <div className="my-1 border-t border-[#F1F5F9]" />
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Workspaces
+                  </div>
+                  {workspaces.map((ws) => (
+                    <button
+                      key={ws.id}
+                      onClick={() => {
+                        setPageDropdownOpen(false);
+                        switchWorkspace(ws.id);
+                      }}
+                      className={cn(
+                        "w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-between",
+                        workspace?.id === ws.id ? "bg-[#EFF6FF] text-[#2563EB] font-semibold" : "hover:bg-[#F3F4F6] text-[#374151]"
+                      )}
+                    >
+                      <span className="truncate">{ws.name}</span>
+                      {workspace?.id === ws.id && (
+                        <span className="text-[10px] font-bold text-[#2563EB]">Active</span>
+                      )}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>

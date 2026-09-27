@@ -40,19 +40,15 @@ contactsRouter.get("/", async (c) => {
     });
     const pageIds = pages.map((p) => p.id);
 
-    // Stop cross-tenant data leaks: If workspace has no pages, immediately return empty results
-    if (pageIds.length === 0) {
-      return c.json({
-        success: true,
-        data: [],
-        totalCount: 0,
-        verifiedPhonesCount: 0,
-        confirmedBuyersCount: 0,
-      });
-    }
+    const baseWhere: any = {
+      OR: [
+        { workspaceId },
+        ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+      ],
+    };
 
     const where: any = {
-      facebookPageId: { in: pageIds },
+      ...baseWhere,
     };
 
     if (filter === "PHONE") {
@@ -64,19 +60,23 @@ contactsRouter.get("/", async (c) => {
     }
 
     if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: "insensitive" } },
-        { lastName: { contains: search, mode: "insensitive" } },
-        { phoneNumber: { contains: search } },
-        { psid: { contains: search } },
-        { deliveryAddress: { contains: search, mode: "insensitive" } },
+      where.AND = [
+        {
+          OR: [
+            { firstName: { contains: search, mode: "insensitive" } },
+            { lastName: { contains: search, mode: "insensitive" } },
+            { phoneNumber: { contains: search } },
+            { psid: { contains: search } },
+            { deliveryAddress: { contains: search, mode: "insensitive" } },
+          ],
+        },
       ];
     }
 
     const [totalCount, verifiedPhonesCount, confirmedBuyersCount, customers] = await Promise.all([
-      prisma.customer.count({ where: { facebookPageId: { in: pageIds } } }),
-      prisma.customer.count({ where: { facebookPageId: { in: pageIds }, phoneNumber: { not: null } } }),
-      prisma.customer.count({ where: { facebookPageId: { in: pageIds }, totalOrders: { gt: 0 } } }),
+      prisma.customer.count({ where: baseWhere }),
+      prisma.customer.count({ where: { ...baseWhere, phoneNumber: { not: null } } }),
+      prisma.customer.count({ where: { ...baseWhere, totalOrders: { gt: 0 } } }),
       prisma.customer.findMany({
         where,
         include: { facebookPage: { select: { id: true, name: true } } },
@@ -113,7 +113,7 @@ contactsRouter.get("/", async (c) => {
         psid: cust.psid,
         profilePic: cust.profilePic,
         pageId: cust.facebookPageId,
-        pageName: cust.facebookPage?.name || "Connected Page",
+        pageName: cust.facebookPage?.name || (cust.channel === "WHATSAPP" ? "WhatsApp" : "Direct Store"),
       };
     });
 
@@ -150,15 +150,18 @@ contactsRouter.get("/export", async (c) => {
     });
     const pageIds = pages.map((p) => p.id);
 
-    const customers = pageIds.length > 0
-      ? await prisma.customer.findMany({
-          where: { facebookPageId: { in: pageIds } },
-          include: { facebookPage: true },
-          orderBy: { updatedAt: "desc" },
-        })
-      : [];
+    const customers = await prisma.customer.findMany({
+      where: {
+        OR: [
+          { workspaceId },
+          ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+        ],
+      },
+      include: { facebookPage: true },
+      orderBy: { updatedAt: "desc" },
+    });
 
-    const headers = ["Name", "Phone", "Address", "Orders Count", "Total Spent (BDT)", "Sentiment", "Facebook Page", "PSID", "Last Active"];
+    const headers = ["Name", "Phone", "Address", "Orders Count", "Total Spent (BDT)", "Sentiment", "Channel", "Facebook Page", "PSID", "Last Active"];
     const rows = customers.map((c) => {
       let sentiment = "INQUIRY";
       if (c.totalOrders > 0) sentiment = "PURCHASED";
@@ -174,6 +177,7 @@ contactsRouter.get("/export", async (c) => {
         c.totalOrders || 0,
         c.totalSpent || 0,
         escape(sentiment),
+        escape(c.channel || "MESSENGER"),
         escape(c.facebookPage?.name || ""),
         escape(c.psid || ""),
         escape(c.updatedAt ? new Date(c.updatedAt).toISOString() : ""),
@@ -200,7 +204,7 @@ contactsRouter.post("/", async (c) => {
 
   try {
     const body = await c.req.json();
-    const { name, phone, address, pageId, sentiment } = body;
+    const { name, phone, address, pageId, sentiment, channel } = body;
 
     if (!name || !name.trim()) {
       return c.json({ success: false, error: "Customer name is required" }, 400);
@@ -210,29 +214,12 @@ contactsRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
-    let targetPageId = pageId;
-    if (!targetPageId || targetPageId === "ALL") {
+    let targetPageId = pageId && pageId !== "ALL" ? pageId : null;
+    if (!targetPageId) {
       const page = await prisma.facebookPage.findFirst({
         where: { workspaceId },
       });
-      targetPageId = page?.id;
-    }
-
-    if (!targetPageId) {
-      // Create a direct store page for this workspace
-      const newPage = await prisma.facebookPage.create({
-        data: {
-          workspaceId,
-          pageId: `store-${Date.now()}`,
-          name: "Direct Leads",
-          category: "Direct Leads",
-          encryptedAccessToken: "direct_token",
-          tokenIv: "direct_iv",
-          tokenTag: "direct_tag",
-          verifyToken: "mogent_fb_verify_token_secure",
-        },
-      });
-      targetPageId = newPage.id;
+      targetPageId = page?.id || null;
     }
 
     const cleanName = (name || "").trim();
@@ -250,21 +237,22 @@ contactsRouter.post("/", async (c) => {
 
     let customer;
     if (cleanPhone) {
-      const existing = await prisma.customer.findFirst({
+      customer = await prisma.customer.findFirst({
         where: {
-          facebookPageId: targetPageId,
+          workspaceId,
           phoneNumber: cleanPhone,
         },
       });
 
-      if (existing) {
+      if (customer) {
         customer = await prisma.customer.update({
-          where: { id: existing.id },
+          where: { id: customer.id },
           data: {
             firstName,
             lastName,
-            deliveryAddress: cleanAddress || existing.deliveryAddress,
+            deliveryAddress: cleanAddress || customer.deliveryAddress,
             sentimentScore,
+            facebookPageId: targetPageId || customer.facebookPageId,
           },
           include: { facebookPage: true },
         });
@@ -274,7 +262,9 @@ contactsRouter.post("/", async (c) => {
     if (!customer) {
       customer = await prisma.customer.create({
         data: {
+          workspaceId,
           facebookPageId: targetPageId,
+          channel: channel || (cleanPhone ? "WHATSAPP" : "MESSENGER"),
           psid: `lead-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           firstName,
           lastName,
@@ -297,7 +287,7 @@ contactsRouter.post("/", async (c) => {
         totalSpent: customer.totalSpent,
         sentiment: sentiment || "INQUIRY",
         psid: customer.psid,
-        pageName: customer.facebookPage?.name || "Connected Page",
+        pageName: customer.facebookPage?.name || (customer.channel === "WHATSAPP" ? "WhatsApp" : "Direct Store"),
       },
       message: "Lead saved successfully!",
     });

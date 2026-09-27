@@ -37,46 +37,40 @@ dashboardRouter.get("/analytics", async (c) => {
       where: { workspaceId },
     });
 
-    if (pageIds.length === 0) {
-      // 14-day zero state
-      const emptyDaily: { date: string; count: number }[] = [];
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const label = i === 0 ? "Today" : d.toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", month: "short", day: "numeric" });
-        emptyDaily.push({ date: label, count: 0 });
-      }
+    // Multi-channel filter (Messenger pages + Direct WhatsApp/Workspace)
+    const convWhere = {
+      OR: [
+        { workspaceId },
+        ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+      ],
+    };
 
-      return c.json({
-        success: true,
-        data: {
-          workspace: workspaceInfo,
-          pagesConnected: 0,
-          totalConversations: 0,
-          totalContacts: 0,
-          aiResolutionRate: 100,
-          totalRevenue: 0,
-          confirmedOrdersCount: 0,
-          productsCount,
-          aiMessagesCount: 0,
-          isNewWorkspace: true,
-          sentiment: { positive: 100, neutral: 0, negative: 0 },
-          dailyActivity: emptyDaily,
-        },
-      });
-    }
+    const custWhere = {
+      OR: [
+        { workspaceId },
+        ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+      ],
+    };
 
-    // Live counts for connected pages
+    const orderWhere = {
+      OR: [
+        { workspaceId },
+        { customer: { workspaceId } },
+        ...(pageIds.length > 0 ? [{ customer: { facebookPageId: { in: pageIds } } }] : []),
+      ],
+    };
+
+    // Live counts for connected channels
     const [totalConversations, totalContacts, aiResolvedCount, aiMessagesCount] =
       await Promise.all([
-        prisma.conversation.count({ where: { facebookPageId: { in: pageIds } } }),
-        prisma.customer.count({ where: { facebookPageId: { in: pageIds } } }),
+        prisma.conversation.count({ where: convWhere }),
+        prisma.customer.count({ where: custWhere }),
         prisma.conversation.count({
-          where: { facebookPageId: { in: pageIds }, isHumanControl: false },
+          where: { ...convWhere, isHumanControl: false },
         }),
         prisma.message.count({
           where: {
-            conversation: { facebookPageId: { in: pageIds } },
+            conversation: convWhere,
             sender: "AI",
           },
         }),
@@ -84,11 +78,7 @@ dashboardRouter.get("/analytics", async (c) => {
 
     // Real orders and revenue from Prisma Order model
     const orders = await prisma.order.findMany({
-      where: {
-        customer: {
-          facebookPageId: { in: pageIds },
-        },
-      },
+      where: orderWhere,
       select: { totalAmount: true, status: true },
     });
 
@@ -100,7 +90,7 @@ dashboardRouter.get("/analytics", async (c) => {
 
     // Customer sentiments
     const customers = await prisma.customer.findMany({
-      where: { facebookPageId: { in: pageIds } },
+      where: custWhere,
       select: { sentimentScore: true },
     });
 
@@ -138,7 +128,7 @@ dashboardRouter.get("/analytics", async (c) => {
 
     const recentConvs = await prisma.conversation.findMany({
       where: {
-        facebookPageId: { in: pageIds },
+        ...convWhere,
         updatedAt: { gte: fourteenDaysAgo },
       },
       select: { updatedAt: true },

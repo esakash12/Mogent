@@ -32,12 +32,11 @@ export class OrdersController {
       const pageIds = pages.map((p) => p.id);
 
       const where: any = {
-        customer: {
-          OR: [
-            { workspaceId },
-            ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
-          ],
-        },
+        OR: [
+          { workspaceId },
+          { customer: { workspaceId } },
+          ...(pageIds.length > 0 ? [{ customer: { facebookPageId: { in: pageIds } } }] : []),
+        ],
       };
       if (statusFilter && statusFilter !== "ALL") {
         where.status = statusFilter;
@@ -145,7 +144,7 @@ export class OrdersController {
       }
 
       if (workspaceId) {
-        const orderWorkspaceId = order.customer?.workspaceId || order.customer?.facebookPage?.workspaceId;
+        const orderWorkspaceId = order.workspaceId || order.customer?.workspaceId || order.customer?.facebookPage?.workspaceId;
         if (orderWorkspaceId && orderWorkspaceId !== workspaceId) {
           return c.json({ success: false, error: "Forbidden: You do not have permission to modify this order" }, 403);
         }

@@ -35,7 +35,7 @@ productsRouter.get("/", async (c) => {
         name: p.name,
         price: p.price,
         regularPrice: p.regularPrice ?? Math.round(p.price * 1.25),
-        image: p.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60",
+        image: p.imageUrl || null,
         category: p.category || "General",
         inStock: p.inStock,
         salesCount: p.salesCount,
@@ -234,25 +234,11 @@ productsRouter.post("/import-facebook", async (c) => {
     const posts = fbJson?.data || [];
 
     if (posts.length === 0) {
-      // If Graph API has no recent posts, create sample products from page info
-      const sampleItem = await prisma.product.create({
-        data: {
-          workspaceId: targetWorkspaceId,
-          name: `${page.name} - Featured Collection`,
-          price: 550,
-          regularPrice: 700,
-          category: "Facebook Catalog",
-          description: `Direct product offering from ${page.name} Facebook page.`,
-          imageUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60",
-          inStock: true,
-        },
-      });
-
       return c.json({
         success: true,
-        count: 1,
-        message: `Synced 1 product from ${page.name}!`,
-        data: [sampleItem],
+        count: 0,
+        message: `No published posts found on ${page.name} to import products from.`,
+        data: [],
       });
     }
 

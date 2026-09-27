@@ -16,10 +16,13 @@ import {
   CheckCircle2,
   AlertTriangle,
   UserPlus,
-  Loader2
+  Loader2,
+  Plus,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchContacts, fetchPages } from "@/lib/api";
+import { fetchContacts, fetchPages, createContactLead } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 interface Contact {
   id: string;
@@ -44,6 +47,11 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"ALL" | "PHONE" | "PURCHASED" | "COMPLAINT">("ALL");
+
+  // Add Contact Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [newLead, setNewLead] = useState({ name: "", phone: "", address: "" });
 
   const loadData = async (pageFilter = selectedPageFilter) => {
     try {
@@ -113,6 +121,54 @@ export default function ContactsPage() {
       : 0;
 
   const [isExporting, setIsExporting] = useState(false);
+
+  const handleCreateLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLead.name || !newLead.phone) return;
+
+    const optimisticId = `temp-${Date.now()}`;
+    const optimisticLead: Contact = {
+      id: optimisticId,
+      name: newLead.name,
+      phone: newLead.phone,
+      address: newLead.address,
+      ordersCount: 0,
+      totalSpent: 0,
+      score: "0.80",
+      sentiment: "INQUIRY",
+      lastActive: "Just now",
+      psid: optimisticId,
+      pageName: "Direct",
+    };
+
+    setContacts((prev) => [optimisticLead, ...prev]);
+    setShowAddModal(false);
+    setIsSubmittingLead(true);
+
+    const payload = { ...newLead };
+    setNewLead({ name: "", phone: "", address: "" });
+
+    try {
+      const res = await createContactLead(payload);
+      if (res?.success && res.data) {
+        setContacts((prev) =>
+          prev.map((c) => (c.id === optimisticId ? { ...c, id: res.data.id, ...res.data } : c))
+        );
+        toast.success("Customer Contact Created! 👤", {
+          description: `${payload.name} added with phone ${payload.phone}`,
+        });
+      } else {
+        toast.error("Failed to save contact", {
+          description: res?.error || "Please try again.",
+        });
+      }
+    } catch {
+      toast.error("Network error while creating contact");
+      loadData();
+    } finally {
+      setIsSubmittingLead(false);
+    }
+  };
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -191,6 +247,14 @@ export default function ContactsPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Contact</span>
+          </button>
+
           <button
             onClick={handleExportCSV}
             disabled={contacts.length === 0}
@@ -400,6 +464,74 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      {/* Manual Add Contact Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#111] rounded-2xl border border-[#333] shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#222] pb-3">
+              <h3 className="text-sm font-bold text-[#EDEDED]">Add New Customer Contact</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-[#888] hover:text-[#EDEDED]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLead} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-[#888] mb-1">Customer Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Tanvir Hasan"
+                  value={newLead.name}
+                  onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0A0A0A] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#888] mb-1">Phone Number *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="017xxxxxxxx"
+                  value={newLead.phone}
+                  onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0A0A0A] border border-[#333] text-xs text-[#EDEDED] font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#888] mb-1">Delivery Address</label>
+                <textarea
+                  rows={2}
+                  placeholder="House, Road, Area, City"
+                  value={newLead.address}
+                  onChange={(e) => setNewLead({ ...newLead, address: e.target.value })}
+                  className="w-full p-2.5 rounded-xl bg-[#0A0A0A] border border-[#333] text-xs text-[#EDEDED] focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#222]">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 rounded-xl border border-[#333] text-xs font-semibold text-[#888] hover:text-[#EDEDED]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingLead}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs disabled:opacity-50 cursor-pointer shadow-sm"
+                >
+                  {isSubmittingLead ? "Saving..." : "Save Contact"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

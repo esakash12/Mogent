@@ -61,12 +61,12 @@ export function ChatHeader({
             </h3>
 
             {activeConvChannel === "WHATSAPP" ? (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0] shrink-0 inline-flex items-center gap-1">
-                <Phone className="w-2.5 h-2.5" /> WhatsApp Direct
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0] shrink-0 inline-flex items-center gap-1">
+                <Phone className="w-2.5 h-2.5" /> WhatsApp Direct {activeConv.phone ? `(${activeConv.phone})` : ""}
               </span>
             ) : (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] shrink-0 inline-flex items-center gap-1">
-                <Facebook className="w-2.5 h-2.5 fill-current" /> Messenger
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] shrink-0 inline-flex items-center gap-1">
+                <Facebook className="w-2.5 h-2.5 fill-current" /> {activeConv.pageName ? `Page: ${activeConv.pageName}` : "Facebook Messenger"}
               </span>
             )}
 

@@ -39,16 +39,21 @@ export function getHeaders(customHeaders: Record<string, string> = {}): Record<s
 
   if (typeof window !== "undefined") {
     token = localStorage.getItem("mogent_auth_token") || "";
-    const workspaceRaw = localStorage.getItem("mogent_workspace");
-    if (workspaceRaw) {
-      try {
-        if (workspaceRaw.startsWith("{")) {
-          workspaceId = JSON.parse(workspaceRaw)?.id || "";
-        } else if (workspaceRaw !== "null" && workspaceRaw !== "undefined") {
-          workspaceId = workspaceRaw;
+    const directWsId = localStorage.getItem("mogent_workspace_id");
+    if (directWsId && directWsId !== "null" && directWsId !== "undefined") {
+      workspaceId = directWsId;
+    } else {
+      const workspaceRaw = localStorage.getItem("mogent_workspace");
+      if (workspaceRaw) {
+        try {
+          if (workspaceRaw.startsWith("{")) {
+            workspaceId = JSON.parse(workspaceRaw)?.id || "";
+          } else if (workspaceRaw !== "null" && workspaceRaw !== "undefined") {
+            workspaceId = workspaceRaw;
+          }
+        } catch {
+          workspaceId = "";
         }
-      } catch {
-        workspaceId = "";
       }
     }
   }

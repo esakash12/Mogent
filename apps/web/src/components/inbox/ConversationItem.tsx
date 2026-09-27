@@ -72,6 +72,19 @@ export function ConversationItem({
 
         <div className="flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
+            {isConvWhatsApp ? (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#DCFCE7] text-[#166534] border border-[#BBF7D0] inline-flex items-center gap-1">
+                <Phone className="w-2.5 h-2.5" /> WhatsApp
+              </span>
+            ) : (
+              <span
+                className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] inline-flex items-center gap-1 max-w-[120px] truncate"
+                title={conv.pageName || "Facebook Page"}
+              >
+                <Facebook className="w-2.5 h-2.5 fill-current shrink-0" />
+                <span className="truncate">{conv.pageName || "Messenger"}</span>
+              </span>
+            )}
             {isCompleted ? (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] flex items-center gap-1">
                 <Check className="w-2.5 h-2.5" /> Sale Completed

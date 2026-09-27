@@ -238,14 +238,36 @@ async function syncDatabaseSchema() {
           WHEN others THEN NULL;
         END;
         BEGIN
+          ALTER TABLE "customers" ALTER COLUMN "facebookPageId" DROP NOT NULL;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
           ALTER TABLE "customers" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
         EXCEPTION
           WHEN others THEN NULL;
         END;
 
-        -- Conversations table: Channel (MESSENGER / WHATSAPP)
+        -- Conversations table: Channel (MESSENGER / WHATSAPP) & Workspace Isolation
+        BEGIN
+          ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+        BEGIN
+          ALTER TABLE "conversations" ALTER COLUMN "facebookPageId" DROP NOT NULL;
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
         BEGIN
           ALTER TABLE "conversations" ADD COLUMN IF NOT EXISTS "channel" TEXT DEFAULT 'MESSENGER';
+        EXCEPTION
+          WHEN others THEN NULL;
+        END;
+
+        -- Orders table: Direct workspace relation
+        BEGIN
+          ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
         EXCEPTION
           WHEN others THEN NULL;
         END;
@@ -306,9 +328,53 @@ async function syncDatabaseSchema() {
       );
     `);
 
-    // 4. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
+    // 4. Create facebook_comments table if it does not exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "facebook_comments" (
+        "id" TEXT NOT NULL,
+        "workspaceId" TEXT NOT NULL,
+        "facebookPageId" TEXT NOT NULL,
+        "postId" TEXT,
+        "postTitle" TEXT,
+        "authorName" TEXT NOT NULL,
+        "authorId" TEXT,
+        "authorPic" TEXT,
+        "message" TEXT NOT NULL,
+        "createdTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "sentiment" TEXT NOT NULL DEFAULT 'NEUTRAL',
+        "category" TEXT NOT NULL DEFAULT 'SAFE',
+        "isHidden" BOOLEAN NOT NULL DEFAULT false,
+        "likeCount" INTEGER NOT NULL DEFAULT 0,
+        "repliesCount" INTEGER NOT NULL DEFAULT 0,
+        "replies" JSONB,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "facebook_comments_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    // 5. Create broadcast_campaigns table if it does not exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "broadcast_campaigns" (
+        "id" TEXT NOT NULL,
+        "workspaceId" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "message" TEXT NOT NULL,
+        "channel" TEXT NOT NULL DEFAULT 'ALL',
+        "facebookPageId" TEXT,
+        "recipientsCount" INTEGER NOT NULL DEFAULT 0,
+        "sentCount" INTEGER NOT NULL DEFAULT 0,
+        "status" TEXT NOT NULL DEFAULT 'SENT',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "broadcast_campaigns_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    // 6. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_updated" ON "conversations"("facebookPageId", "updatedAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_conversations_workspace_updated" ON "conversations"("workspaceId", "updatedAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_conversations_page_status" ON "conversations"("facebookPageId", "status");
       CREATE INDEX IF NOT EXISTS "idx_conversations_updated_at" ON "conversations"("updatedAt" DESC);
       CREATE INDEX IF NOT EXISTS "idx_messages_conversation_created" ON "messages"("conversationId", "createdAt" DESC);
@@ -316,12 +382,31 @@ async function syncDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS "idx_customers_phone" ON "customers"("phoneNumber");
       CREATE INDEX IF NOT EXISTS "idx_customers_workspace" ON "customers"("workspaceId");
       CREATE INDEX IF NOT EXISTS "idx_orders_customer_created" ON "orders"("customerId", "createdAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_orders_workspace" ON "orders"("workspaceId");
       CREATE INDEX IF NOT EXISTS "idx_orders_status" ON "orders"("status");
       CREATE INDEX IF NOT EXISTS "idx_products_workspace_stock" ON "products"("workspaceId", "inStock");
       CREATE INDEX IF NOT EXISTS "idx_facebook_pages_workspace" ON "facebook_pages"("workspaceId");
+      CREATE INDEX IF NOT EXISTS "idx_fb_comments_workspace" ON "facebook_comments"("workspaceId", "createdAt" DESC);
+      CREATE INDEX IF NOT EXISTS "idx_fb_comments_page" ON "facebook_comments"("facebookPageId");
+      CREATE INDEX IF NOT EXISTS "idx_broadcast_campaigns_workspace" ON "broadcast_campaigns"("workspaceId", "createdAt" DESC);
     `);
 
-    // Security Cleanup: Strictly restrict platform isAdmin to designated admin emails
+    // 7. Non-Destructive Backfills for Multi-Tenancy Lockdown
+    await prisma.$executeRawUnsafe(`
+      UPDATE "customers" SET "workspaceId" = p."workspaceId" 
+      FROM "facebook_pages" p 
+      WHERE "customers"."facebookPageId" = p."id" AND "customers"."workspaceId" IS NULL;
+
+      UPDATE "conversations" SET "workspaceId" = p."workspaceId" 
+      FROM "facebook_pages" p 
+      WHERE "conversations"."facebookPageId" = p."id" AND "conversations"."workspaceId" IS NULL;
+
+      UPDATE "orders" SET "workspaceId" = c."workspaceId" 
+      FROM "customers" c 
+      WHERE "orders"."customerId" = c."id" AND "orders"."workspaceId" IS NULL;
+    `);
+
+    // 8. Security Cleanup: Strictly restrict platform isAdmin to designated admin emails
     try {
       const explicitAdmin = (process.env.ADMIN_EMAIL || config.adminEmail || "").trim().toLowerCase();
       const designatedAdmins = Array.from(
@@ -450,6 +535,25 @@ async function syncDatabaseSchema() {
       }
     } catch (hydrErr: any) {
       console.warn("⚠️ System settings hydration notice:", hydrErr.message);
+    }
+
+    // 7. Cleanup mock fallback pages & legacy fake comments
+    try {
+      await prisma.facebookPage.deleteMany({
+        where: {
+          OR: [
+            { pageId: { startsWith: "mock_" } },
+            { pageId: { startsWith: "dummy_" } },
+            { name: "Default Store Page" },
+          ]
+        }
+      }).catch(() => {});
+      const commentKeys = await redisConnection.keys("mogent:comments_cache:*");
+      if (commentKeys && commentKeys.length > 0) {
+        await redisConnection.del(...commentKeys);
+      }
+    } catch (cleanupErr: any) {
+      console.warn("Cleanup notice:", cleanupErr.message);
     }
 
     console.log("✅ PostgreSQL database schema & performance indexes synchronized successfully!");

@@ -145,6 +145,7 @@ pagesRouter.post("/facebook/oauth-connect", async (c) => {
       const saved = await prisma.facebookPage.upsert({
         where: { pageId: p.id.trim() },
         update: {
+          workspaceId,
           name: p.name?.trim() || "Facebook Page",
           category: p.category || "E-Commerce",
           encryptedAccessToken: encryptedData,
@@ -250,6 +251,7 @@ pagesRouter.post("/", async (c) => {
     const page = await prisma.facebookPage.upsert({
       where: { pageId: pageId.trim() },
       update: {
+        workspaceId,
         name: name.trim(),
         encryptedAccessToken: encryptedData,
         tokenIv: iv,

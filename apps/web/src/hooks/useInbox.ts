@@ -9,6 +9,7 @@ import {
   markSaleCompleted as apiMarkSaleCompleted,
   startWhatsAppConversation as apiStartWhatsApp,
   createOrderManual as apiCreateOrder,
+  fetchPages,
 } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { formatBdTime } from "@/lib/timezone";
@@ -49,10 +50,20 @@ export type ChannelTab = "MESSENGER" | "WHATSAPP";
 
 export function useInbox() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [pages, setPages] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [channelFilter, setChannelFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("mogent_inbox_channel_filter");
+      if (saved) return saved;
+      const legacySaved = localStorage.getItem("mogent_inbox_channel_tab");
+      if (legacySaved) return legacySaved;
+    }
+    return "ALL";
+  });
   const [channelTab, setChannelTab] = useState<ChannelTab>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("mogent_inbox_channel_tab");
@@ -64,6 +75,7 @@ export function useInbox() {
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const shouldScrollToBottomRef = useRef(true);
 
   // Sliding Window (30 items per chunk, max 60 in memory)
   const [windowOffset, setWindowOffset] = useState(0);
@@ -321,7 +333,18 @@ export function useInbox() {
   }, [loadData]);
 
   useEffect(() => {
+    fetchPages()
+      .then((pList) => {
+        if (Array.isArray(pList)) {
+          setPages(pList.map((p: any) => ({ id: p.id, name: p.name })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!selectedId) return;
+    shouldScrollToBottomRef.current = true;
     setMessagesLoading(true);
     fetchMessages(selectedId)
       .then((msgs) => {
@@ -337,10 +360,18 @@ export function useInbox() {
           .then((msgs) => {
             if (Array.isArray(msgs) && msgs.length > 0) {
               setMessages((prev) => {
-                if (prev.length !== msgs.length || msgs[msgs.length - 1]?.id !== prev[prev.length - 1]?.id) {
-                  return msgs;
+                const hasOptimistic = prev.some((m) => m.id.startsWith("optimistic-"));
+                if (!hasOptimistic && prev.length === msgs.length && msgs[msgs.length - 1]?.id === prev[prev.length - 1]?.id) {
+                  return prev;
                 }
-                return prev;
+                if (hasOptimistic) {
+                  const serverTexts = new Set(msgs.map((m) => m.text));
+                  const unconfirmedOptimistic = prev.filter(
+                    (m) => m.id.startsWith("optimistic-") && !serverTexts.has(m.text)
+                  );
+                  return [...msgs, ...unconfirmedOptimistic];
+                }
+                return msgs;
               });
             }
           })
@@ -352,7 +383,12 @@ export function useInbox() {
   }, [selectedId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesEndRef.current?.parentElement;
+    const isNearBottom = el ? el.scrollTop + el.clientHeight >= el.scrollHeight - 120 : true;
+    if (shouldScrollToBottomRef.current || isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      shouldScrollToBottomRef.current = false;
+    }
   }, [messages]);
 
   const activeConv = conversations.find((c) => c.id === selectedId);
@@ -374,8 +410,9 @@ export function useInbox() {
         ? `[Document: ${attachment?.fileName || "document.pdf"}]`
         : "[Image]");
 
+    const optimisticId = `optimistic-${Date.now()}`;
     const optimisticMsg: Message = {
-      id: Date.now().toString(),
+      id: optimisticId,
       sender: "HUMAN_AGENT",
       text: fallbackText,
       mediaType: attachment?.mediaType || "TEXT",
@@ -385,12 +422,13 @@ export function useInbox() {
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
+    shouldScrollToBottomRef.current = true;
 
     try {
       const res = await apiSendMessage(selectedId, textToSend, attachment);
       if (res?.success && res.data) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === optimisticMsg.id ? { ...m, ...res.data } : m))
+          prev.map((m) => (m.id === optimisticId ? { ...m, ...res.data } : m))
         );
       }
     } catch (err) {
@@ -550,7 +588,17 @@ export function useInbox() {
     (c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) === "WHATSAPP"
   );
 
-  const currentChannelList = channelTab === "MESSENGER" ? messengerConversations : whatsAppConversations;
+  const isSpecificPage = channelFilter.startsWith("PAGE:");
+  const activePageId = isSpecificPage ? channelFilter.replace("PAGE:", "") : "";
+
+  let currentChannelList = conversations;
+  if (channelFilter === "MESSENGER") {
+    currentChannelList = messengerConversations;
+  } else if (channelFilter === "WHATSAPP") {
+    currentChannelList = whatsAppConversations;
+  } else if (isSpecificPage) {
+    currentChannelList = conversations.filter((c) => c.pageId === activePageId);
+  }
 
   const filteredConversations = currentChannelList.filter((c) => {
     const matchesSearch =
@@ -566,10 +614,14 @@ export function useInbox() {
     return matchesSearch;
   });
 
-  const handleSwitchChannel = (newChannel: ChannelTab) => {
-    setChannelTab(newChannel);
+  const handleSwitchChannel = (newChannel: string) => {
+    setChannelFilter(newChannel);
     if (typeof window !== "undefined") {
-      localStorage.setItem("mogent_inbox_channel_tab", newChannel);
+      localStorage.setItem("mogent_inbox_channel_filter", newChannel);
+      if (newChannel === "WHATSAPP" || newChannel === "MESSENGER") {
+        localStorage.setItem("mogent_inbox_channel_tab", newChannel);
+        setChannelTab(newChannel as ChannelTab);
+      }
     }
     setNewIncomingCount(0);
     setWindowOffset(0);
@@ -579,7 +631,17 @@ export function useInbox() {
     if (listContainerRef.current) {
       listContainerRef.current.scrollTop = 0;
     }
-    const targetList = newChannel === "MESSENGER" ? messengerConversations : whatsAppConversations;
+
+    let targetList = conversations;
+    if (newChannel === "MESSENGER") {
+      targetList = messengerConversations;
+    } else if (newChannel === "WHATSAPP") {
+      targetList = whatsAppConversations;
+    } else if (newChannel.startsWith("PAGE:")) {
+      const pid = newChannel.replace("PAGE:", "");
+      targetList = conversations.filter((c) => c.pageId === pid);
+    }
+
     if (targetList.length > 0) {
       setSelectedId(targetList[0].id);
     } else {
@@ -592,6 +654,12 @@ export function useInbox() {
     filteredConversations,
     messengerConversations,
     whatsAppConversations,
+    allCount: conversations.length,
+    messengerCount: messengerConversations.length,
+    whatsAppCount: whatsAppConversations.length,
+    pages,
+    channelFilter,
+    setChannelFilter,
     selectedId,
     setSelectedId,
     activeConv,

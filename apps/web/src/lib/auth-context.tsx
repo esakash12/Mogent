@@ -97,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 localStorage.setItem("mogent_user", JSON.stringify(json.data.user));
                 if (json.data.workspace) {
                   localStorage.setItem("mogent_workspace", JSON.stringify(json.data.workspace));
+                  localStorage.setItem("mogent_workspace_id", json.data.workspace.id);
                 }
               } catch {}
             }
@@ -146,6 +147,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("mogent_auth_token", token);
         localStorage.setItem("mogent_user", JSON.stringify(user));
         localStorage.setItem("mogent_workspace", JSON.stringify(workspace));
+        if (workspace?.id) {
+          localStorage.setItem("mogent_workspace_id", workspace.id);
+        }
       } catch {}
 
       router.push("/dashboard");
@@ -190,6 +194,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("mogent_auth_token", token);
         localStorage.setItem("mogent_user", JSON.stringify(user));
         localStorage.setItem("mogent_workspace", JSON.stringify(workspace));
+        if (workspace?.id) {
+          localStorage.setItem("mogent_workspace_id", workspace.id);
+        }
       } catch {}
 
       router.push("/dashboard");
@@ -225,6 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setWorkspace(found);
       try {
         localStorage.setItem("mogent_workspace", JSON.stringify(found));
+        localStorage.setItem("mogent_workspace_id", found.id);
       } catch {}
       window.location.reload();
     }

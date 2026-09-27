@@ -100,16 +100,23 @@ billingRouter.get("/", authMiddleware, async (c) => {
     const currentPlanKey = (workspace?.plan || "FREE").toUpperCase();
     const currentPlanInfo = PLANS[currentPlanKey] || PLANS.FREE;
 
-    // Real AI message consumption count for this workspace
+    // Real AI message consumption count for this workspace in current billing month
     const pageIds = (workspace.facebookPages || []).map((p: any) => p.id);
-    const messagesUsed = pageIds.length > 0
-      ? await prisma.message.count({
-          where: {
-            conversation: { facebookPageId: { in: pageIds } },
-            sender: "AI",
-          },
-        })
-      : 0;
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const messagesUsed = await prisma.message.count({
+      where: {
+        conversation: {
+          OR: [
+            { workspaceId: workspace.id },
+            ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+          ],
+        },
+        sender: "AI",
+        createdAt: { gte: startOfMonth },
+      },
+    });
 
     // Query payment transactions
     let paymentHistory: any[] = [];

@@ -40,6 +40,35 @@ export function startMessageWorker() {
         return;
       }
 
+      // 1.1 Subscription & Quota Enforcement (Current Month Cycle)
+      if (page.workspace) {
+        const plan = (page.workspace.plan || "FREE").toUpperCase();
+        const limitMap: Record<string, number> = {
+          FREE: 100,
+          STARTER: 5000,
+          PRO: 25000,
+          ENTERPRISE: 100000,
+        };
+        const maxAllowed = limitMap[plan] || 100;
+
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const currentMonthUsage = await prisma.message.count({
+          where: {
+            conversation: { facebookPage: { workspaceId: page.workspaceId } },
+            sender: MessageSender.AI,
+            createdAt: { gte: startOfMonth },
+          },
+        });
+
+        if (currentMonthUsage >= maxAllowed) {
+          console.warn(`🛑 Monthly AI message limit reached for Workspace [${page.workspace.name}] (${currentMonthUsage}/${maxAllowed}). Skipping AI generation.`);
+          return;
+        }
+      }
+
       // 2. Decrypt Facebook Page Access Token (if not pure WhatsApp)
       let pageAccessToken = "";
       const isWhatsAppRecipient = senderPsid?.startsWith("wa_");
@@ -339,29 +368,28 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
         if (finalReplyText && page.aiMode !== "MANUAL") {
           if (isWhatsApp) {
             try {
-              const wsId = page.workspaceId || "default";
-              let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
-              if (!raw && wsId !== "default") {
-                raw = await redisConnection.get("mogent:whatsapp_config:default");
+              const wsId = page.workspaceId;
+              if (!wsId) {
+                console.warn(`⚠️ Cannot dispatch WhatsApp reply: Page [${page.id}] has no workspaceId`);
+                return;
               }
+
+              // 1. Check workspace-specific Redis configuration
+              let raw = await redisConnection.get(`mogent:whatsapp_config:${wsId}`);
               let saved = raw ? JSON.parse(raw) : null;
 
-              // Fallback: If not found directly under wsId, auto-scan existing WhatsApp configs in Redis
+              // 2. Direct fallback to PostgreSQL workspace record
               if (!saved?.phoneNumberId || !saved?.accessToken) {
-                try {
-                  const keys = await redisConnection.keys("mogent:whatsapp_config:*");
-                  for (const k of keys) {
-                    if (k.endsWith(":default")) continue;
-                    const candRaw = await redisConnection.get(k);
-                    if (candRaw) {
-                      const cand = JSON.parse(candRaw);
-                      if (cand?.phoneNumberId && cand?.accessToken) {
-                        saved = cand;
-                        break;
-                      }
-                    }
-                  }
-                } catch {}
+                const wsRecord = await prisma.workspace.findUnique({
+                  where: { id: wsId },
+                  select: { whatsAppPhoneNumberId: true, whatsAppAccessToken: true },
+                });
+                if (wsRecord?.whatsAppPhoneNumberId && wsRecord?.whatsAppAccessToken) {
+                  saved = {
+                    phoneNumberId: wsRecord.whatsAppPhoneNumberId,
+                    accessToken: wsRecord.whatsAppAccessToken,
+                  };
+                }
               }
 
               if (saved?.phoneNumberId && saved?.accessToken) {
@@ -379,7 +407,9 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
                     text: { body: finalReplyText },
                   }),
                 });
-                console.log(`✅ [WhatsApp AI Reply Dispatched] to: ${cleanPhone}`);
+                console.log(`✅ [WhatsApp AI Reply Dispatched] to: ${cleanPhone} for Workspace [${wsId}]`);
+              } else {
+                console.warn(`⚠️ [WhatsApp AI Reply Skipped] No WhatsApp credentials configured for Workspace [${wsId}]`);
               }
             } catch (waErr: any) {
               console.warn("AI WhatsApp dispatch error:", waErr.message);
@@ -442,6 +472,37 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
               });
 
               if (!recentOrder) {
+                // Resolve product and amount intelligently from catalog or chat text
+                let orderAmount = 0;
+                let orderedProductName = "Order via AI Chat";
+
+                if (page.workspaceId) {
+                  const wsProducts = await prisma.product.findMany({
+                    where: { workspaceId: page.workspaceId, inStock: true },
+                    take: 10,
+                  });
+
+                  if (wsProducts.length > 0) {
+                    const matchedProd = wsProducts.find((p) =>
+                      text && text.toLowerCase().includes(p.name.toLowerCase())
+                    ) || wsProducts[0];
+
+                    orderAmount = matchedProd.price;
+                    orderedProductName = matchedProd.name;
+                  }
+                }
+
+                // Try extracting price mentioned in text (e.g. "১২০০ টাকা" or "1200 tk")
+                const priceMatch = (text || "").match(/(?:৳|BDT|Tk|টাকা:?\s*|৳\s*)(\d{2,6})/i) ||
+                  (text || "").match(/(\d{2,6})\s*(?:টাকা|tk|bdt|\/-)/i);
+                if (priceMatch && Number(priceMatch[1]) > 0) {
+                  orderAmount = Number(priceMatch[1]);
+                }
+
+                if (!orderAmount || orderAmount <= 0) {
+                  orderAmount = 500; // sensible default
+                }
+
                 await createOrder({
                   workspaceId: page.workspaceId,
                   customerId: customer.id,
@@ -449,14 +510,14 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
                   customerName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || undefined,
                   customerPhone: extractedLeadInfo.phone || customer.phoneNumber || undefined,
                   deliveryAddress: extractedLeadInfo.deliveryAddress || customer.deliveryAddress || undefined,
-                  productName: "AI Order (Messenger)",
-                  totalAmount: 1000,
+                  productName: orderedProductName,
+                  totalAmount: orderAmount,
                   paymentMethod: "COD",
                   status: "CONFIRMED",
                   pageId: page.id,
                   isAiGenerated: true,
                 });
-                console.log(`🛍️ AI Agent successfully created order for customer [${customer.id}]`);
+                console.log(`🛍️ AI Agent created order [${orderedProductName} - ${orderAmount} BDT] for customer [${customer.id}]`);
               }
             } catch (aiOrderErr: any) {
               console.warn("AI order capture notice:", aiOrderErr.message);
@@ -614,10 +675,10 @@ ${page.systemPrompt || `আপনি "${page.businessName || page.name}" এর 
       } catch (aiErr: any) {
         console.error("❌ AI Generation / Processing failed in worker:", aiErr);
         
-        // Notify the customer that the bot is down
-        const fallbackText = "I'm currently experiencing technical difficulties. A human agent will assist you shortly.";
+        // Notify the customer with friendly Bangla message
+        const fallbackText = "বর্তমানে কিছুটা প্রযুক্তিগত ত্রুটি দেখা দিয়েছে। আমাদের একজন প্রতিনিধি দ্রুত আপনার সাথে যোগাযোগ করবেন।";
         try {
-          if (page.aiMode !== "MANUAL") {
+          if (page.aiMode !== "MANUAL" && pageAccessToken) {
             await facebookApi.sendTextMessage(pageAccessToken, senderPsid, fallbackText);
             await prisma.message.create({
               data: {

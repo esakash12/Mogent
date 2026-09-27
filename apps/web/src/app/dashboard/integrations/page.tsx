@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Code,
   Bot,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -29,6 +30,7 @@ import {
   fetchWhatsAppConfig,
   saveWhatsAppConfig,
   testWhatsAppConnection,
+  inspectFacebookToken,
 } from "@/lib/api";
 import { toast } from "@/lib/toast";
 
@@ -41,12 +43,22 @@ export default function IntegrationsPage() {
   const [showFacebookDrawer, setShowFacebookDrawer] = useState(false);
   const [pageToggles, setPageToggles] = useState<Record<string, { chat: boolean; comment: boolean; privateInbox: boolean }>>({});
 
-  // Add Page Modal
+  // Add Page Modal with Auto-Detect
   const [showAddModal, setShowAddModal] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
   const [pageNameInput, setPageNameInput] = useState("");
   const [fbPageIdInput, setFbPageIdInput] = useState("");
+  const [isDetectingToken, setIsDetectingToken] = useState(false);
+  const [detectedSuccess, setDetectedSuccess] = useState(false);
+  const [addModalError, setAddModalError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+
+  // Edit Page Settings Modal
+  const [editingPage, setEditingPage] = useState<any | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editAiMode, setEditAiMode] = useState<"AUTO" | "HYBRID" | "MANUAL" | "OFF">("AUTO");
+  const [editTemperature, setEditTemperature] = useState(0.3);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Delete modal
   const [deleteItem, setDeleteItem] = useState<any | null>(null);
@@ -159,10 +171,63 @@ export default function IntegrationsPage() {
     }
   };
 
+  const handleTokenChange = async (tokenVal: string) => {
+    setTokenInput(tokenVal);
+    setDetectedSuccess(false);
+    setAddModalError(null);
+
+    if (tokenVal.trim().length > 25) {
+      setIsDetectingToken(true);
+      const inspection = await inspectFacebookToken(tokenVal.trim());
+      setIsDetectingToken(false);
+      if (inspection.success && inspection.data) {
+        setPageNameInput(inspection.data.name);
+        setFbPageIdInput(inspection.data.pageId);
+        setDetectedSuccess(true);
+      } else {
+        setAddModalError(inspection.error || "Invalid token or permissions.");
+      }
+    }
+  };
+
+  const handleOpenPageSettings = (p: any) => {
+    setEditingPage(p);
+    setEditPrompt(p.systemPrompt || "");
+    setEditAiMode(p.aiMode || "AUTO");
+    setEditTemperature(p.temperature ?? 0.3);
+  };
+
+  const handleSavePageSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPage) return;
+    setIsSavingSettings(true);
+    try {
+      await updatePageSettings(editingPage.id, {
+        systemPrompt: editPrompt,
+        aiMode: editAiMode,
+        temperature: Number(editTemperature),
+      });
+      toast.success("Page AI Persona & Settings Saved! 🤖");
+      setPages((prev) =>
+        prev.map((p) =>
+          p.id === editingPage.id
+            ? { ...p, systemPrompt: editPrompt, aiMode: editAiMode, temperature: Number(editTemperature) }
+            : p
+        )
+      );
+      setEditingPage(null);
+    } catch {
+      toast.error("Failed to update page settings");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const handleAddPage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tokenInput.trim() || !pageNameInput.trim()) return;
     setIsAdding(true);
+    setAddModalError(null);
     try {
       await createPage({
         name: pageNameInput,
@@ -173,9 +238,11 @@ export default function IntegrationsPage() {
       setTokenInput("");
       setPageNameInput("");
       setFbPageIdInput("");
+      setDetectedSuccess(false);
+      toast.success("Facebook Page Connected! 🎉");
       await loadData();
-    } catch (err) {
-      console.error("Add page error:", err);
+    } catch (err: any) {
+      setAddModalError(err.message || "Failed to connect Facebook Page");
     } finally {
       setIsAdding(false);
     }
@@ -468,19 +535,43 @@ export default function IntegrationsPage() {
                   <div key={p.id} className="rounded-2xl border border-[#E5E7EB] p-4 space-y-4 bg-white shadow-sm">
                     {/* Page Header */}
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-[#FFFBEB] text-[#D97706] font-bold text-xs flex items-center justify-center border border-[#FDE68A]">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-[#FFFBEB] text-[#D97706] font-bold text-xs flex items-center justify-center border border-[#FDE68A] shrink-0">
                           {p.name?.[0]?.toUpperCase() || "P"}
                         </div>
-                        <span className="text-xs font-bold text-[#111827]">{p.name}</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[#111827] truncate">{p.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-[#059669] font-medium flex items-center gap-0.5">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              {p.webhookStatus || "SUBSCRIBED"}
+                            </span>
+                            <span className="text-[#D1D5DB]">•</span>
+                            <span className="text-[10px] text-[#6B7280]">
+                              AI: {p.aiMode || "AUTO"}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => setDeleteItem(p)}
-                        className="p-1.5 rounded-lg text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
-                        title="Delete Page"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleOpenPageSettings(p)}
+                          className="px-2.5 py-1 rounded-lg border border-[#E5E7EB] hover:bg-[#F9FAFB] text-xs font-bold text-[#374151] flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Configure AI Persona & Prompt"
+                        >
+                          <Bot className="w-3.5 h-3.5 text-[#F59E0B]" />
+                          <span>AI Persona</span>
+                        </button>
+
+                        <button
+                          onClick={() => setDeleteItem(p)}
+                          className="p-1.5 rounded-lg text-[#DC2626] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
+                          title="Delete Page"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Toggle 1: AI Chat Reply */}
@@ -910,48 +1001,197 @@ export default function IntegrationsPage() {
         </div>
       )}
 
-      {/* Add Account Modal */}
+      {/* Add Facebook Page Modal with Smart Token Auto-Detect */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-md p-5 space-y-4">
-            <h3 className="text-sm font-bold text-[#111827]">Connect Facebook Page</h3>
-            <form onSubmit={handleAddPage} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">Page Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Shohag Bazar"
-                  value={pageNameInput}
-                  onChange={(e) => setPageNameInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] text-xs focus:outline-none focus:border-[#F59E0B]"
-                />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#F1F5F9] pb-3">
+              <div className="flex items-center gap-2">
+                <Facebook className="w-5 h-5 text-[#1877F2]" />
+                <h3 className="text-sm font-bold text-[#111827]">Connect Facebook Page</h3>
               </div>
+              <button onClick={() => setShowAddModal(false)} className="text-[#9CA3AF] hover:text-[#111827]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {addModalError && (
+              <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] text-xs">
+                {addModalError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddPage} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-[#374151] mb-1">Page Access Token *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-[#374151]">Page Access Token *</label>
+                  {isDetectingToken && (
+                    <span className="text-[11px] text-[#F59E0B] flex items-center gap-1 font-semibold">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Auto-detecting...
+                    </span>
+                  )}
+                </div>
                 <textarea
                   rows={3}
                   required
-                  placeholder="EAAB..."
+                  placeholder="Paste Page Access Token (EAAB...)"
                   value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E5E7EB] text-xs font-mono focus:outline-none focus:border-[#F59E0B]"
+                  onChange={(e) => handleTokenChange(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-[#CBD5E1] text-xs font-mono focus:outline-none focus:border-[#F59E0B]"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#F3F4F6]">
+
+              {detectedSuccess && (
+                <div className="p-2.5 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <div>
+                    <span className="font-bold">Verified: {pageNameInput}</span>
+                    <span className="block text-[10px] text-[#059669] font-mono">Page ID: {fbPageIdInput}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#374151] mb-1">Page Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Shop Name"
+                    value={pageNameInput}
+                    onChange={(e) => setPageNameInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] text-xs focus:outline-none focus:border-[#F59E0B]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#374151] mb-1">Page ID</label>
+                  <input
+                    type="text"
+                    placeholder="Page ID"
+                    value={fbPageIdInput}
+                    onChange={(e) => setFbPageIdInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] text-xs font-mono focus:outline-none focus:border-[#F59E0B]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#F1F5F9]">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-3.5 py-1.5 rounded-lg border text-xs"
+                  className="px-4 py-2 rounded-xl border text-xs font-semibold text-[#4B5563]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isAdding}
-                  className="px-4 py-1.5 rounded-lg bg-[#F59E0B] text-black text-xs font-bold disabled:opacity-50"
+                  disabled={isAdding || !tokenInput.trim() || !pageNameInput.trim()}
+                  className="px-5 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black text-xs font-extrabold disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {isAdding ? "Connecting..." : "Connect Page"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Page AI Persona & Settings Modal */}
+      {editingPage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#F1F5F9] pb-3">
+              <div className="flex items-center gap-2">
+                <Bot className="w-5 h-5 text-[#F59E0B]" />
+                <h3 className="text-sm font-bold text-[#111827]">
+                  AI Persona & Settings: {editingPage.name}
+                </h3>
+              </div>
+              <button onClick={() => setEditingPage(null)} className="text-[#9CA3AF] hover:text-[#111827]">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePageSettings} className="space-y-4">
+              {/* AI Mode Selector */}
+              <div>
+                <label className="block text-xs font-bold text-[#374151] mb-1.5">
+                  AI Automation Mode
+                </label>
+                <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-[#F9FAFB] border border-[#E5E7EB] text-xs">
+                  {(["AUTO", "HYBRID", "MANUAL", "OFF"] as const).map((mode) => (
+                    <button
+                      type="button"
+                      key={mode}
+                      onClick={() => setEditAiMode(mode)}
+                      className={cn(
+                        "py-1.5 rounded-lg font-bold transition-all cursor-pointer text-center",
+                        editAiMode === mode
+                          ? "bg-[#F59E0B] text-black shadow-xs"
+                          : "text-[#6B7280] hover:text-[#111827]"
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[#6B7280] mt-1">
+                  AUTO: Full AI response. HYBRID: AI assists agents. MANUAL: Agent only. OFF: Disabled.
+                </p>
+              </div>
+
+              {/* System Persona */}
+              <div>
+                <label className="block text-xs font-bold text-[#374151] mb-1">
+                  AI System Persona & Rules
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="You are a polite, helpful customer service executive for this Facebook page. Answer customer questions concisely in friendly Bangla..."
+                  value={editPrompt}
+                  onChange={(e) => setEditPrompt(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-[#CBD5E1] text-xs text-[#111827] focus:outline-none focus:border-[#F59E0B] leading-relaxed font-medium"
+                />
+              </div>
+
+              {/* Temperature */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-[#374151]">
+                    Creativity / Temperature ({editTemperature})
+                  </label>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={editTemperature}
+                  onChange={(e) => setEditTemperature(parseFloat(e.target.value))}
+                  className="w-full cursor-pointer accent-[#F59E0B]"
+                />
+                <div className="flex justify-between text-[10px] text-[#6B7280]">
+                  <span>0.0 (Strict / Factual)</span>
+                  <span>0.5 (Balanced)</span>
+                  <span>1.0 (Creative)</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#F1F5F9]">
+                <button
+                  type="button"
+                  onClick={() => setEditingPage(null)}
+                  className="px-4 py-2 rounded-xl border text-xs font-bold text-[#4B5563]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSettings}
+                  className="px-5 py-2 rounded-xl bg-[#F59E0B] hover:bg-[#D97706] text-black text-xs font-extrabold disabled:opacity-50 cursor-pointer shadow-sm flex items-center gap-1.5"
+                >
+                  {isSavingSettings ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>{isSavingSettings ? "Saving..." : "Save Settings"}</span>
                 </button>
               </div>
             </form>

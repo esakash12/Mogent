@@ -44,9 +44,18 @@ export class ConversationService {
       return [];
     }
 
+    let channelFilter = params.channel;
+    let targetPageId = filterPageId;
+    if (targetPageId === "WHATSAPP") {
+      channelFilter = "WHATSAPP";
+      targetPageId = undefined;
+    } else if (targetPageId && targetPageId.startsWith("PAGE:")) {
+      targetPageId = targetPageId.replace("PAGE:", "");
+    }
+
     let pagesWhere: any = { workspaceId };
-    if (filterPageId && filterPageId !== "ALL") {
-      pagesWhere.id = filterPageId;
+    if (targetPageId && targetPageId !== "ALL") {
+      pagesWhere.id = targetPageId;
     }
 
     const pages = await prisma.facebookPage.findMany({
@@ -55,30 +64,37 @@ export class ConversationService {
     });
     const pageIds = pages.map((p) => p.id);
 
-    // Stop cross-tenant leaks: If workspace has no pages, return empty array immediately
-    if (pageIds.length === 0) {
-      return [];
-    }
-
     const isAll = params.all === true;
     const limit = isAll ? undefined : (params.limit ? Number(params.limit) : 40);
     const skip = params.skip ? Number(params.skip) : 0;
     const search = (params.search || "").trim();
 
     const whereClause: any = {
-      facebookPageId: { in: pageIds },
+      OR: [
+        { workspaceId },
+        { customer: { workspaceId } },
+        ...(pageIds.length > 0 ? [{ facebookPageId: { in: pageIds } }] : []),
+      ],
     };
 
-    if (params.channel && params.channel !== "ALL") {
-      whereClause.channel = params.channel;
+    if (targetPageId && targetPageId !== "ALL") {
+      whereClause.facebookPageId = targetPageId;
+    }
+
+    if (channelFilter && channelFilter !== "ALL") {
+      whereClause.channel = channelFilter;
     }
 
     if (search) {
-      whereClause.OR = [
-        { customer: { firstName: { contains: search, mode: "insensitive" } } },
-        { customer: { lastName: { contains: search, mode: "insensitive" } } },
-        { customer: { phoneNumber: { contains: search } } },
-        { customer: { psid: { contains: search } } },
+      whereClause.AND = [
+        {
+          OR: [
+            { customer: { firstName: { contains: search, mode: "insensitive" } } },
+            { customer: { lastName: { contains: search, mode: "insensitive" } } },
+            { customer: { phoneNumber: { contains: search } } },
+            { customer: { psid: { contains: search } } },
+          ],
+        },
       ];
     }
 
@@ -168,7 +184,7 @@ export class ConversationService {
         avatar: conv.customer.profilePic || (conv.customer.firstName?.[0] || conv.customer.psid.slice(-2).toUpperCase()),
         profilePic: conv.customer.profilePic,
         pageId: conv.facebookPageId,
-        pageName: conv.facebookPage?.name || "Connected Page",
+        pageName: conv.facebookPage?.name || (convChannel === "WHATSAPP" ? `WhatsApp ${conv.customer.phoneNumber ? `(${conv.customer.phoneNumber})` : ""}`.trim() : "Facebook Page"),
         fbPageId: conv.facebookPage?.pageId,
         status: conv.status,
         isHumanControl: conv.isHumanControl,
@@ -235,7 +251,7 @@ export class ConversationService {
         ? "[Image]"
         : "");
 
-    if (!isWhatsApp) {
+    if (!isWhatsApp && facebookPage) {
       try {
         const pageAccessToken = decryptToken(
           facebookPage.encryptedAccessToken,
@@ -543,8 +559,10 @@ export class ConversationService {
         },
       });
     } else {
-      // If customer already exists under another page in this workspace, we unify everything under that page!
-      page = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } }) || page;
+      if (customer.facebookPageId) {
+        const foundPage = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } });
+        if (foundPage) page = foundPage;
+      }
       await prisma.customer.update({
         where: { id: customer.id },
         data: {

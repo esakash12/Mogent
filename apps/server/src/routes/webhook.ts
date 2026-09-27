@@ -6,6 +6,7 @@ import { incomingMessagesQueue } from "../queue/message-queue";
 import { FacebookWebhookBody, ProcessMessageJobPayload, decryptToken } from "@mogent/shared";
 import { prisma, MessageSender, MessageStatus, AiMode } from "@mogent/database";
 import { storageService } from "../services/storage";
+import { classifyComment } from "./comments";
 
 export const webhookRouter = new Hono();
 
@@ -203,6 +204,91 @@ const handleIngest = async (c: any) => {
         });
 
         console.log(`📥 [Webhook] Dispatched message from ${senderPsid} (Page: ${pageId}) to BullMQ.`);
+      }
+
+      // Handle Facebook Comments & Feed Changes
+      for (const change of (entry as any).changes || []) {
+        if (change.field === "feed" && change.value?.item === "comment") {
+          const val = change.value;
+          const commentId = val.comment_id;
+          const verb = val.verb || "add";
+
+          if (!commentId) continue;
+
+          if (verb === "remove") {
+            await prisma.facebookComment.deleteMany({
+              where: { id: commentId },
+            });
+            continue;
+          }
+
+          const page = await prisma.facebookPage.findUnique({
+            where: { pageId },
+          });
+
+          if (!page || !page.workspaceId) continue;
+
+          const messageText = (val.message || "").trim();
+          const classification = classifyComment(messageText);
+
+          let createdTime = new Date();
+          if (val.created_time) {
+            createdTime = new Date(val.created_time * 1000);
+          }
+
+          let isHidden = false;
+
+          // Auto-moderation: If abusive, spam, or offensive, auto-hide from page
+          if (classification.category === "SPAM" || classification.category === "OFFENSIVE") {
+            if (page.encryptedAccessToken) {
+              try {
+                const token = decryptToken(
+                  page.encryptedAccessToken,
+                  page.tokenIv,
+                  page.tokenTag,
+                  config.tokenEncryptionKey
+                );
+                if (token) {
+                  await fetch(`https://graph.facebook.com/${config.facebook.graphVersion}/${commentId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ is_hidden: true, access_token: token }),
+                  });
+                  isHidden = true;
+                  console.log(`🛡️ [Auto-Moderation] Auto-hid offensive/spam comment [${commentId}] on page [${page.name}].`);
+                }
+              } catch (hideErr: any) {
+                console.warn(`[Auto-Moderation] Failed auto-hiding comment [${commentId}]:`, hideErr.message);
+              }
+            }
+          }
+
+          await prisma.facebookComment.upsert({
+            where: { id: commentId },
+            update: {
+              message: messageText,
+              sentiment: classification.sentiment,
+              category: classification.category,
+              isHidden: isHidden || undefined,
+            },
+            create: {
+              id: commentId,
+              postId: val.post_id || val.parent_id || null,
+              postTitle: "Facebook Post",
+              facebookPageId: page.id,
+              workspaceId: page.workspaceId,
+              authorName: val.from?.name || "Facebook User",
+              authorId: val.from?.id || null,
+              message: messageText,
+              sentiment: classification.sentiment,
+              category: classification.category,
+              isHidden,
+              createdTime,
+            },
+          });
+
+          console.log(`💬 [Webhook] Saved comment from ${val.from?.name || "User"} (${classification.category}) for page [${page.name}].`);
+        }
       }
     }
 
@@ -772,8 +858,10 @@ webhookRouter.post("/whatsapp", async (c) => {
                     },
                   });
                 } else {
-                  // If customer already exists under another page in this workspace, we unify everything under that page!
-                  page = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } }) || page;
+                  if (customer.facebookPageId) {
+                    const foundPage = await prisma.facebookPage.findUnique({ where: { id: customer.facebookPageId } });
+                    if (foundPage) page = foundPage;
+                  }
                   const updateData: any = { channel: "WHATSAPP" };
                   if (contactName && contactName !== `+${fromPhone}` && (!customer.firstName || customer.firstName === "WhatsApp Tester" || customer.firstName.startsWith("+"))) {
                     updateData.firstName = contactName;
