@@ -157,12 +157,27 @@ export function useInbox() {
         if (data.length > 0) {
           const hasMessenger = data.some((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) !== "WHATSAPP");
           const hasWhatsApp = data.some((c) => (c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER")) === "WHATSAPP");
-          if (!hasMessenger && hasWhatsApp && typeof window !== "undefined" && !localStorage.getItem("mogent_inbox_channel_tab")) {
-            setChannelTab("WHATSAPP");
+          
+          let finalChannelTab = "MESSENGER";
+          if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("mogent_inbox_channel_tab");
+            if (saved) {
+              finalChannelTab = saved;
+            } else if (!hasMessenger && hasWhatsApp) {
+              finalChannelTab = "WHATSAPP";
+              setChannelTab("WHATSAPP");
+            }
           }
 
           if (typeof window !== "undefined" && window.innerWidth >= 768) {
-            setSelectedId((prev) => (prev && data.some((c) => c.id === prev) ? prev : data[0].id));
+            setSelectedId((prev) => {
+              if (prev && data.some((c) => c.id === prev)) return prev;
+              const targetList = data.filter((c) => {
+                const ch = c.channel || (c.psid?.startsWith("wa_") ? "WHATSAPP" : "MESSENGER");
+                return ch === finalChannelTab;
+              });
+              return targetList.length > 0 ? targetList[0].id : data[0].id;
+            });
           }
         }
       }
