@@ -541,8 +541,17 @@ knowledgeRouter.post("/playground", async (c) => {
       return c.json({ success: false, error: "Workspace context is required" }, 400);
     }
 
-    // Fetch unified live context: Co-Pilot Dynamic Business Memories & Live Products only (legacy knowledgeBase eliminated)
-    const [dynamicMemories, storeProducts] = await Promise.all([
+    // Fetch unified live context: Store Brain Note (Supreme living source), Co-Pilot Dynamic Business Memories & Live Products
+    const [brainNote, dynamicMemories, storeProducts] = await Promise.all([
+      targetWorkspaceId
+        ? prisma.storeBrainNote.findFirst({
+            where: {
+              workspaceId: targetWorkspaceId,
+              ...(pageId && pageId !== "ALL" ? { pageId } : {}),
+            },
+            orderBy: { updatedAt: "desc" },
+          })
+        : null,
       targetWorkspaceId
         ? prisma.businessMemory.findMany({
             where: {
@@ -568,6 +577,13 @@ knowledgeRouter.post("/playground", async (c) => {
     ]);
 
     const knowledgeContext: string[] = [];
+
+    // 0. Inject Living Store Brain Note (Supreme Authority)
+    if (brainNote?.content) {
+      knowledgeContext.push(
+        `[👑 মার্চেন্ট ও স্টোরের মূল ব্রেন ও সেলস নোটবুক (LIVING STORE BRAIN NOTE - পরম সত্য ও প্রধান উৎস)]:\n${brainNote.content}`
+      );
+    }
 
     // 1. Inject Live Product Catalog & Inventory
     if (storeProducts.length > 0) {

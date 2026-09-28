@@ -158,6 +158,7 @@ model Workspace {
   broadcastCampaigns BroadcastCampaign[]
   businessMemories BusinessMemory[]
   copilotSessions  CoPilotSession[]
+  storeBrainNotes  StoreBrainNote[]
 
   // WhatsApp & Contact Sharing Protocol
   whatsAppMode          String   @default("ON_DEMAND") // ON_DEMAND, ALWAYS, DISABLED
@@ -236,6 +237,7 @@ model FacebookPage {
   knowledgeBase KnowledgeBase[]
   facebookComments FacebookComment[]
   businessMemories BusinessMemory[]
+  storeBrainNotes  StoreBrainNote[]
 
   @@index([workspaceId])
   @@map("facebook_pages")
@@ -721,3 +723,28 @@ model CoPilotMessage {
   @@index([sessionId, createdAt])
   @@map("copilot_messages")
 }
+
+// ----------------------------------------------------
+// STORE BRAIN NOTES (LIVING STORE SCRATCHPAD / NOTEBOOK)
+// ----------------------------------------------------
+
+model StoreBrainNote {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  pageId        String?       // Scoped to specific FacebookPage, or null for Workspace default/WhatsApp
+  channel       String        @default("ALL") // "MESSENGER" | "WHATSAPP" | "ALL"
+  title         String        @default("Store Brain & Pricing Note")
+  content       String        @db.Text // Full structured Markdown living store note
+  version       Int           @default(1)
+  lastUpdatedBy String        @default("AI_COPILOT") // "AI_COPILOT" | "MERCHANT"
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage  FacebookPage? @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([pageId])
+  @@map("store_brain_notes")
+}
+

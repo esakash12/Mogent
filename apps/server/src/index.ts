@@ -21,6 +21,7 @@ import { broadcastsRouter } from "./routes/broadcasts";
 import { uploadRouter } from "./routes/upload";
 import { commentsRouter } from "./routes/comments";
 import { copilotRouter } from "./routes/copilot";
+import { brainNotesRouter } from "./routes/brain-notes";
 import { startMessageWorker } from "./workers/message-processor";
 import { startTelegramWorker } from "./workers/telegram-worker";
 import { createRateLimiter } from "./middleware/rate-limiter";
@@ -139,6 +140,7 @@ app.route("/api/campaigns", broadcastsRouter);
 app.route("/api/upload", uploadRouter);
 app.route("/api/comments", commentsRouter);
 app.route("/api/copilot", copilotRouter);
+app.route("/api/brain-notes", brainNotesRouter);
 
 // Public Static Media Handler for Local Fallback Storage
 app.get("/uploads/*", async (c) => {
@@ -433,6 +435,28 @@ async function syncDatabaseSchema() {
       );
     `);
 
+    // 5.3.1 Create store_brain_notes table if it does not exist (Living Store Scratchpad / Notebook)
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "store_brain_notes" (
+        "id" TEXT NOT NULL,
+        "workspaceId" TEXT NOT NULL,
+        "pageId" TEXT,
+        "channel" TEXT NOT NULL DEFAULT 'ALL',
+        "title" TEXT NOT NULL DEFAULT 'Store Brain & Pricing Note',
+        "content" TEXT NOT NULL,
+        "version" INTEGER NOT NULL DEFAULT 1,
+        "lastUpdatedBy" TEXT NOT NULL DEFAULT 'AI_COPILOT',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "store_brain_notes_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "idx_store_brain_notes_workspace" ON "store_brain_notes"("workspaceId");
+      CREATE INDEX IF NOT EXISTS "idx_store_brain_notes_page" ON "store_brain_notes"("pageId");
+    `);
+
     // 5.4 One-time migration: Safely merge legacy knowledge_base items into business_memories
     try {
       const kbItems = await prisma.knowledgeBase.findMany({
@@ -619,6 +643,98 @@ async function syncDatabaseSchema() {
       }
     } catch (cleanupErr: any) {
       console.warn("Auto-correct database healer notice:", cleanupErr.message);
+    }
+
+    // 5.6 Initialize & Synchronize Living Store Brain Note for every Page and Workspace
+    try {
+      const allPages = await prisma.facebookPage.findMany({
+        include: { workspace: true },
+      });
+
+      for (const page of allPages) {
+        const existingNote = await prisma.storeBrainNote.findFirst({
+          where: { pageId: page.id },
+        });
+
+        const storeName = page.businessName || page.name || page.workspace?.name || "আমাদের অনলাইন শপ";
+        const waNumber = page.workspace?.whatsAppNumber || "01619318941";
+
+        if (!existingNote) {
+          const starterContent = `# 🏪 ${storeName} - স্টোর ব্রেন ও সেলস নোটবুক
+*সর্বশেষ আপডেট: Mogent AI Co-Pilot*
+
+## 📦 প্রডাক্ট ও সার্ভিস মূল্য তালিকা
+- **PVC ID Card Printing**:
+  - বিক্রয় মূল্য: ৳১৫০ (১ পিস)
+  - রেগুলার মূল্য: ৳২০০
+  - বিবরণ: হাই কোয়ালিটি পিভিসি প্রিন্ট (NID, ড্রাইভিং লাইসেন্স, স্টুডেন্ট আইডি ও অফিস আইডি কার্ড)।
+
+## 🚚 ডেলিভারি চার্জ ও ফ্রি ডেলিভারি অফার
+- স্ট্যান্ডার্ড ডেলিভারি চার্জ: ৳৫০
+- **স্পেশাল অফার**: ২ বা তার বেশি (২+) কার্ড অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি!
+- বাল্ক অর্ডার: ৫টির বেশি (৬ বা ততোধিক) কার্ডের ক্ষেত্রে বিশেষ বাল্ক রেটের জন্য হোয়াটসঅ্যাপে নক দিতে বলতে হবে।
+
+## 📞 যোগাযোগ ও অর্ডার নিয়ম
+- অফিসিয়াল WhatsApp: ${waNumber}
+- হটলাইন / যোগাযোগ: ${page.workspace?.hotlineNumber || waNumber}
+- অর্ডার নেওয়ার নিয়ম: ১ থেকে ৫টি কার্ডের ক্ষেত্রে সরাসরি চ্যাটেই ফাইল/ছবি এবং নাম, মোবাইল ও ডেলিভারি ঠিকানা চেয়ে নিয়ে দ্রুত অর্ডার কনফার্ম করতে হবে।
+- ১ থেকে ৫টি কার্ডের জন্য কখনোই অযথা হোয়াটসঅ্যাপে পাঠাবেন না।`;
+
+          await prisma.storeBrainNote.create({
+            data: {
+              workspaceId: page.workspaceId,
+              pageId: page.id,
+              channel: "MESSENGER",
+              title: `${storeName} - Living Store Note`,
+              content: starterContent,
+              version: 1,
+              lastUpdatedBy: "AI_COPILOT",
+            },
+          });
+        }
+      }
+
+      // Also ensure workspace master note exists
+      const allWs = await prisma.workspace.findMany();
+      for (const ws of allWs) {
+        const wsMasterNote = await prisma.storeBrainNote.findFirst({
+          where: { workspaceId: ws.id, pageId: null },
+        });
+        if (!wsMasterNote) {
+          const waNumber = ws.whatsAppNumber || "01619318941";
+          const starterContent = `# 🏪 ${ws.name} - স্টোর মাস্টার ব্রেন নোট
+*সর্বশেষ আপডেট: Mogent AI Co-Pilot*
+
+## 📦 প্রডাক্ট ও সার্ভিস মূল্য তালিকা
+- **PVC ID Card Printing**:
+  - বিক্রয় মূল্য: ৳১৫০ (১ পিস)
+  - রেগুলার মূল্য: ৳২০০
+  - বিবরণ: হাই কোয়ালিটি পিভিসি কার্ড প্রিন্ট সার্ভিস।
+
+## 🚚 ডেলিভারি চার্জ ও ফ্রি ডেলিভারি অফার
+- স্ট্যান্ডার্ড ডেলিভারি চার্জ: ৳৫০
+- **স্পেশাল অফার**: ২ বা তার বেশি (২+) কার্ড অর্ডার করলে ডেলিভারি চার্জ সম্পূর্ণ ফ্রি!
+- বাল্ক রেট: ৫টির বেশি কার্ডের জন্য বিশেষ ছাড় প্রযোজ্য।
+
+## 📞 যোগাযোগ ও অর্ডার পলিসি
+- WhatsApp: ${waNumber}
+- অর্ডার ক্লোজিং: কাস্টমারের কাছ থেকে ফাইল, নাম, ঠিকানা ও মোবাইল নাম্বার নিয়ে অর্ডার কনফার্ম করতে হবে।`;
+
+          await prisma.storeBrainNote.create({
+            data: {
+              workspaceId: ws.id,
+              pageId: null,
+              channel: "ALL",
+              title: `${ws.name} - Master Store Note`,
+              content: starterContent,
+              version: 1,
+              lastUpdatedBy: "AI_COPILOT",
+            },
+          });
+        }
+      }
+    } catch (noteInitErr: any) {
+      console.warn("Store brain notes initialization notice:", noteInitErr.message);
     }
 
     // 6. Performance Indexes for Sub-5ms Queries, Safe Sorting, and Join Acceleration

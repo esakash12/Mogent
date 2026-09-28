@@ -6,6 +6,7 @@ const aiClient = new AiProxyClient(config.aiProxy.url, config.aiProxy.masterKey)
 
 export interface CoPilotActionPayload {
   type:
+    | "UPDATE_BRAIN_NOTE"
     | "TEACH_RULE"
     | "CREATE_PRODUCT"
     | "UPDATE_PRODUCT"
@@ -148,7 +149,7 @@ export class CopilotService {
     });
 
     // 1. Gather comprehensive live context from PostgreSQL
-    const [workspace, pages, memories, products, recentOrders, totalOrdersCount] =
+    const [workspace, pages, memories, products, recentOrders, totalOrdersCount, activeNote] =
       await Promise.all([
         prisma.workspace.findUnique({
           where: { id: workspaceId },
@@ -175,6 +176,13 @@ export class CopilotService {
           include: { customer: { select: { firstName: true, phoneNumber: true } } },
         }),
         prisma.order.count({ where: { workspaceId } }),
+        prisma.storeBrainNote.findFirst({
+          where: {
+            workspaceId,
+            ...(pageId && pageId !== "ALL" ? { pageId } : {}),
+          },
+          orderBy: { updatedAt: "desc" },
+        }),
       ]);
 
     // Calculate real stats
@@ -214,59 +222,47 @@ Current Store Profile:
 - Total Products in Database: ${products.length}
 - Live Order Stats: Total Orders = ${totalOrdersCount}, Today's Orders = ${todayOrdersCount}, Pending Orders = ${pendingOrdersCount}, Total Sales = ৳${totalRevenue.toLocaleString()}
 
-Active Dynamic Rules & Memories Already Saved in Database:
-${existingRulesFormatted.length > 0 ? existingRulesFormatted.join("\n") : "No custom rules saved yet."}
+--- CURRENT LIVING STORE BRAIN NOTE (মার্চেন্ট ডিজিটাল ডায়েরি / স্টোর নোটবুক) ---
+${activeNote?.content || `# 🏪 ${pages[0]?.businessName || pages[0]?.name || workspace?.name || "আমাদের স্টোর"} - স্টোর ব্রেন ও সেলস নোটবুক
+## 📦 প্রডাক্ট ও সার্ভিস মূল্য তালিকা
+- PVC ID Card Printing: বিক্রয় মূল্য ৳১৫০ (১ পিস)
 
-Sample Products in Store:
-${existingProductsFormatted.length > 0 ? existingProductsFormatted.slice(0, 15).join("\n") : "No products added yet."}
+## 🚚 ডেলিভারি চার্জ ও ফ্রি ডেলিভারি অফার
+- স্ট্যান্ডার্ড ডেলিভারি চার্জ: ৳৫০
+- ২ বা তার বেশি নিলে ফ্রি ডেলিভারি!`}
+---------------------------------------------------------------------------------
 
-YOUR CAPABILITIES & INSTRUCTIONS:
-1. Speak in warm, natural, respectful, supportive Bangladeshi business Bengali ("ভাইয়া/আপু", "জী ভাইয়া", "অবশ্যই", "করে দিচ্ছি").
-2. The owner can manage their ENTIRE store through chatting with you! You must detect if the owner is:
-   (A) Teaching a rule or discount offer (e.g. "আজকে থেকে কেউ ২টা নিলে ১০০ টাকা ছাড় আর ফ্রি ডেলিভারি", "ঢাকার ডেলিভারি ৮০ আর বাইরে ১৩০ টাকা", "রাত ১০টার পর মেসেজ দিলে বলবা কাল সকালে কল দিব")
-   (B) Adding a new product (e.g. "একটি নতুন প্রোডাক্ট যোগ করো: প্রিমিয়াম পাঞ্জাবি, দাম ১৪৫০ টাকা, স্টক ৩০ টা")
-   (C) Updating a product (e.g. "কটন শার্টের দাম কমিয়ে ১২০০ টাকা করো", "ব্লু ড্রেস আউট অফ স্টক করো")
-   (D) Asking for store analytics / report (e.g. "আজকে কয়টা অর্ডার আসল?", "টোটাল সেলস কত?", "দোকানের অবস্থা কী?")
-   (E) Asking to view or delete a rule (e.g. "আমার বর্তমান অফারগুলো কী কী?", "১০০ টাকা ছাড়ের নিয়মটা বাদ দাও")
-   (F) Answering onboarding / setup interview questions (e.g. "আমাদের শপের নাম লাইফস্টাইল বিডি, আমরা টিশার্ট ও হুডি বিক্রি করি")
-   (G) General discussion, marketing tips, or questions about how the AI works.
+YOUR SUPREME MISSION:
+You maintain the Living Store Brain Note above!
+The owner will talk to you naturally in Bangla, Banglish, or English (e.g. "amader 1 pis er dam 150 taka ar delivery 50 tk", "আজকে থেকে ৩টা নিলে ফ্রি ডেলিভারি").
+Whenever the owner instructs any price, offer, delivery policy, or rule:
+1. You MUST revise the Living Store Brain Note above to reflect the owner's exact instructions, preserving all other existing bullet points.
+2. In your JSON response under "actions", emit an "UPDATE_BRAIN_NOTE" action containing the revised Markdown content.
 
 OUTPUT FORMAT REQUIREMENTS:
-You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actions if the owner mentioned multiple rules, prices, or policies in their message:
+You MUST respond with a valid JSON object:
 {
-  "thought": "Short internal reasoning about what the owner wants",
-  "reply": "Warm, polite, conversational response in Bengali directly addressing the owner. If you performed actions, confirm each clearly and explain how customer chats will now reflect it.",
+  "thought": "Internal reasoning about what the owner instructed and what sections of the note to revise",
+  "reply": "Warm, polite, respectful Bengali response explaining clearly what was updated in the store notebook and confirming that customer chats now reflect it.",
   "actions": [
     {
-      "type": "TEACH_RULE" | "CREATE_PRODUCT" | "UPDATE_PRODUCT" | "DELETE_RULE" | "STATS_REPORT" | "INTERVIEW_EXTRACT" | "NONE",
+      "type": "UPDATE_BRAIN_NOTE" | "CREATE_PRODUCT" | "UPDATE_PRODUCT" | "TEACH_RULE" | "DELETE_RULE" | "STATS_REPORT" | "INTERVIEW_EXTRACT" | "NONE",
+      "brainNote": {
+        "updatedContent": "Complete revised Markdown document",
+        "changeSummary": "Short explanation in Bengali of what was updated"
+      },
       "rule": {
         "category": "DISCOUNT_OFFER" | "DELIVERY_POLICY" | "BUSINESS_FACT" | "SALES_BEHAVIOR" | "FAQ" | "CUSTOM_RULE",
-        "title": "Short title (e.g. ২টা কার্ডে ফ্রি ডেলিভারি, ৫টির বেশিতে বিশেষ অফার)",
-        "instruction": "Clear natural-language instruction for customer sales AI. Must be explicit about what to say when condition IS met vs NOT met.",
-        "condition": "Optional machine or logical condition, e.g. quantity >= 2 or quantity > 5"
+        "title": "Short title",
+        "instruction": "Clear natural-language instruction"
       },
       "product": {
-        "name": "Product Name (e.g. PVC Card Printing)",
-        "price": 150,
-        "regularPrice": 200,
-        "category": "PVC Print Service",
-        "stockCount": 500,
-        "description": "Short description"
+        "name": "Product Name",
+        "price": 150
       },
       "productUpdate": {
-        "productQuery": "Search phrase to match product name",
-        "price": 150,
-        "stockCount": 500,
-        "inStock": true
-      },
-      "deleteRule": {
-        "ruleQuery": "Search phrase for rule to delete"
-      },
-      "interview": {
-        "businessName": "Extracted business name if mentioned",
-        "businessDescription": "Extracted description if mentioned",
-        "deliveryChargeInside": 50,
-        "deliveryChargeOutside": 50
+        "productQuery": "PVC",
+        "price": 150
       }
     }
   ]
@@ -401,7 +397,63 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
       for (const act of actionList) {
         if (!act || !act.type || act.type === "NONE") continue;
         try {
-          if (act.type === "TEACH_RULE" && act.rule) {
+          if (act.type === "UPDATE_BRAIN_NOTE" && act.brainNote?.updatedContent) {
+            const updatedContent = act.brainNote.updatedContent.trim();
+            const targetPageId = pageId && pageId !== "ALL" ? pageId : (pages[0]?.id || null);
+
+            let note = await prisma.storeBrainNote.findFirst({
+              where: {
+                workspaceId,
+                ...(targetPageId ? { pageId: targetPageId } : {}),
+              },
+              orderBy: { updatedAt: "desc" },
+            });
+
+            if (note) {
+              note = await prisma.storeBrainNote.update({
+                where: { id: note.id },
+                data: {
+                  content: updatedContent,
+                  version: { increment: 1 },
+                  lastUpdatedBy: "AI_COPILOT",
+                  updatedAt: new Date(),
+                },
+              });
+            } else {
+              note = await prisma.storeBrainNote.create({
+                data: {
+                  workspaceId,
+                  pageId: targetPageId,
+                  title: pages[0]?.name ? `${pages[0].name} - স্টোর ব্রেন` : "স্টোর ব্রেন ও সেলস নোটবুক",
+                  content: updatedContent,
+                  version: 1,
+                  lastUpdatedBy: "AI_COPILOT",
+                },
+              });
+            }
+
+            // Sync price to Product table as well
+            const priceMatch = updatedContent.match(/(?:বিক্রয়\s*মূল্য|মূল্য|দাম|price)\s*[:=]?\s*৳?\s*(\d{2,6})/i);
+            if (priceMatch && priceMatch[1]) {
+              const parsedPrice = Number(priceMatch[1]);
+              await prisma.product.updateMany({
+                where: {
+                  workspaceId,
+                  OR: [
+                    { name: { contains: "PVC", mode: "insensitive" } },
+                    { name: { contains: "Card", mode: "insensitive" } },
+                  ],
+                },
+                data: { price: parsedPrice },
+              });
+            }
+
+            actionPayload = {
+              type: "UPDATE_BRAIN_NOTE",
+              data: note,
+              summary: act.brainNote.changeSummary || "📝 স্টোর ব্রেন নোটবুক সফলভাবে আপডেট হয়েছে!",
+            };
+          } else if (act.type === "TEACH_RULE" && act.rule) {
             // Smart Conflict Resolution:
             // If teaching discount or bulk offer, deactivate old conflicting rules (e.g. quantity >= 4)
             if (act.rule.category === "DISCOUNT_OFFER" || act.rule.category === "DELIVERY_POLICY") {
@@ -646,6 +698,43 @@ You MUST respond with a valid JSON object. You can execute ONE or MULTIPLE actio
           }
         } catch (execErr: any) {
           console.warn("Co-Pilot action execution notice:", execErr.message);
+        }
+      }
+
+      // Automatic Brain Note Living Sync: If price or delivery was extracted/updated, ensure active StoreBrainNote is updated
+      if (extractedPrice !== null || (lowerClean.includes("delivery") || lowerClean.includes("ডেলিভারি"))) {
+        try {
+          const targetPageId = pageId && pageId !== "ALL" ? pageId : (pages[0]?.id || null);
+          let noteToSync = await prisma.storeBrainNote.findFirst({
+            where: {
+              workspaceId,
+              ...(targetPageId ? { pageId: targetPageId } : {}),
+            },
+            orderBy: { updatedAt: "desc" },
+          });
+
+          if (noteToSync) {
+            let updatedContent = noteToSync.content;
+            if (extractedPrice !== null) {
+              updatedContent = updatedContent
+                .replace(/বিক্রয়\s*মূল্য\s*[:=]?\s*৳?\s*\d+/gi, `বিক্রয় মূল্য: ৳${extractedPrice}`)
+                .replace(/১০০\s*টাকা/g, `${extractedPrice} টাকা`)
+                .replace(/100\s*টাকা/g, `${extractedPrice} টাকা`);
+            }
+            if (updatedContent !== noteToSync.content) {
+              await prisma.storeBrainNote.update({
+                where: { id: noteToSync.id },
+                data: {
+                  content: updatedContent,
+                  version: { increment: 1 },
+                  lastUpdatedBy: "AI_COPILOT",
+                  updatedAt: new Date(),
+                },
+              });
+            }
+          }
+        } catch (syncErr: any) {
+          console.warn("Auto-sync store note notice:", syncErr.message);
         }
       }
     }

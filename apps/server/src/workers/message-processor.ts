@@ -245,8 +245,15 @@ export function startMessageWorker() {
           };
         });
 
-      // Fetch Live Context: Dynamic Business Memories & Product Catalog only (legacy knowledgeBase eliminated)
-      const [dynamicMemories, storeProducts] = await Promise.all([
+      // Fetch Live Context: Living Store Brain Note, Dynamic Business Memories & Product Catalog
+      const [brainNote, dynamicMemories, storeProducts] = await Promise.all([
+        prisma.storeBrainNote.findFirst({
+          where: {
+            workspaceId: page.workspaceId,
+            OR: [{ pageId: page.id }, { pageId: null }],
+          },
+          orderBy: { updatedAt: "desc" },
+        }),
         prisma.businessMemory.findMany({
           where: {
             workspaceId: page.workspaceId,
@@ -272,6 +279,13 @@ export function startMessageWorker() {
       ]);
 
       const knowledgeContext: string[] = [];
+
+      // 0. Inject Living Store Brain Note (Supreme Authority)
+      if (brainNote?.content) {
+        knowledgeContext.push(
+          `[👑 মার্চেন্ট ও স্টোরের মূল ব্রেন ও সেলস নোটবুক (LIVING STORE BRAIN NOTE - পরম সত্য ও প্রধান উৎস)]:\n${brainNote.content}`
+        );
+      }
 
       // 1. Inject Live Product Catalog & Inventory
       if (storeProducts.length > 0) {

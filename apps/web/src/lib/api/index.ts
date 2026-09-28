@@ -17,3 +17,4 @@ export * from "./admin";
 export * from "./broadcasts";
 export * from "./comments";
 export * from "./copilot";
+export * from "./brain-notes";
