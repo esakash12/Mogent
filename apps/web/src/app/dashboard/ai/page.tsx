@@ -20,7 +20,6 @@ import {
   ScrollText,
   Search,
   ZapIcon,
-  TrendingUp,
   Activity,
   FileEdit,
   ChevronDown,
@@ -287,18 +286,14 @@ export default function CoPilotPage() {
     loadData();
   }, [selectedPageId]);
 
+  // Only scroll when messages count changes or tab changes - NEVER on keystrokes
   useEffect(() => {
-    if (activeTab === "CHAT") {
+    if (activeTab === "CHAT" && session?.messages?.length) {
       scrollToBottom("smooth");
-      const t = setTimeout(() => scrollToBottom("smooth"), 120);
+      const t = setTimeout(() => scrollToBottom("smooth"), 100);
       return () => clearTimeout(t);
     }
-  }, [session?.messages, sending, activeTab]);
-
-  // Focus input after send
-  useEffect(() => {
-    if (!sending) inputRef.current?.focus();
-  }, [sending]);
+  }, [session?.messages?.length, activeTab]);
 
   const handleSend = async (customText?: string) => {
     const text = (customText ?? inputValue).trim();
@@ -333,6 +328,8 @@ export default function CoPilotPage() {
       toast.error(err.message ?? "Message failed.");
     } finally {
       setSending(false);
+      // Keep focus on input after send finishes
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
@@ -380,73 +377,6 @@ export default function CoPilotPage() {
     [memories, selectedCategory, searchQuery]
   );
 
-  // ── Tab header with page selector ────────────────────
-  const Topbar = () => (
-    <div className="flex items-center justify-between gap-3 shrink-0 px-1 pb-4">
-      {/* Left: Status pill */}
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 shadow-xs">
-          <span className="relative flex w-2 h-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-          </span>
-          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-            Store Brain Active
-          </span>
-        </div>
-        <span className="hidden sm:block text-xs text-muted-foreground">
-          {activeRulesCount} rule{activeRulesCount !== 1 ? "s" : ""} synced live
-        </span>
-      </div>
-
-      {/* Right: Page selector + nav tabs */}
-      <div className="flex items-center gap-2 shrink-0">
-        {pages.length > 0 && (
-          <div className="relative">
-            <select
-              value={selectedPageId}
-              onChange={(e) => setSelectedPageId(e.target.value)}
-              className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-lg bg-white dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-xs font-medium"
-            >
-              <option value="ALL">All Pages</option>
-              {pages.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          </div>
-        )}
-
-        {/* Segmented control */}
-        <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[#F1F5F9] dark:bg-[#1A2430] border border-[#E2E8F0] dark:border-[#2D3F50] shadow-xs">
-          {(
-            [
-              { id: "CHAT", icon: MessageSquare, label: "Co-Pilot" },
-              { id: "NOTE", icon: ScrollText, label: "Notebook" },
-              { id: "MEMORIES", icon: ShieldCheck, label: `Rules (${memories.length})` },
-            ] as const
-          ).map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id as Tab)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap",
-                activeTab === id
-                  ? "bg-white dark:bg-[#243040] text-foreground shadow-xs border border-[#E2E8F0] dark:border-[#2D3F50]"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
   // ── Skeleton loader ───────────────────────────────────
   if (loading) {
     return (
@@ -484,346 +414,6 @@ export default function CoPilotPage() {
     );
   }
 
-  // ── Chat + Note split view ────────────────────────────
-  const ChatView = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0">
-      {/* ── Chat Panel ── */}
-      <div className="lg:col-span-7 flex flex-col min-h-0 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D] overflow-hidden shadow-xs shadow-black/[0.04]">
-        {/* Quick Actions Bar */}
-        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#F1F5F9] dark:border-[#1E2D3D] bg-[#FAFBFC] dark:bg-[#0F1923] overflow-x-auto shrink-0 select-none scrollbar-none">
-          <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
-            <ZapIcon className="w-3 h-3 text-amber-500" />
-            Quick
-          </div>
-          <div className="w-px h-4 bg-[#E2E8F0] dark:bg-[#2D3F50] shrink-0" />
-          {QUICK_PROMPTS.map((qp, i) => {
-            const Icon = qp.icon;
-            return (
-              <button
-                key={i}
-                onClick={() => handleSend(qp.prompt)}
-                disabled={sending}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer shrink-0 disabled:opacity-40",
-                  PILL_COLORS[qp.color]
-                )}
-              >
-                <Icon className="w-3 h-3 shrink-0" />
-                {qp.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Messages */}
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-5 space-y-5 scroll-smooth"
-        >
-          {session?.messages && session.messages.length > 0 ? (
-            session.messages.map((msg, idx) => {
-              const isOwner = msg.sender === "OWNER";
-              return (
-                <div
-                  key={msg.id ?? idx}
-                  className={cn(
-                    "flex items-end gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200",
-                    isOwner ? "flex-row-reverse" : "flex-row"
-                  )}
-                >
-                  {/* Avatar */}
-                  <div
-                    className={cn(
-                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mb-0.5",
-                      isOwner
-                        ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm shadow-emerald-500/25"
-                        : "bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] shadow-sm shadow-violet-500/25"
-                    )}
-                  >
-                    {isOwner ? (
-                      <User className="w-3.5 h-3.5 text-white" />
-                    ) : (
-                      <Bot className="w-3.5 h-3.5 text-white" />
-                    )}
-                  </div>
-
-                  {/* Bubble */}
-                  <div
-                    className={cn(
-                      "max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                      isOwner
-                        ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-br-sm shadow-sm shadow-emerald-500/20"
-                        : "bg-[#F1F5F9] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-foreground rounded-bl-sm"
-                    )}
-                  >
-                    <p className="whitespace-pre-line">{msg.content}</p>
-                    {!isOwner && (
-                      <ActionCard
-                        actionType={msg.actionType}
-                        payloadStr={msg.actionPayload}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            /* Empty state */
-            <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                <Bot className="w-8 h-8 text-white" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-base font-semibold text-foreground">
-                  Mogent Co-Pilot Ready
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-xs">
-                  Speak naturally in Bengali or English. I will update your
-                  store notebook in real time.
-                </p>
-              </div>
-              <div className="flex flex-wrap justify-center gap-2 pt-2">
-                {QUICK_PROMPTS.slice(0, 3).map((qp, i) => {
-                  const Icon = qp.icon;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => handleSend(qp.prompt)}
-                      disabled={sending}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer",
-                        PILL_COLORS[qp.color]
-                      )}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {qp.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {sending && <TypingIndicator />}
-          <div ref={messagesEndRef} className="h-2 w-full" />
-        </div>
-
-        {/* Input bar */}
-        <div className="shrink-0 px-4 py-3.5 border-t border-[#F1F5F9] dark:border-[#1E2D3D] bg-white dark:bg-[#111B25]">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSend();
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Type in Bengali or English — e.g. 'amader price 150 taka'"
-              disabled={sending}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 disabled:opacity-50 transition-all"
-            />
-            <button
-              type="submit"
-              disabled={!inputValue.trim() || sending}
-              className="w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white disabled:opacity-40 transition-all shadow-sm shadow-emerald-500/25 cursor-pointer shrink-0"
-            >
-              {sending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
-          </form>
-          <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
-            Enter ↵ to send · Updates sync to Facebook & WhatsApp instantly
-          </p>
-        </div>
-      </div>
-
-      {/* ── Notebook Panel ── */}
-      <div className="lg:col-span-5 min-h-0">
-        <StoreBrainNoteCard
-          pageId={selectedPageId}
-          pages={pages}
-          isPulseTriggered={notePulse}
-          onNoteUpdated={() => fetchBusinessMemories(selectedPageId).then(setMemories)}
-        />
-      </div>
-    </div>
-  );
-
-  // ── Full-screen notebook view ─────────────────────────
-  const NoteView = () => (
-    <div className="flex-1 min-h-0">
-      <StoreBrainNoteCard
-        pageId={selectedPageId}
-        pages={pages}
-        isFullScreen
-        isPulseTriggered={notePulse}
-        onNoteUpdated={() => fetchBusinessMemories(selectedPageId).then(setMemories)}
-      />
-    </div>
-  );
-
-  // ── Memory / Rules audit view ─────────────────────────
-  const MemoriesView = () => (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D] shadow-xs">
-        <div className="space-y-0.5">
-          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            Business Rule Audit
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            All policies and offers taught to the AI — {activeRulesCount} active
-          </p>
-        </div>
-        <button
-          onClick={async () => {
-            setRefreshingMemories(true);
-            const data = await fetchBusinessMemories(selectedPageId);
-            setMemories(data);
-            setRefreshingMemories(false);
-          }}
-          disabled={refreshingMemories}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#1E2A35] hover:bg-[#F1F5F9] dark:hover:bg-[#243040] border border-[#E2E8F0] dark:border-[#2D3F50] text-xs text-foreground font-medium transition-all cursor-pointer shadow-xs self-start sm:self-auto"
-        >
-          <RefreshCw className={cn("w-3.5 h-3.5", refreshingMemories && "animate-spin")} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search rules…"
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-white dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs"
-          />
-        </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto">
-          {["ALL", ...categories].map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer shrink-0 border",
-                selectedCategory === cat
-                  ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
-                  : "bg-white dark:bg-[#1E2A35] border-[#E2E8F0] dark:border-[#2D3F50] text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {cat === "ALL" ? `All (${memories.length})` : cat}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Grid */}
-      {filteredMemories.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D]">
-          <Info className="w-8 h-8 text-muted-foreground opacity-30" />
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-foreground">No rules found</h3>
-            <p className="text-xs text-muted-foreground max-w-xs">
-              {searchQuery || selectedCategory !== "ALL"
-                ? "Try clearing filters."
-                : "Chat with Co-Pilot to teach your store rules."}
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setSearchQuery("");
-              setSelectedCategory("ALL");
-              setActiveTab("CHAT");
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium cursor-pointer shadow-xs transition-all"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Open Co-Pilot
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filteredMemories.map((mem) => (
-            <div
-              key={mem.id}
-              className={cn(
-                "p-4 rounded-2xl border flex flex-col gap-3 transition-all duration-150",
-                mem.isActive
-                  ? "bg-white dark:bg-[#111B25] border-[#E2E8F0] dark:border-[#1E2D3D] hover:border-emerald-300 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-sm"
-                  : "bg-[#F8FAFC] dark:bg-[#0F1923] border-[#E2E8F0] dark:border-[#1E2D3D] opacity-55"
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 font-mono">
-                  {mem.category}
-                </span>
-                {mem.facebookPage && (
-                  <span className="text-[10px] text-muted-foreground font-medium shrink-0">
-                    {mem.facebookPage.name}
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-1 flex-1">
-                <h4 className="text-sm font-semibold text-foreground leading-tight">
-                  {mem.title}
-                </h4>
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                  {mem.instruction}
-                </p>
-                {mem.condition && (
-                  <code className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-500/20 block">
-                    if {mem.condition}
-                  </code>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9] dark:border-[#1E2D3D]">
-                <label className="flex items-center gap-1.5 cursor-pointer group">
-                  <div
-                    onClick={() => handleToggleMemory(mem.id, mem.isActive)}
-                    className={cn(
-                      "relative w-8 h-4.5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0",
-                      mem.isActive ? "bg-emerald-500" : "bg-[#CBD5E1] dark:bg-[#2D3F50]"
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-200",
-                        mem.isActive ? "left-4" : "left-0.5"
-                      )}
-                    />
-                  </div>
-                  <span className="text-[11px] text-muted-foreground font-medium">
-                    {mem.isActive ? "Active" : "Paused"}
-                  </span>
-                </label>
-
-                <button
-                  onClick={() => handleDeleteMemory(mem.id)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div
       className={cn(
@@ -831,14 +421,405 @@ export default function CoPilotPage() {
         activeTab === "CHAT" ? "h-[calc(100vh-105px)]" : "min-h-0"
       )}
     >
-      <Topbar />
+      {/* ── Topbar (Inlined directly so no component unmounting occurs) ── */}
+      <div className="flex items-center justify-between gap-3 shrink-0 px-1 pb-4">
+        {/* Left: Status pill */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 shadow-xs">
+            <span className="relative flex w-2 h-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+              Store Brain Active
+            </span>
+          </div>
+          <span className="hidden sm:block text-xs text-muted-foreground">
+            {activeRulesCount} rule{activeRulesCount !== 1 ? "s" : ""} synced live
+          </span>
+        </div>
 
+        {/* Right: Page selector + nav tabs */}
+        <div className="flex items-center gap-2 shrink-0">
+          {pages.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedPageId}
+                onChange={(e) => setSelectedPageId(e.target.value)}
+                className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-lg bg-white dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-xs font-medium"
+              >
+                <option value="ALL">All Pages</option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
+          )}
+
+          {/* Segmented control */}
+          <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[#F1F5F9] dark:bg-[#1A2430] border border-[#E2E8F0] dark:border-[#2D3F50] shadow-xs">
+            {(
+              [
+                { id: "CHAT", icon: MessageSquare, label: "Co-Pilot" },
+                { id: "NOTE", icon: ScrollText, label: "Notebook" },
+                { id: "MEMORIES", icon: ShieldCheck, label: `Rules (${memories.length})` },
+              ] as const
+            ).map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id as Tab)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap",
+                  activeTab === id
+                    ? "bg-white dark:bg-[#243040] text-foreground shadow-xs border border-[#E2E8F0] dark:border-[#2D3F50]"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Active Tab Content (Directly inlined to preserve DOM elements and input focus) ── */}
       {activeTab === "CHAT" ? (
-        <ChatView />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0">
+          {/* Left: Chat Panel */}
+          <div className="lg:col-span-7 flex flex-col min-h-0 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D] overflow-hidden shadow-xs shadow-black/[0.04]">
+            {/* Quick Actions Bar */}
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#F1F5F9] dark:border-[#1E2D3D] bg-[#FAFBFC] dark:bg-[#0F1923] overflow-x-auto shrink-0 select-none scrollbar-none">
+              <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
+                <ZapIcon className="w-3 h-3 text-amber-500" />
+                Quick
+              </div>
+              <div className="w-px h-4 bg-[#E2E8F0] dark:bg-[#2D3F50] shrink-0" />
+              {QUICK_PROMPTS.map((qp, i) => {
+                const Icon = qp.icon;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(qp.prompt)}
+                    disabled={sending}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer shrink-0 disabled:opacity-40",
+                      PILL_COLORS[qp.color]
+                    )}
+                  >
+                    <Icon className="w-3 h-3 shrink-0" />
+                    {qp.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Messages Scroll Area */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto px-4 py-5 space-y-5 scroll-smooth"
+            >
+              {session?.messages && session.messages.length > 0 ? (
+                session.messages.map((msg, idx) => {
+                  const isOwner = msg.sender === "OWNER";
+                  return (
+                    <div
+                      key={msg.id ?? idx}
+                      className={cn(
+                        "flex items-end gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200",
+                        isOwner ? "flex-row-reverse" : "flex-row"
+                      )}
+                    >
+                      {/* Avatar */}
+                      <div
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mb-0.5",
+                          isOwner
+                            ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm shadow-emerald-500/25"
+                            : "bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] shadow-sm shadow-violet-500/25"
+                        )}
+                      >
+                        {isOwner ? (
+                          <User className="w-3.5 h-3.5 text-white" />
+                        ) : (
+                          <Bot className="w-3.5 h-3.5 text-white" />
+                        )}
+                      </div>
+
+                      {/* Bubble */}
+                      <div
+                        className={cn(
+                          "max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+                          isOwner
+                            ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-br-sm shadow-sm shadow-emerald-500/20"
+                            : "bg-[#F1F5F9] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-foreground rounded-bl-sm"
+                        )}
+                      >
+                        <p className="whitespace-pre-line">{msg.content}</p>
+                        {!isOwner && (
+                          <ActionCard
+                            actionType={msg.actionType}
+                            payloadStr={msg.actionPayload}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                /* Empty state */
+                <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                    <Bot className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-semibold text-foreground">
+                      Mogent Co-Pilot Ready
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-xs">
+                      Speak naturally in Bengali or English. I will update your
+                      store notebook in real time.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2 pt-2">
+                    {QUICK_PROMPTS.slice(0, 3).map((qp, i) => {
+                      const Icon = qp.icon;
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => handleSend(qp.prompt)}
+                          disabled={sending}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer",
+                            PILL_COLORS[qp.color]
+                          )}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          {qp.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {sending && <TypingIndicator />}
+              <div ref={messagesEndRef} className="h-2 w-full" />
+            </div>
+
+            {/* Input bar */}
+            <div className="shrink-0 px-4 py-3.5 border-t border-[#F1F5F9] dark:border-[#1E2D3D] bg-white dark:bg-[#111B25]">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSend();
+                }}
+                className="flex items-center gap-2"
+              >
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Type in Bengali or English — e.g. 'amader price 150 taka'"
+                  disabled={sending}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 disabled:opacity-50 transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputValue.trim() || sending}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white disabled:opacity-40 transition-all shadow-sm shadow-emerald-500/25 cursor-pointer shrink-0"
+                >
+                  {sending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
+              </form>
+              <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
+                Enter ↵ to send · Updates sync to Facebook & WhatsApp instantly
+              </p>
+            </div>
+          </div>
+
+          {/* Right: Notebook Panel */}
+          <div className="lg:col-span-5 min-h-0">
+            <StoreBrainNoteCard
+              pageId={selectedPageId}
+              pages={pages}
+              isPulseTriggered={notePulse}
+              onNoteUpdated={() => fetchBusinessMemories(selectedPageId).then(setMemories)}
+            />
+          </div>
+        </div>
       ) : activeTab === "NOTE" ? (
-        <NoteView />
+        /* Full-screen notebook view */
+        <div className="flex-1 min-h-0">
+          <StoreBrainNoteCard
+            pageId={selectedPageId}
+            pages={pages}
+            isFullScreen
+            isPulseTriggered={notePulse}
+            onNoteUpdated={() => fetchBusinessMemories(selectedPageId).then(setMemories)}
+          />
+        </div>
       ) : (
-        <MemoriesView />
+        /* Memory / Rules audit view */
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D] shadow-xs">
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                Business Rule Audit
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                All policies and offers taught to the AI — {activeRulesCount} active
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                setRefreshingMemories(true);
+                const data = await fetchBusinessMemories(selectedPageId);
+                setMemories(data);
+                setRefreshingMemories(false);
+              }}
+              disabled={refreshingMemories}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#1E2A35] hover:bg-[#F1F5F9] dark:hover:bg-[#243040] border border-[#E2E8F0] dark:border-[#2D3F50] text-xs text-foreground font-medium transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", refreshingMemories && "animate-spin")} />
+              Refresh
+            </button>
+          </div>
+
+          {/* Filter bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search rules…"
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-white dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {["ALL", ...categories].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer shrink-0 border",
+                    selectedCategory === cat
+                      ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                      : "bg-white dark:bg-[#1E2A35] border-[#E2E8F0] dark:border-[#2D3F50] text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {cat === "ALL" ? `All (${memories.length})` : cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Grid */}
+          {filteredMemories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D]">
+              <Info className="w-8 h-8 text-muted-foreground opacity-30" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-foreground">No rules found</h3>
+                <p className="text-xs text-muted-foreground max-w-xs">
+                  {searchQuery || selectedCategory !== "ALL"
+                    ? "Try clearing filters."
+                    : "Chat with Co-Pilot to teach your store rules."}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("ALL");
+                  setActiveTab("CHAT");
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium cursor-pointer shadow-xs transition-all"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Open Co-Pilot
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {filteredMemories.map((mem) => (
+                <div
+                  key={mem.id}
+                  className={cn(
+                    "p-4 rounded-2xl border flex flex-col gap-3 transition-all duration-150",
+                    mem.isActive
+                      ? "bg-white dark:bg-[#111B25] border-[#E2E8F0] dark:border-[#1E2D3D] hover:border-emerald-300 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-sm"
+                      : "bg-[#F8FAFC] dark:bg-[#0F1923] border-[#E2E8F0] dark:border-[#1E2D3D] opacity-55"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 font-mono">
+                      {mem.category}
+                    </span>
+                    {mem.facebookPage && (
+                      <span className="text-[10px] text-muted-foreground font-medium shrink-0">
+                        {mem.facebookPage.name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 flex-1">
+                    <h4 className="text-sm font-semibold text-foreground leading-tight">
+                      {mem.title}
+                    </h4>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                      {mem.instruction}
+                    </p>
+                    {mem.condition && (
+                      <code className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-500/20 block">
+                        if {mem.condition}
+                      </code>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9] dark:border-[#1E2D3D]">
+                    <label className="flex items-center gap-1.5 cursor-pointer group">
+                      <div
+                        onClick={() => handleToggleMemory(mem.id, mem.isActive)}
+                        className={cn(
+                          "relative w-8 h-4.5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0",
+                          mem.isActive ? "bg-emerald-500" : "bg-[#CBD5E1] dark:bg-[#2D3F50]"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-200",
+                            mem.isActive ? "left-4" : "left-0.5"
+                          )}
+                        />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground font-medium">
+                        {mem.isActive ? "Active" : "Paused"}
+                      </span>
+                    </label>
+
+                    <button
+                      onClick={() => handleDeleteMemory(mem.id)}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
