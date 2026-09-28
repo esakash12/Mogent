@@ -139,12 +139,12 @@ export default function DashboardLayout({
         <main
           className={cn(
             "flex-1 overflow-y-auto overflow-x-hidden",
-            pathname === "/dashboard/ai" ? "p-2 sm:p-4 md:p-5" : "p-3 md:p-8"
+            pathname === "/dashboard/ai" ? "p-3 sm:p-4" : "p-3 md:p-8"
           )}
         >
           <div
             className={cn(
-              pathname === "/dashboard/ai" ? "max-w-[1440px]" : "max-w-[1400px]",
+              pathname === "/dashboard/ai" ? "max-w-[1600px]" : "max-w-[1400px]",
               "mx-auto w-full"
             )}
           >

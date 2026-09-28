@@ -8,14 +8,10 @@ import {
   Bot,
   User,
   Package,
-  Layers,
   CheckCircle2,
   Trash2,
   RefreshCw,
-  ShoppingBag,
-  TrendingUp,
   ShieldCheck,
-  ChevronRight,
   MessageSquare,
   Info,
   Truck,
@@ -23,9 +19,11 @@ import {
   BarChart3,
   ScrollText,
   Search,
-  SlidersHorizontal,
-  Check,
-  BookOpen,
+  ZapIcon,
+  TrendingUp,
+  Activity,
+  FileEdit,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
@@ -41,51 +39,209 @@ import {
 } from "@/lib/api";
 import { StoreBrainNoteCard } from "@/components/store-brain-note-card";
 
+// ─────────────────────────────────────────────────────────
+// Quick action pill data
+// ─────────────────────────────────────────────────────────
 const QUICK_PROMPTS = [
   {
     icon: Mic,
-    badge: "INTERVIEW",
     label: "Store Interview",
-    prompt: "আসসালামু আলাইকুম, আমাদের শপ সেটআপ করার জন্য তোমার কী কী তথ্য লাগবে জিজ্ঞেস করো।",
-    badgeColor: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
-    iconColor: "text-amber-500",
+    color: "amber",
+    prompt:
+      "আমাদের শপ সেটআপ করার জন্য তোমার কী কী তথ্য লাগবে সেটা জিজ্ঞেস করো।",
   },
   {
     icon: Sparkles,
-    badge: "PROMO",
-    label: "2টা নিলে ফ্রি ডেলিভারি",
-    prompt: "আজকে থেকে কেউ যদি ২টা বা তার বেশি কার্ড নেয় তবে ডেলিভারি সম্পূর্ণ ফ্রি বলবা।",
-    badgeColor: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
-    iconColor: "text-rose-500",
+    label: "Free Delivery Offer",
+    color: "rose",
+    prompt:
+      "আজকে থেকে কেউ যদি ২টা বা তার বেশি কার্ড নেয় তবে ডেলিভারি সম্পূর্ণ ফ্রি বলবা।",
   },
   {
     icon: Truck,
-    badge: "DELIVERY",
-    label: "ডেলিভারি চার্জ ৫০ টাকা",
-    prompt: "আমাদের ১টি কার্ডের ডেলিভারি চার্জ ৫০ টাকা এবং কার্ডের বিক্রয় মূল্য ১৫০ টাকা।",
-    badgeColor: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
-    iconColor: "text-blue-500",
+    label: "Delivery Charge",
+    color: "sky",
+    prompt:
+      "আমাদের ১টি কার্ডের ডেলিভারি চার্জ ৫০ টাকা এবং কার্ডের বিক্রয় মূল্য ১৫০ টাকা।",
   },
   {
     icon: Package,
-    badge: "PRICE",
-    label: "১ পিস কার্ড ১৫০ টাকা",
+    label: "Update Price",
+    color: "emerald",
     prompt: "আমাদের ১ পিস PVC ID Card এর দাম ১৫০ টাকা।",
-    badgeColor: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
-    iconColor: "text-emerald-500",
   },
   {
     icon: BarChart3,
-    badge: "STATS",
-    label: "আজকের সেলস রিপোর্ট",
-    prompt: "আজকে কয়টা অর্ডার আসল এবং মোট সেলস কত হয়েছে জানাও তো?",
-    badgeColor: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
-    iconColor: "text-purple-500",
+    label: "Sales Report",
+    color: "violet",
+    prompt: "আজকে কয়টা অর্ডার আসল এবং মোট সেলস কত হয়েছে জানাও তো?",
   },
 ];
 
+const PILL_COLORS: Record<string, string> = {
+  amber:
+    "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/20",
+  rose: "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-300 dark:hover:bg-rose-500/20",
+  sky: "bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100 dark:bg-sky-500/10 dark:border-sky-500/20 dark:text-sky-300 dark:hover:bg-sky-500/20",
+  emerald:
+    "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/20",
+  violet:
+    "bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100 dark:bg-violet-500/10 dark:border-violet-500/20 dark:text-violet-300 dark:hover:bg-violet-500/20",
+};
+
+// ─────────────────────────────────────────────────────────
+// Typing animation dots
+// ─────────────────────────────────────────────────────────
+function TypingIndicator() {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20">
+        <Bot className="w-4 h-4 text-white" />
+      </div>
+      <div className="bg-[#F1F5F9] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] rounded-2xl rounded-tl-sm px-4 py-3">
+        <div className="flex items-center gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce"
+              style={{ animationDelay: `${i * 150}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Action result cards rendered inside bot messages
+// ─────────────────────────────────────────────────────────
+function ActionCard({
+  actionType,
+  payloadStr,
+}: {
+  actionType?: string | null;
+  payloadStr?: string | null;
+}) {
+  if (!actionType || actionType === "NONE" || !payloadStr) return null;
+  let payload: any = null;
+  try {
+    payload = JSON.parse(payloadStr);
+  } catch {
+    return null;
+  }
+
+  if (actionType === "UPDATE_BRAIN_NOTE" && payload.data) {
+    return (
+      <div className="mt-3 flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/8 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-200">
+        <FileEdit className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <div>
+          <p className="font-semibold leading-none mb-1">
+            {payload.summary || "Living Store Note updated"}
+          </p>
+          <p className="text-emerald-700 dark:text-emerald-300 opacity-80 leading-relaxed line-clamp-2 font-mono text-[11px]">
+            {payload.data.content?.slice(0, 120)}…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (actionType === "TEACH_RULE" && payload.data) {
+    return (
+      <div className="mt-3 flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/8 border border-emerald-500/20 text-xs">
+        <ShieldCheck className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-500" />
+        <div>
+          <p className="font-semibold text-emerald-700 dark:text-emerald-300 leading-none mb-1">
+            {payload.summary || "Rule saved"}
+          </p>
+          <p className="text-muted-foreground leading-relaxed">
+            {payload.data.instruction}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    (actionType === "CREATE_PRODUCT" || actionType === "UPDATE_PRODUCT") &&
+    payload.data
+  ) {
+    return (
+      <div className="mt-3 flex items-start gap-2.5 p-3 rounded-xl bg-sky-500/8 border border-sky-500/20 text-xs">
+        <Package className="w-3.5 h-3.5 mt-0.5 shrink-0 text-sky-500" />
+        <div>
+          <p className="font-semibold text-sky-700 dark:text-sky-300 leading-none mb-1.5">
+            {payload.summary || "Product updated"}
+          </p>
+          <div className="flex flex-wrap gap-2 text-[11px] text-sky-800 dark:text-sky-200 font-medium">
+            <span className="px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-500/20">
+              ৳{payload.data.price}
+            </span>
+            {payload.data.stockCount !== undefined && (
+              <span className="px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-500/20">
+                Stock: {payload.data.stockCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (actionType === "STATS_REPORT" && payload.data) {
+    const { todayOrdersCount, pendingOrdersCount, totalOrdersCount, totalRevenue } =
+      payload.data;
+    return (
+      <div className="mt-3 p-3 rounded-xl bg-violet-500/8 border border-violet-500/20 text-xs space-y-2">
+        <div className="flex items-center gap-1.5 font-semibold text-violet-700 dark:text-violet-300">
+          <Activity className="w-3.5 h-3.5" />
+          Store Analytics
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { label: "Today", value: todayOrdersCount ?? 0, color: "emerald" },
+            { label: "Pending", value: pendingOrdersCount ?? 0, color: "amber" },
+            { label: "Total Orders", value: totalOrdersCount ?? 0, color: "sky" },
+            {
+              label: "Revenue",
+              value: `৳${(totalRevenue ?? 0).toLocaleString()}`,
+              color: "emerald",
+            },
+          ].map(({ label, value, color }) => (
+            <div
+              key={label}
+              className="bg-white dark:bg-white/5 border border-[#E2E8F0] dark:border-white/10 rounded-lg p-2 text-center"
+            >
+              <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
+              <p
+                className={cn(
+                  "text-sm font-bold",
+                  color === "emerald"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : color === "amber"
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-sky-600 dark:text-sky-400"
+                )}
+              >
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────
+// Main Page Component
+// ─────────────────────────────────────────────────────────
 export default function CoPilotPage() {
-  const [activeTab, setActiveTab] = useState<"CHAT" | "NOTE" | "MEMORIES">("CHAT");
+  type Tab = "CHAT" | "NOTE" | "MEMORIES";
+  const [activeTab, setActiveTab] = useState<Tab>("CHAT");
   const [session, setSession] = useState<CoPilotSessionData | null>(null);
   const [memories, setMemories] = useState<BusinessMemoryItem[]>([]);
   const [pages, setPages] = useState<any[]>([]);
@@ -96,28 +252,15 @@ export default function CoPilotPage() {
   const [refreshingMemories, setRefreshingMemories] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
-  const [notePulseTriggered, setNotePulseTriggered] = useState(false);
+  const [notePulse, setNotePulse] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // Check URL query on mount for direct tab switching
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (window.location.search.includes("tab=memories")) {
-        setActiveTab("MEMORIES");
-      } else if (window.location.search.includes("tab=note")) {
-        setActiveTab("NOTE");
-      }
-    }
-  }, []);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    if (chatScrollContainerRef.current) {
-      chatScrollContainerRef.current.scrollTo({
-        top: chatScrollContainerRef.current.scrollHeight,
-        behavior,
-      });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior });
     }
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
   };
@@ -130,7 +273,6 @@ export default function CoPilotPage() {
         fetchBusinessMemories(selectedPageId),
         fetchPages(),
       ]);
-
       if (sessionData) setSession(sessionData);
       if (Array.isArray(memoriesData)) setMemories(memoriesData);
       if (Array.isArray(pagesList)) setPages(pagesList);
@@ -148,598 +290,555 @@ export default function CoPilotPage() {
   useEffect(() => {
     if (activeTab === "CHAT") {
       scrollToBottom("smooth");
-      const timer = setTimeout(() => scrollToBottom("smooth"), 100);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => scrollToBottom("smooth"), 120);
+      return () => clearTimeout(t);
     }
   }, [session?.messages, sending, activeTab]);
 
-  const handleSendMessage = async (customText?: string) => {
-    const textToSend = (customText || inputValue).trim();
-    if (!textToSend || sending) return;
+  // Focus input after send
+  useEffect(() => {
+    if (!sending) inputRef.current?.focus();
+  }, [sending]);
 
+  const handleSend = async (customText?: string) => {
+    const text = (customText ?? inputValue).trim();
+    if (!text || sending) return;
     setInputValue("");
     setSending(true);
 
-    // Optimistic UI push
-    const optimisticMsg: any = {
-      id: `temp-${Date.now()}`,
+    const optimistic: any = {
+      id: `opt-${Date.now()}`,
       sender: "OWNER",
-      content: textToSend,
+      content: text,
       createdAt: new Date().toISOString(),
     };
-
-    setSession((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        messages: [...(prev.messages || []), optimisticMsg],
-      };
-    });
+    setSession((prev) =>
+      prev ? { ...prev, messages: [...(prev.messages ?? []), optimistic] } : prev
+    );
 
     try {
-      const res = await sendCoPilotMessage(textToSend, selectedPageId);
-      if (res && res.session) {
+      const res = await sendCoPilotMessage(text, selectedPageId);
+      if (res?.session) {
         setSession(res.session);
+        // Pulse the notebook panel
+        setNotePulse(true);
+        setTimeout(() => setNotePulse(false), 900);
 
-        // Flash pulse highlight on the Living Store Brain Note
-        setNotePulseTriggered(true);
-        setTimeout(() => setNotePulseTriggered(false), 800);
-
-        if (res.action && res.action.type !== "NONE") {
-          toast.success(res.action.summary || "Co-Pilot executed action successfully!");
-          // Refresh memories in background
-          const refreshedMemories = await fetchBusinessMemories(selectedPageId);
-          setMemories(refreshedMemories);
+        if (res.action?.type && res.action.type !== "NONE") {
+          toast.success(res.action.summary ?? "Action applied.");
+          fetchBusinessMemories(selectedPageId).then(setMemories);
         }
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to send message.");
+      toast.error(err.message ?? "Message failed.");
     } finally {
       setSending(false);
     }
   };
 
-  const handleToggleMemory = async (id: string, currentStatus: boolean) => {
+  const handleToggleMemory = async (id: string, current: boolean) => {
     try {
-      await toggleBusinessMemory(id, !currentStatus);
-      setMemories((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, isActive: !currentStatus } : m))
-      );
-      toast.success(!currentStatus ? "Rule activated" : "Rule paused");
-    } catch (err: any) {
-      toast.error("Failed to update rule status");
+      await toggleBusinessMemory(id, !current);
+      setMemories((prev) => prev.map((m) => (m.id === id ? { ...m, isActive: !current } : m)));
+      toast.success(!current ? "Rule activated" : "Rule paused");
+    } catch {
+      toast.error("Failed to update rule");
     }
   };
 
   const handleDeleteMemory = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this rule?")) return;
+    if (!confirm("Delete this rule permanently?")) return;
     try {
       await deleteBusinessMemory(id);
       setMemories((prev) => prev.filter((m) => m.id !== id));
-      toast.success("Rule deleted successfully");
-    } catch (err: any) {
+      toast.success("Rule deleted");
+    } catch {
       toast.error("Failed to delete rule");
     }
   };
 
-  const activeRulesCount = useMemo(() => {
-    return memories.filter((m) => m.isActive).length;
-  }, [memories]);
-
+  const activeRulesCount = useMemo(() => memories.filter((m) => m.isActive).length, [memories]);
   const categories = useMemo(() => {
-    const set = new Set<string>();
-    memories.forEach((m) => {
-      if (m.category) set.add(m.category.toUpperCase());
-    });
-    return Array.from(set);
+    const s = new Set<string>();
+    memories.forEach((m) => m.category && s.add(m.category.toUpperCase()));
+    return Array.from(s);
   }, [memories]);
 
-  const filteredMemories = useMemo(() => {
-    return memories.filter((m) => {
-      const matchesCategory =
-        selectedCategory === "ALL" || m.category.toUpperCase() === selectedCategory;
-      const matchesSearch =
-        !searchQuery.trim() ||
-        m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.instruction.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (m.condition && m.condition.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
-    });
-  }, [memories, selectedCategory, searchQuery]);
+  const filteredMemories = useMemo(
+    () =>
+      memories.filter((m) => {
+        const catOk =
+          selectedCategory === "ALL" || m.category.toUpperCase() === selectedCategory;
+        const q = searchQuery.toLowerCase();
+        const searchOk =
+          !q ||
+          m.title.toLowerCase().includes(q) ||
+          m.instruction.toLowerCase().includes(q) ||
+          m.condition?.toLowerCase().includes(q);
+        return catOk && searchOk;
+      }),
+    [memories, selectedCategory, searchQuery]
+  );
 
-  const renderActionCard = (actionType?: string | null, payloadStr?: string | null) => {
-    if (!actionType || actionType === "NONE" || !payloadStr) return null;
-    let payload: any = null;
-    try {
-      payload = JSON.parse(payloadStr);
-    } catch {
-      return null;
-    }
-
-    if (actionType === "UPDATE_BRAIN_NOTE" && payload.data) {
-      return (
-        <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2.5 shadow-2xs">
-          <ScrollText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-          <div className="space-y-1 flex-1">
-            <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-              {payload.summary || "Living Store Note Updated"}
-            </span>
-            <div className="text-emerald-800/90 dark:text-emerald-200/90 leading-relaxed font-mono text-[11px] bg-emerald-500/10 p-2 rounded-lg line-clamp-3">
-              {payload.data.content}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (actionType === "TEACH_RULE" && payload.data) {
-      return (
-        <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2.5 shadow-2xs">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-              {payload.summary || "Rule Learned & Activated"}
-            </span>
-            <p className="text-emerald-800/90 dark:text-emerald-200/90 leading-relaxed font-normal">
-              {payload.data.instruction}
-            </p>
-            {payload.data.condition && (
-              <span className="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono text-emerald-700 dark:text-emerald-300 font-semibold">
-                Condition: {payload.data.condition}
-              </span>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (actionType === "CREATE_PRODUCT" && payload.data) {
-      return (
-        <div className="mt-2.5 p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-800 dark:text-blue-200 flex items-start gap-2.5 shadow-2xs">
-          <Package className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-          <div className="space-y-0.5 flex-1">
-            <span className="font-semibold text-blue-700 dark:text-blue-300">
-              {payload.summary || "Product Added to Catalog"}
-            </span>
-            <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-blue-800 dark:text-blue-200 font-medium">
-              <span>Price: ৳{payload.data.price}</span>
-              <span>Stock: {payload.data.stockCount ?? 100} units</span>
-              <span>Category: {payload.data.category || "General"}</span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (actionType === "UPDATE_PRODUCT" && payload.data) {
-      return (
-        <div className="mt-2.5 p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-800 dark:text-blue-200 flex items-start gap-2.5 shadow-2xs">
-          <Package className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-          <div className="space-y-0.5 flex-1">
-            <span className="font-semibold text-blue-700 dark:text-blue-300">
-              {payload.summary || "Product Price/Stock Updated"}
-            </span>
-            <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-blue-800 dark:text-blue-200 font-medium">
-              <span>Price: ৳{payload.data.price}</span>
-              <span>Stock: {payload.data.stockCount ?? 100} units</span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (actionType === "STATS_REPORT" && payload.data) {
-      const { todayOrdersCount, pendingOrdersCount, totalOrdersCount, totalRevenue } = payload.data;
-      return (
-        <div className="mt-2.5 p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-900 dark:text-purple-100 shadow-2xs">
-          <div className="flex items-center gap-2 font-bold text-purple-700 dark:text-purple-300 mb-2.5">
-            <BarChart3 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            <span>Store Live Sync Report</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">Today&apos;s Orders</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{todayOrdersCount || 0}</span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">Pending Orders</span>
-              <span className="text-base font-bold text-amber-600 dark:text-amber-400">{pendingOrdersCount || 0}</span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">Total Orders</span>
-              <span className="text-base font-bold text-foreground">{totalOrdersCount || 0}</span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-card border border-purple-500/20 shadow-2xs">
-              <span className="text-[10px] text-muted-foreground block font-medium">Total Revenue</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">৳{(totalRevenue || 0).toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  return (
-    <div className="space-y-3 max-w-[1580px] mx-auto">
-      {/* 1. Sleek Minimalist Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b border-border/40">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 shadow-2xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Living Store Brain Active
+  // ── Tab header with page selector ────────────────────
+  const Topbar = () => (
+    <div className="flex items-center justify-between gap-3 shrink-0 px-1 pb-4">
+      {/* Left: Status pill */}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 shadow-xs">
+          <span className="relative flex w-2 h-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
-          <span className="text-xs text-muted-foreground hidden sm:inline">
-            • Instant Single Source of Truth
+          <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+            Store Brain Active
           </span>
         </div>
+        <span className="hidden sm:block text-xs text-muted-foreground">
+          {activeRulesCount} rule{activeRulesCount !== 1 ? "s" : ""} synced live
+        </span>
+      </div>
 
-        {/* Right Controls: Channel Selector & Navigation Tabs */}
-        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-          {pages.length > 0 && (
+      {/* Right: Page selector + nav tabs */}
+      <div className="flex items-center gap-2 shrink-0">
+        {pages.length > 0 && (
+          <div className="relative">
             <select
               value={selectedPageId}
               onChange={(e) => setSelectedPageId(e.target.value)}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-card border border-border text-foreground hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs font-medium"
+              className="appearance-none text-xs pl-3 pr-7 py-1.5 rounded-lg bg-white dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-xs font-medium"
             >
-              <option value="ALL">All Connected Pages</option>
+              <option value="ALL">All Pages</option>
               {pages.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
             </select>
+            <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
+        )}
+
+        {/* Segmented control */}
+        <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[#F1F5F9] dark:bg-[#1A2430] border border-[#E2E8F0] dark:border-[#2D3F50] shadow-xs">
+          {(
+            [
+              { id: "CHAT", icon: MessageSquare, label: "Co-Pilot" },
+              { id: "NOTE", icon: ScrollText, label: "Notebook" },
+              { id: "MEMORIES", icon: ShieldCheck, label: `Rules (${memories.length})` },
+            ] as const
+          ).map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id as Tab)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-medium transition-all duration-150 cursor-pointer whitespace-nowrap",
+                activeTab === id
+                  ? "bg-white dark:bg-[#243040] text-foreground shadow-xs border border-[#E2E8F0] dark:border-[#2D3F50]"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Skeleton loader ───────────────────────────────────
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-120px)] flex flex-col gap-4 animate-pulse">
+        <div className="flex items-center justify-between">
+          <div className="h-7 w-44 rounded-full bg-[#E2E8F0] dark:bg-[#2D3F50]" />
+          <div className="flex gap-2">
+            <div className="h-8 w-24 rounded-lg bg-[#E2E8F0] dark:bg-[#2D3F50]" />
+            <div className="h-8 w-48 rounded-xl bg-[#E2E8F0] dark:bg-[#2D3F50]" />
+          </div>
+        </div>
+        <div className="flex-1 grid grid-cols-12 gap-4">
+          <div className="col-span-7 rounded-2xl bg-white dark:bg-[#1A2430] border border-[#E2E8F0] dark:border-[#2D3F50] space-y-4 p-5">
+            {[...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex gap-3",
+                  i % 2 === 1 ? "flex-row-reverse" : ""
+                )}
+              >
+                <div className="w-8 h-8 rounded-full bg-[#E2E8F0] dark:bg-[#2D3F50] shrink-0" />
+                <div
+                  className={cn(
+                    "h-12 rounded-2xl bg-[#F1F5F9] dark:bg-[#243040]",
+                    i % 2 === 1 ? "w-2/3" : "w-3/4"
+                  )}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="col-span-5 rounded-2xl bg-white dark:bg-[#1A2430] border border-[#E2E8F0] dark:border-[#2D3F50]" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Chat + Note split view ────────────────────────────
+  const ChatView = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0">
+      {/* ── Chat Panel ── */}
+      <div className="lg:col-span-7 flex flex-col min-h-0 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D] overflow-hidden shadow-xs shadow-black/[0.04]">
+        {/* Quick Actions Bar */}
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#F1F5F9] dark:border-[#1E2D3D] bg-[#FAFBFC] dark:bg-[#0F1923] overflow-x-auto shrink-0 select-none scrollbar-none">
+          <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
+            <ZapIcon className="w-3 h-3 text-amber-500" />
+            Quick
+          </div>
+          <div className="w-px h-4 bg-[#E2E8F0] dark:bg-[#2D3F50] shrink-0" />
+          {QUICK_PROMPTS.map((qp, i) => {
+            const Icon = qp.icon;
+            return (
+              <button
+                key={i}
+                onClick={() => handleSend(qp.prompt)}
+                disabled={sending}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer shrink-0 disabled:opacity-40",
+                  PILL_COLORS[qp.color]
+                )}
+              >
+                <Icon className="w-3 h-3 shrink-0" />
+                {qp.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Messages */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-4 py-5 space-y-5 scroll-smooth"
+        >
+          {session?.messages && session.messages.length > 0 ? (
+            session.messages.map((msg, idx) => {
+              const isOwner = msg.sender === "OWNER";
+              return (
+                <div
+                  key={msg.id ?? idx}
+                  className={cn(
+                    "flex items-end gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200",
+                    isOwner ? "flex-row-reverse" : "flex-row"
+                  )}
+                >
+                  {/* Avatar */}
+                  <div
+                    className={cn(
+                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mb-0.5",
+                      isOwner
+                        ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm shadow-emerald-500/25"
+                        : "bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] shadow-sm shadow-violet-500/25"
+                    )}
+                  >
+                    {isOwner ? (
+                      <User className="w-3.5 h-3.5 text-white" />
+                    ) : (
+                      <Bot className="w-3.5 h-3.5 text-white" />
+                    )}
+                  </div>
+
+                  {/* Bubble */}
+                  <div
+                    className={cn(
+                      "max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+                      isOwner
+                        ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-br-sm shadow-sm shadow-emerald-500/20"
+                        : "bg-[#F1F5F9] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-foreground rounded-bl-sm"
+                    )}
+                  >
+                    <p className="whitespace-pre-line">{msg.content}</p>
+                    {!isOwner && (
+                      <ActionCard
+                        actionType={msg.actionType}
+                        payloadStr={msg.actionPayload}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            /* Empty state */
+            <div className="flex flex-col items-center justify-center h-full py-16 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                <Bot className="w-8 h-8 text-white" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold text-foreground">
+                  Mogent Co-Pilot Ready
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Speak naturally in Bengali or English. I will update your
+                  store notebook in real time.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 pt-2">
+                {QUICK_PROMPTS.slice(0, 3).map((qp, i) => {
+                  const Icon = qp.icon;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => handleSend(qp.prompt)}
+                      disabled={sending}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer",
+                        PILL_COLORS[qp.color]
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {qp.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
-          <div className="flex items-center rounded-lg bg-card border border-border p-0.5 shadow-2xs">
+          {sending && <TypingIndicator />}
+          <div ref={messagesEndRef} className="h-2 w-full" />
+        </div>
+
+        {/* Input bar */}
+        <div className="shrink-0 px-4 py-3.5 border-t border-[#F1F5F9] dark:border-[#1E2D3D] bg-white dark:bg-[#111B25]">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Type in Bengali or English — e.g. 'amader price 150 taka'"
+              disabled={sending}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 disabled:opacity-50 transition-all"
+            />
             <button
-              onClick={() => setActiveTab("CHAT")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer",
-                activeTab === "CHAT"
-                  ? "bg-emerald-600 text-white shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
+              type="submit"
+              disabled={!inputValue.trim() || sending}
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white disabled:opacity-40 transition-all shadow-sm shadow-emerald-500/25 cursor-pointer shrink-0"
             >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Co-Pilot & Note</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("NOTE")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer",
-                activeTab === "NOTE"
-                  ? "bg-emerald-600 text-white shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground"
+              {sending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
               )}
-            >
-              <ScrollText className="w-3.5 h-3.5" />
-              <span>Store Notebook</span>
             </button>
-            <button
-              onClick={() => setActiveTab("MEMORIES")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer",
-                activeTab === "MEMORIES"
-                  ? "bg-emerald-600 text-white shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Rules ({memories.length})</span>
-            </button>
-          </div>
+          </form>
+          <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
+            Enter ↵ to send · Updates sync to Facebook & WhatsApp instantly
+          </p>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center min-h-[460px] rounded-2xl bg-card border border-border">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mb-3" />
-          <p className="text-xs font-medium text-muted-foreground">Loading Store Brain & Co-Pilot...</p>
+      {/* ── Notebook Panel ── */}
+      <div className="lg:col-span-5 min-h-0">
+        <StoreBrainNoteCard
+          pageId={selectedPageId}
+          pages={pages}
+          isPulseTriggered={notePulse}
+          onNoteUpdated={() => fetchBusinessMemories(selectedPageId).then(setMemories)}
+        />
+      </div>
+    </div>
+  );
+
+  // ── Full-screen notebook view ─────────────────────────
+  const NoteView = () => (
+    <div className="flex-1 min-h-0">
+      <StoreBrainNoteCard
+        pageId={selectedPageId}
+        pages={pages}
+        isFullScreen
+        isPulseTriggered={notePulse}
+        onNoteUpdated={() => fetchBusinessMemories(selectedPageId).then(setMemories)}
+      />
+    </div>
+  );
+
+  // ── Memory / Rules audit view ─────────────────────────
+  const MemoriesView = () => (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D] shadow-xs">
+        <div className="space-y-0.5">
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            Business Rule Audit
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            All policies and offers taught to the AI — {activeRulesCount} active
+          </p>
         </div>
-      ) : activeTab === "CHAT" ? (
-        /* TAB 1: DUAL-PANE CO-PILOT CHAT + LIVING STORE NOTE */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-140px)] min-h-[640px]">
-          {/* Left Column: Co-Pilot Chat Stream (7 Cols on desktop) */}
-          <div className="lg:col-span-7 flex flex-col h-full rounded-2xl bg-card border border-border overflow-hidden shadow-2xs">
-            {/* Quick Prompts Carousel at the top of chat */}
-            <div className="p-2 sm:px-3 border-b border-border/60 bg-muted/20 flex items-center gap-2 overflow-x-auto shrink-0 select-none">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider shrink-0 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-emerald-500" /> Quick:
-              </span>
-              {QUICK_PROMPTS.map((qp, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSendMessage(qp.prompt)}
-                  disabled={sending}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-card hover:bg-emerald-500/10 hover:border-emerald-500/40 border border-border/80 text-[11px] font-medium text-foreground transition-all cursor-pointer shrink-0 disabled:opacity-50 shadow-2xs"
-                >
-                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", qp.badgeColor.includes("amber") ? "bg-amber-500" : qp.badgeColor.includes("rose") ? "bg-rose-500" : qp.badgeColor.includes("blue") ? "bg-blue-500" : "bg-emerald-500")} />
-                  <span>{qp.label}</span>
-                </button>
-              ))}
-            </div>
+        <button
+          onClick={async () => {
+            setRefreshingMemories(true);
+            const data = await fetchBusinessMemories(selectedPageId);
+            setMemories(data);
+            setRefreshingMemories(false);
+          }}
+          disabled={refreshingMemories}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#1E2A35] hover:bg-[#F1F5F9] dark:hover:bg-[#243040] border border-[#E2E8F0] dark:border-[#2D3F50] text-xs text-foreground font-medium transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", refreshingMemories && "animate-spin")} />
+          Refresh
+        </button>
+      </div>
 
-            {/* Chat Messages Scroll Container */}
-            <div
-              ref={chatScrollContainerRef}
-              className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 pb-12 scroll-smooth"
-            >
-              {session?.messages && session.messages.length > 0 ? (
-                session.messages.map((msg, index) => {
-                  const isOwner = msg.sender === "OWNER";
-                  return (
-                    <div
-                      key={msg.id || index}
-                      className={cn(
-                        "flex items-start gap-3 text-xs sm:text-sm animate-in fade-in-50 slide-in-from-bottom-2 duration-200",
-                        isOwner ? "flex-row-reverse" : "flex-row"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-2xs",
-                          isOwner
-                            ? "bg-emerald-600 text-white"
-                            : "bg-gradient-to-br from-teal-500 to-emerald-600 text-white"
-                        )}
-                      >
-                        {isOwner ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                      </div>
-
-                      <div
-                        className={cn(
-                          "max-w-[85%] sm:max-w-[80%] rounded-2xl p-3.5 shadow-2xs leading-relaxed",
-                          isOwner
-                            ? "bg-emerald-600 text-white rounded-tr-none font-medium"
-                            : "bg-muted/70 text-foreground border border-border/50 rounded-tl-none"
-                        )}
-                      >
-                        <p className="whitespace-pre-line">{msg.content}</p>
-                        {!isOwner && renderActionCard(msg.actionType, msg.actionPayload)}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex flex-col items-center justify-center min-h-[300px] text-center p-6 text-muted-foreground">
-                  <Sparkles className="w-8 h-8 text-emerald-500 mb-2 opacity-60" />
-                  <p className="text-xs font-medium">Co-Pilot is ready. Speak naturally in Bangla or English to update your store.</p>
-                </div>
-              )}
-              {sending && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground py-2 px-1">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                  <span>Co-Pilot is updating store brain notebook...</span>
-                </div>
-              )}
-              <div ref={messagesEndRef} className="h-8 w-full shrink-0" />
-            </div>
-
-            {/* Floating Input Bar */}
-            <div className="p-3 sm:p-4 border-t border-border bg-card/90 backdrop-blur shrink-0">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSendMessage();
-                }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Type in Bengali or English (e.g. 'amader 1 pis er dam 150 taka ar delivery 50 tk')..."
-                  disabled={sending}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-muted/40 border border-border text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={!inputValue.trim() || sending}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium transition-all flex items-center gap-1.5 disabled:opacity-50 shadow-2xs shadow-emerald-600/20 cursor-pointer shrink-0"
-                >
-                  {sending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>Send</span>
-                      <Send className="w-3.5 h-3.5" />
-                    </>
-                  )}
-                </button>
-              </form>
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1.5 px-1">
-                <span>Press Enter ↵ to send</span>
-                <span>Co-Pilot updates the living notebook on the right in real time</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Living Store Brain Note (5 Cols on desktop) */}
-          <div className="lg:col-span-5 h-full">
-            <StoreBrainNoteCard
-              pageId={selectedPageId}
-              pages={pages}
-              isPulseTriggered={notePulseTriggered}
-              onNoteUpdated={() => {
-                // Background refresh memories when note is saved
-                fetchBusinessMemories(selectedPageId).then(setMemories);
-              }}
-            />
-          </div>
-        </div>
-      ) : activeTab === "NOTE" ? (
-        /* TAB 2: FULL-SCREEN LIVING STORE NOTEBOOK */
-        <div className="h-[calc(100vh-140px)] min-h-[600px]">
-          <StoreBrainNoteCard
-            pageId={selectedPageId}
-            pages={pages}
-            isFullScreen={true}
-            isPulseTriggered={notePulseTriggered}
-            onNoteUpdated={() => {
-              fetchBusinessMemories(selectedPageId).then(setMemories);
-            }}
+      {/* Filter bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search rules…"
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-white dark:bg-[#1E2A35] border border-[#E2E8F0] dark:border-[#2D3F50] text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs"
           />
         </div>
-      ) : (
-        /* TAB 3: DYNAMIC RULES & STORE MEMORY AUDIT */
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card border border-border p-4 rounded-2xl shadow-2xs">
-            <div>
-              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                Store Brain & Business Memory Audit
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                All individual rules, FAQs, delivery conditions, and offers learned by Co-Pilot are stored here permanently.
-              </p>
-            </div>
-
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {["ALL", ...categories].map((cat) => (
             <button
-              onClick={async () => {
-                setRefreshingMemories(true);
-                const data = await fetchBusinessMemories(selectedPageId);
-                setMemories(data);
-                setRefreshingMemories(false);
-              }}
-              disabled={refreshingMemories}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted/40 hover:bg-muted border border-border text-xs text-foreground font-medium transition-all cursor-pointer shadow-2xs shrink-0 self-start sm:self-auto"
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer shrink-0 border",
+                selectedCategory === cat
+                  ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                  : "bg-white dark:bg-[#1E2A35] border-[#E2E8F0] dark:border-[#2D3F50] text-muted-foreground hover:text-foreground"
+              )}
             >
-              <RefreshCw className={cn("w-3.5 h-3.5", refreshingMemories && "animate-spin")} />
-              <span>Refresh Brain</span>
+              {cat === "ALL" ? `All (${memories.length})` : cat}
             </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid */}
+      {filteredMemories.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center space-y-3 rounded-2xl bg-white dark:bg-[#111B25] border border-[#E2E8F0] dark:border-[#1E2D3D]">
+          <Info className="w-8 h-8 text-muted-foreground opacity-30" />
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">No rules found</h3>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              {searchQuery || selectedCategory !== "ALL"
+                ? "Try clearing filters."
+                : "Chat with Co-Pilot to teach your store rules."}
+            </p>
           </div>
-
-          {/* Search & Category Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-            {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search rules, delivery conditions, FAQs..."
-                className="w-full pl-9 pr-4 py-2 rounded-xl bg-card border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-              />
-            </div>
-
-            {/* Category Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              <button
-                onClick={() => setSelectedCategory("ALL")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer shrink-0",
-                  selectedCategory === "ALL"
-                    ? "bg-emerald-600 text-white shadow-2xs"
-                    : "bg-card border border-border text-muted-foreground hover:text-foreground"
+          <button
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedCategory("ALL");
+              setActiveTab("CHAT");
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium cursor-pointer shadow-xs transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Open Co-Pilot
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {filteredMemories.map((mem) => (
+            <div
+              key={mem.id}
+              className={cn(
+                "p-4 rounded-2xl border flex flex-col gap-3 transition-all duration-150",
+                mem.isActive
+                  ? "bg-white dark:bg-[#111B25] border-[#E2E8F0] dark:border-[#1E2D3D] hover:border-emerald-300 dark:hover:border-emerald-500/40 shadow-xs hover:shadow-sm"
+                  : "bg-[#F8FAFC] dark:bg-[#0F1923] border-[#E2E8F0] dark:border-[#1E2D3D] opacity-55"
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 font-mono">
+                  {mem.category}
+                </span>
+                {mem.facebookPage && (
+                  <span className="text-[10px] text-muted-foreground font-medium shrink-0">
+                    {mem.facebookPage.name}
+                  </span>
                 )}
-              >
-                All ({memories.length})
-              </button>
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer shrink-0 font-mono",
-                    selectedCategory === cat
-                      ? "bg-emerald-600 text-white shadow-2xs"
-                      : "bg-card border border-border text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {filteredMemories.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-card border border-border text-center space-y-2.5 shadow-2xs">
-              <Info className="w-8 h-8 text-muted-foreground mx-auto opacity-40" />
-              <h3 className="text-sm font-semibold text-foreground">No matching rules found</h3>
-              <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                {searchQuery || selectedCategory !== "ALL"
-                  ? "Try clearing your search query or selecting another category filter."
-                  : "Go to Co-Pilot Chat and teach your AI any offer, rule, or policy in plain Bengali or English."}
-              </p>
-              <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedCategory("ALL");
-                  setActiveTab("CHAT");
-                }}
-                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium cursor-pointer shadow-2xs"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Open Co-Pilot Chat</span>
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredMemories.map((mem) => {
-                return (
+              <div className="space-y-1 flex-1">
+                <h4 className="text-sm font-semibold text-foreground leading-tight">
+                  {mem.title}
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                  {mem.instruction}
+                </p>
+                {mem.condition && (
+                  <code className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-500/20 block">
+                    if {mem.condition}
+                  </code>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9] dark:border-[#1E2D3D]">
+                <label className="flex items-center gap-1.5 cursor-pointer group">
                   <div
-                    key={mem.id}
+                    onClick={() => handleToggleMemory(mem.id, mem.isActive)}
                     className={cn(
-                      "p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-2xs",
-                      mem.isActive
-                        ? "bg-card border-border hover:border-emerald-500/40"
-                        : "bg-muted/20 border-border/40 opacity-60"
+                      "relative w-8 h-4.5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0",
+                      mem.isActive ? "bg-emerald-500" : "bg-[#CBD5E1] dark:bg-[#2D3F50]"
                     )}
                   >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-mono">
-                          {mem.category}
-                        </span>
-                        {mem.facebookPage && (
-                          <span className="text-[10px] text-muted-foreground font-medium">
-                            {mem.facebookPage.name}
-                          </span>
-                        )}
-                      </div>
-
-                      <h4 className="text-sm font-semibold text-foreground">{mem.title}</h4>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {mem.instruction}
-                      </p>
-
-                      {mem.condition && (
-                        <div className="p-2 rounded-lg bg-muted/60 border border-border/50 text-[11px] font-mono text-emerald-700 dark:text-emerald-300 font-medium">
-                          Condition: {mem.condition}
-                        </div>
+                    <div
+                      className={cn(
+                        "absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-200",
+                        mem.isActive ? "left-4" : "left-0.5"
                       )}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-border/40 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-muted-foreground font-medium">
-                          {mem.isActive ? "Active" : "Paused"}
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={mem.isActive}
-                          onChange={() => handleToggleMemory(mem.id, mem.isActive)}
-                          className="toggle-checkbox w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                        />
-                      </div>
-
-                      <button
-                        onClick={() => handleDeleteMemory(mem.id)}
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all cursor-pointer"
-                        title="Delete rule"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    />
                   </div>
-                );
-              })}
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    {mem.isActive ? "Active" : "Paused"}
+                  </span>
+                </label>
+
+                <button
+                  onClick={() => handleDeleteMemory(mem.id)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          )}
+          ))}
         </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-0",
+        activeTab === "CHAT" ? "h-[calc(100vh-105px)]" : "min-h-0"
+      )}
+    >
+      <Topbar />
+
+      {activeTab === "CHAT" ? (
+        <ChatView />
+      ) : activeTab === "NOTE" ? (
+        <NoteView />
+      ) : (
+        <MemoriesView />
       )}
     </div>
   );
