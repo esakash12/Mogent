@@ -83,12 +83,25 @@ const handleIngest = async (c: any) => {
     } catch {}
 
     const appSecret = (config.facebook.appSecret || process.env.FACEBOOK_APP_SECRET || "").trim();
-    if (appSecret && rawBody) {
+    let customAppSecret: string | null = null;
+    try {
+      const dbRecord = await prisma.systemSetting.findUnique({
+        where: { key: "mogent:meta_developer_config" },
+      });
+      if (dbRecord?.value) {
+        const parsed = JSON.parse(dbRecord.value);
+        if (parsed.appSecret) customAppSecret = String(parsed.appSecret).trim();
+      }
+    } catch {}
+
+    const validAppSecrets = Array.from(new Set([appSecret, customAppSecret].filter(Boolean))) as string[];
+
+    if (validAppSecrets.length > 0 && rawBody) {
       const sig = c.req.header("X-Hub-Signature-256") || c.req.header("x-hub-signature-256");
       if (sig) {
-        const isValid = verifyMetaSignature(sig, rawBody, appSecret);
-        if (!isValid) {
-          console.warn("❌ [Facebook Webhook] Invalid X-Hub-Signature-256 signature");
+        const anyValid = validAppSecrets.some((sec) => verifyMetaSignature(sig, rawBody, sec));
+        if (!anyValid) {
+          console.warn(`❌ [Facebook Webhook] Invalid X-Hub-Signature-256 signature against ${validAppSecrets.length} secret(s).`);
           return c.text("Forbidden: Invalid Signature", 403);
         }
       }

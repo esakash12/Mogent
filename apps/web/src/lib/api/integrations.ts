@@ -73,4 +73,12 @@ export async function purgeWorkspaceData() {
   return await api.post("/api/pages/purge-data", {});
 }
 
+export async function diagnoseFacebookPage(pageId: string) {
+  return await api.post<any>(`/api/pages/${pageId}/diagnose`, {});
+}
+
+export async function resubscribeFacebookPage(pageId: string) {
+  return await api.post<any>(`/api/pages/${pageId}/resubscribe`, {});
+}
+
 

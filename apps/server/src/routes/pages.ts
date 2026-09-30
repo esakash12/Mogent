@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { prisma, AiMode, MessageSender, MessageStatus } from "@mogent/database";
-import { encryptToken } from "@mogent/shared";
+import { encryptToken, decryptToken } from "@mogent/shared";
 import { config } from "../config";
 import crypto from "crypto";
 import { authMiddleware } from "../middleware/auth";
@@ -232,14 +232,24 @@ pagesRouter.post("/", async (c) => {
       return c.json({ success: false, error: "Could not auto-detect Page Name or Page ID. Please check the token." }, 400);
     }
 
-    // Auto-subscribe page to webhook in Meta
+    // Auto-subscribe page to webhook in Meta with robust response verification
+    let isWebSubscribed = false;
+    let subscribeMetaError = "";
     try {
-      await fetch(
+      const subRes = await fetch(
         `https://graph.facebook.com/v20.0/${pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reads,message_deliveries&access_token=${cleanToken}`,
         { method: "POST" }
       );
-    } catch (subErr) {
-      console.warn("Auto-subscribe webhook error:", subErr);
+      const subData = (await subRes.json().catch(() => null)) as any;
+      if (subData?.success === true) {
+        isWebSubscribed = true;
+      } else if (subData?.error) {
+        subscribeMetaError = subData.error.message || "Meta Webhook subscription rejected by Facebook";
+        console.warn(`[Page Connect] Meta Webhook Subscribe failed for page ${pageId}:`, subData.error);
+      }
+    } catch (subErr: any) {
+      subscribeMetaError = subErr.message;
+      console.warn("Auto-subscribe webhook error:", subErr.message);
     }
 
     // Encrypt the Access Token using AES-256-GCM
@@ -260,7 +270,7 @@ pagesRouter.post("/", async (c) => {
         aiMode: validAiMode,
         category: category || "E-Commerce",
         isActive: true,
-        webhookSubscribed: true,
+        webhookSubscribed: isWebSubscribed,
       },
       create: {
         workspaceId,
@@ -271,7 +281,7 @@ pagesRouter.post("/", async (c) => {
         tokenIv: iv,
         tokenTag: tag,
         verifyToken,
-        webhookSubscribed: true,
+        webhookSubscribed: isWebSubscribed,
         aiMode: validAiMode,
         systemPrompt: systemPrompt?.trim() || "You are a polite AI customer service executive.",
         aiTemperature: 0.3,
@@ -287,7 +297,8 @@ pagesRouter.post("/", async (c) => {
         pageId: page.pageId,
         category: page.category,
         aiMode: page.aiMode,
-        webhookStatus: "SUBSCRIBED",
+        webhookStatus: isWebSubscribed ? "SUBSCRIBED" : "PENDING",
+        webhookError: subscribeMetaError || undefined,
         systemPrompt: page.systemPrompt,
         temperature: page.aiTemperature,
       },
@@ -365,6 +376,278 @@ pagesRouter.delete("/:id", async (c) => {
     return c.json({ success: true, message: "Page disconnected successfully" });
   } catch (error: any) {
     console.error("Error deleting page:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 7.1 DIAGNOSE PAGE CONNECTION & META WEBHOOK STATUS
+// -----------------------------------------------------------------------------
+pagesRouter.post("/:id/diagnose", async (c) => {
+  const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
+  try {
+    const page = await prisma.facebookPage.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+      include: { workspace: true },
+    });
+
+    if (!page) {
+      return c.json({ success: false, error: "Page not found or access denied" }, 404);
+    }
+
+    const issues: string[] = [];
+    const actionableSteps: string[] = [];
+
+    // 1. Check DB Settings
+    if (!page.isActive) {
+      issues.push("পেজটি Mogent ড্যাশবোর্ডে নিষ্ক্রিয় (Inactive) রয়েছে।");
+      actionableSteps.push("ড্যাশবোর্ডে পেজটির 'সক্রিয়' টগলটি চালু করুন।");
+    }
+
+    if (page.aiMode === "OFF") {
+      issues.push("পেজটির AI Mode বর্তমানে 'OFF' করা আছে।");
+      actionableSteps.push("AI Mode টি 'AUTO' অথবা 'HYBRID' করুন।");
+    }
+
+    // 2. Decrypt Access Token
+    let token = "";
+    try {
+      token = decryptToken(
+        page.encryptedAccessToken,
+        page.tokenIv,
+        page.tokenTag,
+        config.tokenEncryptionKey
+      );
+    } catch (e: any) {
+      return c.json(
+        {
+          success: false,
+          error: "অ্যাক্সেস টোকেন ডিক্রিপ্ট করা সম্ভব হয়নি। অনুগ্রহ করে পেজটি পুনরায় কানেক্ট করুন।",
+        },
+        400
+      );
+    }
+
+    if (!token) {
+      return c.json(
+        {
+          success: false,
+          error: "পেজের অ্যাক্সেস টোকেন পাওয়া যায়নি।",
+        },
+        400
+      );
+    }
+
+    // 3. Test Graph API /me (Token Validity & Token Type)
+    let tokenValid = false;
+    let tokenType: "PAGE" | "USER" | "UNKNOWN" = "UNKNOWN";
+    let metaPageName = "";
+    let metaId = "";
+    let tokenError = "";
+
+    try {
+      const meRes = await fetch(
+        `https://graph.facebook.com/v20.0/me?access_token=${token}&fields=id,name,category`
+      );
+      const meData = (await meRes.json()) as any;
+
+      if (meData?.id) {
+        tokenValid = true;
+        metaId = meData.id;
+        metaPageName = meData.name || "";
+
+        if (meData.category || meData.id === page.pageId) {
+          tokenType = "PAGE";
+        } else {
+          // If ID doesn't match pageId and has no category, it's very likely a User Token!
+          tokenType = "USER";
+        }
+      } else if (meData?.error) {
+        tokenError = meData.error.message || "Meta token validation failed";
+        issues.push(`ফেসবুক টোকেন ইনভ্যালিড বা মেয়াদ শেষ: ${tokenError}`);
+        actionableSteps.push("নতুন Page Access Token নিয়ে পেজটি আবার রি-কানেক্ট করুন।");
+      }
+    } catch (err: any) {
+      issues.push(`Meta Graph API কানেক্ট করতে সমস্যা: ${err.message}`);
+    }
+
+    // If token is a USER token instead of PAGE token
+    if (tokenValid && tokenType === "USER" && metaId !== page.pageId) {
+      issues.push("⚠️ এটি একটি ফেসবুক ইউজার টোকেন (User Token), পেজ টোকেন নয়! ইউজার টোকেন দিয়ে পেজে কোনো অটো-রিপ্লাই বা মেসেজ সিন করা যায় না।");
+      actionableSteps.push("Meta Graph API Explorer বা Business Manager থেকে উক্ত পেজের 'Page Access Token' সিলেক্ট করে জেনারেট করুন।");
+    }
+
+    // 4. Check Permissions (/me/permissions)
+    let hasMessagingPermission = false;
+    let grantedPermissions: string[] = [];
+    try {
+      const permRes = await fetch(
+        `https://graph.facebook.com/v20.0/me/permissions?access_token=${token}`
+      );
+      const permData = (await permRes.json()) as any;
+      if (Array.isArray(permData?.data)) {
+        grantedPermissions = permData.data
+          .filter((p: any) => p.status === "granted")
+          .map((p: any) => p.permission);
+
+        hasMessagingPermission = grantedPermissions.includes("pages_messaging");
+        if (!hasMessagingPermission) {
+          issues.push("টোকেনে 'pages_messaging' পারমিশন অনুমোদিত (granted) নেই।");
+          actionableSteps.push("টোকেন জেনারেট করার সময় 'pages_messaging', 'pages_manage_metadata', 'pages_read_engagement' পারমিশন সিলেক্ট করুন।");
+        }
+      }
+    } catch {}
+
+    // 5. Check Subscribed Apps (Meta Webhook Subscription)
+    let isWebhookSubscribed = false;
+    let subscribedFields: string[] = [];
+    let autoFixAttempted = false;
+    let autoFixSuccess = false;
+
+    try {
+      const subRes = await fetch(
+        `https://graph.facebook.com/v20.0/${page.pageId}/subscribed_apps?access_token=${token}`
+      );
+      const subData = (await subRes.json()) as any;
+      if (Array.isArray(subData?.data) && subData.data.length > 0) {
+        const appSub = subData.data[0];
+        subscribedFields = appSub.subscribed_fields || [];
+        if (subscribedFields.includes("messages")) {
+          isWebhookSubscribed = true;
+        }
+      }
+    } catch {}
+
+    // If not subscribed to messages, attempt AUTO-FIX right now
+    if (!isWebhookSubscribed && tokenValid) {
+      autoFixAttempted = true;
+      try {
+        const fixRes = await fetch(
+          `https://graph.facebook.com/v20.0/${page.pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reads,message_deliveries&access_token=${token}`,
+          { method: "POST" }
+        );
+        const fixData = (await fixRes.json().catch(() => null)) as any;
+        if (fixData?.success === true) {
+          autoFixSuccess = true;
+          isWebhookSubscribed = true;
+          subscribedFields = ["messages", "messaging_postbacks", "message_reads", "message_deliveries"];
+          await prisma.facebookPage.update({
+            where: { id: page.id },
+            data: { webhookSubscribed: true },
+          });
+        } else if (fixData?.error) {
+          issues.push(`মেটা অটো-সাবস্ক্রিপশন ব্যর্থ: ${fixData.error.message}`);
+        }
+      } catch (fixErr: any) {
+        issues.push(`মেটা সাবস্ক্রিপশন রিকোয়েস্ট ফেইল্ড: ${fixErr.message}`);
+      }
+    }
+
+    if (!isWebhookSubscribed) {
+      issues.push("ফেসবুক পেজটি মেটা অ্যাপের সাথে সাবস্ক্রাইব করা নেই (Subscribed Apps missing)। ফলে ফেসবুক কোনো মেসেজ ইভেন্ট Mogent-এ পাঠাচ্ছে না।");
+      actionableSteps.push("নিচের 'Webhook Re-Subscribe' বাটনে ক্লিক করে পেজটি মেটা অ্যাপের সাথে লিঙ্ক করুন।");
+    }
+
+    // 6. Meta App Mode Guidance (Development vs Live Mode)
+    actionableSteps.push(
+      "📌 মেটা রুল: আপনার Meta App যদি 'In Development' মোডে থাকে, তবে শুধুমাত্র যে ফেসবুক অ্যাকাউন্টকে Meta App-এর 'App Roles -> Roles -> Developers / Testers' হিসেবে যুক্ত করা হয়েছে, শুধুমাত্র সেই অ্যাকাউন্ট থেকে পাঠানো মেসেজেই অটো-রিপ্লাই ও সিন কাজ করবে। সাধারণ কাস্টমারদের জন্য কাজ করাতে হলে অ্যাপটিকে 'Live Mode'-এ নিতে হবে অথবা আপনার টেস্ট আইডিকে Tester হিসেবে যুক্ত করতে হবে।"
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        pageId: page.pageId,
+        pageName: page.name,
+        isActive: page.isActive,
+        aiMode: page.aiMode,
+        tokenValid,
+        tokenType,
+        metaPageName,
+        metaId,
+        isTokenMatchingPage: metaId === page.pageId,
+        hasMessagingPermission,
+        grantedPermissions,
+        isWebhookSubscribed,
+        subscribedFields,
+        autoFixAttempted,
+        autoFixSuccess,
+        webhookCallbackUrl: "https://api.mogent.tech/webhook/facebook",
+        verifyToken: config.facebook.verifyToken,
+        issues,
+        actionableSteps,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error diagnosing Facebook page:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 7.2 FORCE RE-SUBSCRIBE WEBHOOK TO META
+// -----------------------------------------------------------------------------
+pagesRouter.post("/:id/resubscribe", async (c) => {
+  const { id } = c.req.param();
+  const workspaceId = c.get("workspaceId") || c.req.header("x-workspace-id");
+
+  try {
+    const page = await prisma.facebookPage.findFirst({
+      where: {
+        id,
+        ...(workspaceId ? { workspaceId } : {}),
+      },
+    });
+
+    if (!page) {
+      return c.json({ success: false, error: "Page not found or access denied" }, 404);
+    }
+
+    let token = "";
+    try {
+      token = decryptToken(
+        page.encryptedAccessToken,
+        page.tokenIv,
+        page.tokenTag,
+        config.tokenEncryptionKey
+      );
+    } catch {
+      return c.json({ success: false, error: "Failed to decrypt token" }, 400);
+    }
+
+    const subRes = await fetch(
+      `https://graph.facebook.com/v20.0/${page.pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reads,message_deliveries&access_token=${token}`,
+      { method: "POST" }
+    );
+    const subData = (await subRes.json().catch(() => null)) as any;
+
+    if (subData?.success === true) {
+      await prisma.facebookPage.update({
+        where: { id: page.id },
+        data: { webhookSubscribed: true },
+      });
+      return c.json({
+        success: true,
+        message: "সফলভাবে মেটা ওয়েবহুক সাবস্ক্রাইব করা হয়েছে! এখন মেসেজ আদান-প্রদান চালু থাকবে।",
+        data: subData,
+      });
+    } else {
+      const errMsg = subData?.error?.message || "Meta Webhook subscription failed";
+      return c.json(
+        {
+          success: false,
+          error: errMsg,
+          metaError: subData?.error,
+        },
+        400
+      );
+    }
+  } catch (error: any) {
+    console.error("Error resubscribing webhook:", error);
     return c.json({ success: false, error: error.message }, 500);
   }
 });

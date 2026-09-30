@@ -228,7 +228,7 @@ export class FacebookApiService {
     const url = `${this.baseUrl}/me/messages?access_token=${pageAccessToken}`;
 
     try {
-      await fetch(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -236,8 +236,12 @@ export class FacebookApiService {
           sender_action: action,
         }),
       });
-    } catch {
-      // Non-critical action, ignore errors
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn(`⚠️ Facebook sender_action [${action}] failed (${res.status}): ${errText}`);
+      }
+    } catch (e: any) {
+      console.warn(`⚠️ Facebook sender_action [${action}] network error:`, e.message);
     }
   }
 

@@ -18,6 +18,13 @@ import {
   Code,
   Bot,
   Save,
+  Activity,
+  AlertTriangle,
+  RefreshCw,
+  ExternalLink,
+  ShieldAlert,
+  Info,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -31,6 +38,8 @@ import {
   saveWhatsAppConfig,
   testWhatsAppConnection,
   inspectFacebookToken,
+  diagnoseFacebookPage,
+  resubscribeFacebookPage,
 } from "@/lib/api";
 import { toast } from "@/lib/toast";
 
@@ -59,6 +68,13 @@ export default function IntegrationsPage() {
   const [editAiMode, setEditAiMode] = useState<"AUTO" | "HYBRID" | "MANUAL" | "OFF">("AUTO");
   const [editTemperature, setEditTemperature] = useState(0.3);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // Diagnostic Modal State
+  const [diagnosingPage, setDiagnosingPage] = useState<any | null>(null);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<any | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const [isResubscribing, setIsResubscribing] = useState(false);
 
   // Delete modal
   const [deleteItem, setDeleteItem] = useState<any | null>(null);
@@ -325,6 +341,46 @@ export default function IntegrationsPage() {
     }
   };
 
+  const handleOpenDiagnose = async (page: any) => {
+    setDiagnosingPage(page);
+    setDiagnosticResult(null);
+    setDiagnosticError(null);
+    setIsDiagnosing(true);
+    try {
+      const res = await diagnoseFacebookPage(page.id);
+      if (res?.success && res.data) {
+        setDiagnosticResult(res.data);
+      } else {
+        setDiagnosticError(res?.error || "ডায়াগনসিস সম্পন্ন করতে সমস্যা হয়েছে");
+      }
+    } catch (err: any) {
+      setDiagnosticError(err?.message || "ডায়াগনসিস রিকোয়েস্টে সমস্যা হয়েছে");
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
+
+  const handleResubscribe = async (pageId: string) => {
+    setIsResubscribing(true);
+    try {
+      const res = await resubscribeFacebookPage(pageId);
+      if (res?.success) {
+        toast.success("মেটা ওয়েবহুক সফলভাবে রি-সাবস্ক্রাইব করা হয়েছে! 🎉");
+        const diagRes = await diagnoseFacebookPage(pageId);
+        if (diagRes?.success && diagRes.data) {
+          setDiagnosticResult(diagRes.data);
+        }
+        loadData();
+      } else {
+        toast.error("রি-সাবস্ক্রাইব ব্যর্থ হয়েছে", { description: res?.error || "মেটা এরর পাওয়া গেছে।" });
+      }
+    } catch (err: any) {
+      toast.error("রিকোয়েস্টে সমস্যা হয়েছে", { description: err.message });
+    } finally {
+      setIsResubscribing(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Description Banner */}
@@ -542,7 +598,14 @@ export default function IntegrationsPage() {
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-[#111827] truncate">{p.name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[10px] text-[#059669] font-medium flex items-center gap-0.5">
+                            <span
+                              className={cn(
+                                "text-[10px] font-medium flex items-center gap-0.5",
+                                p.webhookStatus === "SUBSCRIBED"
+                                  ? "text-[#059669]"
+                                  : "text-[#D97706] font-bold"
+                              )}
+                            >
                               <CheckCircle2 className="w-2.5 h-2.5" />
                               {p.webhookStatus || "SUBSCRIBED"}
                             </span>
@@ -555,6 +618,15 @@ export default function IntegrationsPage() {
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleOpenDiagnose(p)}
+                          className="px-2.5 py-1 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] hover:bg-[#DBEAFE] text-xs font-bold text-[#1D4ED8] flex items-center gap-1 transition-colors cursor-pointer"
+                          title="কানেকশন ডায়াগনসিস ও অটো-ফিক্স"
+                        >
+                          <Activity className="w-3.5 h-3.5 text-[#2563EB]" />
+                          <span>ডায়াগনসিস</span>
+                        </button>
+
                         <button
                           onClick={() => handleOpenPageSettings(p)}
                           className="px-2.5 py-1 rounded-lg border border-[#E5E7EB] hover:bg-[#F9FAFB] text-xs font-bold text-[#374151] flex items-center gap-1 transition-colors cursor-pointer"
@@ -1195,6 +1267,300 @@ export default function IntegrationsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Diagnostic & Webhook Auto-Fix Modal */}
+      {diagnosingPage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-[#F1F5F9] flex items-center justify-between bg-[#F8FAFC]">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-center text-[#1D4ED8]">
+                  <Activity className="w-5 h-5 text-[#2563EB]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#111827] flex items-center gap-2">
+                    <span>লাইভ ডায়াগনসিস ও ফিক্স: {diagnosingPage.name}</span>
+                  </h3>
+                  <p className="text-[11px] text-[#64748B]">
+                    Page ID: <span className="font-mono font-medium">{diagnosingPage.pageId}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDiagnosingPage(null)}
+                className="p-1.5 rounded-lg text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#E2E8F0] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {isDiagnosing ? (
+                <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-[#2563EB] animate-spin" />
+                  <p className="text-sm font-bold text-[#1E293B]">মেটা গ্রাফ এপিআই ও ওয়েবহুক চেক করা হচ্ছে...</p>
+                  <p className="text-xs text-[#64748B]">টোকেন ভ্যালিডিটি, পেজ পারমিশন ও সাবস্ক্রিপশন স্ট্যাটাস যাচাই চলছে।</p>
+                </div>
+              ) : diagnosticError ? (
+                <div className="p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA] space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-[#DC2626] shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-[#991B1B]">ডায়াগনসিসে সমস্যা হয়েছে</h4>
+                      <p className="text-xs text-[#B91C1C] mt-0.5">{diagnosticError}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleOpenDiagnose(diagnosingPage)}
+                    className="px-3 py-1.5 rounded-lg bg-[#DC2626] text-white text-xs font-bold hover:bg-[#B91C1C] transition-colors flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>আবার চেষ্টা করুন</span>
+                  </button>
+                </div>
+              ) : diagnosticResult ? (
+                <div className="space-y-5">
+                  {/* Status Banner */}
+                  {diagnosticResult.issues && diagnosticResult.issues.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center gap-3">
+                      <CheckCircle2 className="w-6 h-6 text-[#16A34A] shrink-0" />
+                      <div>
+                        <h4 className="text-xs font-bold text-[#166534]">সবকিছু প্রস্তুত ও সক্রিয়!</h4>
+                        <p className="text-xs text-[#15803D] mt-0.5">
+                          টোকেন ভ্যালিড এবং মেটা ওয়েবহুক সঠিকভাবে সাবস্ক্রাইব করা রয়েছে।
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-[#FFFBEB] border border-[#FDE68A] flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-[#D97706] shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-bold text-[#92400E]">
+                          {diagnosticResult.issues?.length || 1} টি সম্ভাব্য সমস্যা শনাক্ত হয়েছে
+                        </h4>
+                        <p className="text-xs text-[#B45309] mt-0.5">
+                          নিচের তথ্য ও সমাধানগুলো অনুসরণ করুন যাতে বট নিরবচ্ছিন্নভাবে কাজ করে।
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Auto-fix success banner if triggered */}
+                  {diagnosticResult.autoFixSuccess && (
+                    <div className="p-3.5 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] flex items-center gap-2.5">
+                      <Check className="w-4 h-4 text-[#2563EB] shrink-0" />
+                      <p className="text-xs font-bold text-[#1E40AF]">
+                        ⚡ মেটা ওয়েবহুক সংযোগ বিচ্ছিন্ন ছিল, ডায়াগনসিস স্বয়ংক্রিয়ভাবে Re-Subscribe করে ঠিক করে দিয়েছে!
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Diagnostic Checks Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Check 1: Token Validity */}
+                    <div className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-[#64748B]">Facebook Token</span>
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold",
+                            diagnosticResult.tokenValid
+                              ? "bg-[#DCFCE7] text-[#166534]"
+                              : "bg-[#FEE2E2] text-[#991B1B]"
+                          )}
+                        >
+                          {diagnosticResult.tokenValid ? "VALID (সক্রিয়)" : "EXPIRED / INVALID"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-[#1E293B]">
+                        {diagnosticResult.metaPageName || diagnosticResult.pageName}
+                      </p>
+                      <p className="text-[10px] text-[#64748B]">
+                        Type:{" "}
+                        <span
+                          className={cn(
+                            "font-bold font-mono",
+                            diagnosticResult.tokenType === "PAGE"
+                              ? "text-[#16A34A]"
+                              : "text-[#DC2626]"
+                          )}
+                        >
+                          {diagnosticResult.tokenType === "PAGE"
+                            ? "Page Access Token ✅"
+                            : diagnosticResult.tokenType === "USER"
+                            ? "User Token ⚠️ (Page Token দিন)"
+                            : "Unknown"}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Check 2: Webhook Subscription */}
+                    <div className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-[#64748B]">Meta Webhook</span>
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold",
+                            diagnosticResult.isWebhookSubscribed
+                              ? "bg-[#DCFCE7] text-[#166534]"
+                              : "bg-[#FEE2E2] text-[#991B1B]"
+                          )}
+                        >
+                          {diagnosticResult.isWebhookSubscribed ? "SUBSCRIBED ✅" : "NOT SUBSCRIBED ❌"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-[#1E293B]">Subscribed Fields</p>
+                      <p className="text-[10px] text-[#64748B] truncate font-mono">
+                        {diagnosticResult.subscribedFields?.length > 0
+                          ? diagnosticResult.subscribedFields.join(", ")
+                          : "None"}
+                      </p>
+                    </div>
+
+                    {/* Check 3: Permissions */}
+                    <div className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-[#64748B]">Messaging Permission</span>
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold",
+                            diagnosticResult.hasMessagingPermission
+                              ? "bg-[#DCFCE7] text-[#166534]"
+                              : "bg-[#FEF3C7] text-[#92400E]"
+                          )}
+                        >
+                          {diagnosticResult.hasMessagingPermission ? "GRANTED ✅" : "MISSING ⚠️"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-[#1E293B]">pages_messaging</p>
+                      <p className="text-[10px] text-[#64748B]">
+                        Required for auto-reply & read receipts
+                      </p>
+                    </div>
+
+                    {/* Check 4: Mogent Status */}
+                    <div className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-[#64748B]">Mogent Status</span>
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold",
+                            diagnosticResult.isActive
+                              ? "bg-[#DCFCE7] text-[#166534]"
+                              : "bg-[#FEE2E2] text-[#991B1B]"
+                          )}
+                        >
+                          {diagnosticResult.isActive ? "ACTIVE" : "INACTIVE"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-[#1E293B]">
+                        AI Mode: <span className="text-[#D97706] font-bold">{diagnosticResult.aiMode}</span>
+                      </p>
+                      <p className="text-[10px] text-[#64748B]">
+                        System Prompt & Guardrails Ready
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Issues List */}
+                  {diagnosticResult.issues && diagnosticResult.issues.length > 0 && (
+                    <div className="p-4 rounded-xl bg-[#FEF2F2] border border-[#FECACA] space-y-2">
+                      <h4 className="text-xs font-bold text-[#991B1B] flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-[#DC2626]" />
+                        <span>শনাক্ত হওয়া সমস্যাগুলো:</span>
+                      </h4>
+                      <ul className="space-y-1.5 pl-5 list-disc text-xs text-[#B91C1C]">
+                        {diagnosticResult.issues.map((iss: string, idx: number) => (
+                          <li key={idx} className="leading-relaxed font-medium">
+                            {iss}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Step-by-Step Actionable Advice & Meta Dev Rules */}
+                  <div className="p-4 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] space-y-2.5">
+                    <h4 className="text-xs font-bold text-[#166534] flex items-center gap-1.5">
+                      <Info className="w-4 h-4 text-[#16A34A]" />
+                      <span>সমাধান ও মেটা কনফিগারেশন নির্দেশিকা:</span>
+                    </h4>
+                    <ul className="space-y-2 text-xs text-[#15803D]">
+                      {diagnosticResult.actionableSteps?.map((step: string, idx: number) => (
+                        <li key={idx} className="leading-relaxed pl-1 font-medium">
+                          {step}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Webhook Configuration Quick Info */}
+                  <div className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] space-y-2 text-xs">
+                    <p className="font-bold text-[#334155]">Meta Developer Webhook Settings (যদি ম্যানুয়ালি সেট করতে চান):</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-[#64748B]">Callback URL:</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <code className="bg-white px-2 py-1 rounded border border-[#CBD5E1] text-[#0F172A] font-mono break-all text-[10px]">
+                            {diagnosticResult.webhookCallbackUrl}
+                          </code>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-[#64748B]">Verify Token:</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <code className="bg-white px-2 py-1 rounded border border-[#CBD5E1] text-[#0F172A] font-mono text-[10px]">
+                            {diagnosticResult.verifyToken}
+                          </code>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 border-t border-[#F1F5F9] bg-[#F8FAFC] flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setDiagnosingPage(null)}
+                className="px-4 py-2 rounded-xl border border-[#CBD5E1] text-xs font-bold text-[#475569] hover:bg-[#F1F5F9] transition-colors"
+              >
+                বন্ধ করুন
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isDiagnosing}
+                  onClick={() => handleOpenDiagnose(diagnosingPage)}
+                  className="px-3.5 py-2 rounded-xl border border-[#CBD5E1] hover:bg-[#F1F5F9] text-xs font-bold text-[#334155] flex items-center gap-1.5 transition-colors"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", isDiagnosing && "animate-spin")} />
+                  <span>পুনরায় ডায়াগনসিস</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isResubscribing || isDiagnosing}
+                  onClick={() => handleResubscribe(diagnosingPage.id)}
+                  className="px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-extrabold flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {isResubscribing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Wrench className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isResubscribing ? "ফিক্স করা হচ্ছে..." : "Webhook Re-Subscribe ফিক্স"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
